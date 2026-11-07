@@ -17,6 +17,8 @@ final class PDFWorkerInstaller {
     /// `pdf2zh-next==2.9.0` and `bitstring<5` is 957 MB on disk (22,987 files),
     /// and the install took 33 seconds (SPEC 13: 「約 ___MB」).
     static let estimatedSizeText = "950MB"
+    /// The same figure in bytes, for the demo's 導入済み size (M3: 957 MB).
+    static let estimatedBytes: Int64 = 957 * 1000 * 1000
 
     enum Phase: Equatable {
         case idle

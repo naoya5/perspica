@@ -40,6 +40,9 @@ struct ManagerTranslateView: View {
                 TextEditor(text: $coordinator.manager.sourceText)
                     .font(.system(size: 15))
                     .scrollContentBackground(.hidden)
+                    // M5 (SPEC 15): an empty scrollbar track was showing down
+                    // the right edge of the source field.
+                    .scrollIndicators(.hidden)
                     .onChange(of: coordinator.manager.sourceText) { _, _ in
                         coordinator.managerTextChanged()
                     }

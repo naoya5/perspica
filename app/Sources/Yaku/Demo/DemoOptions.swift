@@ -73,6 +73,21 @@ struct DemoOptions {
     /// `--demo-dump-blocks`: print the blocks read from `--demo-image` as JSON
     /// and exit, so the reading can be checked without a screen (M4).
     var dumpBlocks = false
+    /// `--demo-pdf-worker installed`: report the PDF worker as installed, so the
+    /// settings tab's 導入済み state can be photographed without the download
+    /// (SPEC 15, M5).
+    var pdfWorkerDemoInstalled = false
+    /// `--demo-reduce-motion` / `--demo-reduce-transparency` /
+    /// `--demo-increase-contrast`: draw the accessibility appearance without
+    /// changing the system's own settings (SPEC 15, M5).
+    var reduceMotionDemo = false
+    var reduceTransparencyDemo = false
+    var increaseContrastDemo = false
+    /// `--demo-backdrop light|dark`: put a full-screen picture-like backdrop
+    /// behind the glass, so the panel, HUD, island and overlay can be captured
+    /// over a bright or a dark background without changing the wallpaper
+    /// (SPEC 15, M5).
+    var backdrop: String?
 
     static let current = DemoOptions(arguments: CommandLine.arguments)
 
@@ -113,6 +128,12 @@ struct DemoOptions {
             case "--demo-image": demoImage = next()
             case "--demo-scale": demoScale = next().flatMap(Double.init)
             case "--demo-dump-blocks": dumpBlocks = true
+            case "--demo-pdf-worker":
+                pdfWorkerDemoInstalled = next() == "installed"
+            case "--demo-reduce-motion": reduceMotionDemo = true
+            case "--demo-reduce-transparency": reduceTransparencyDemo = true
+            case "--demo-increase-contrast": increaseContrastDemo = true
+            case "--demo-backdrop": backdrop = next()
             default: break
             }
             index += 1

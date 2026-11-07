@@ -75,15 +75,12 @@ struct PanelRootView: View {
     private var shape: some View {
         content
             .frame(width: PanelLayout.width, height: model.contentHeight, alignment: .top)
-            .glassEffect(
-                .regular,
-                in: .rect(cornerRadius: PanelLayout.cornerRadius, style: .continuous)
-            )
+            .yakuGlass(in: .rect(cornerRadius: PanelLayout.cornerRadius, style: .continuous))
             .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
     }
 
     private var reduceMotion: Bool {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        AppearanceOverrides.reduceMotion
     }
 
     private var openAnimation: Animation {
@@ -277,16 +274,49 @@ struct PanelRootView: View {
             // Just the message and its buttons; the error state must not leave
             // a wide empty face below them (M1 review).
             return 62
-        case .translating, .done:
-            let available = PanelLayout.maxHeight
-                - PanelLayout.topBarHeight
-                - sourceFieldHeight
-                - PanelLayout.dividerHeight
-                - PanelLayout.bottomBarHeight
-                - PanelLayout.quickBarHeight
-            let wanted = model.translationContentHeight + 16
-            return min(max(wanted, PanelLayout.minimumTranslationHeight), max(available, PanelLayout.minimumTranslationHeight))
+        case .translating:
+            // The panel keeps one height while the translation streams and
+            // fits the finished text when it lands. Growing it as text arrived
+            // re-laid out the whole panel (glass, shadow and all) for every
+            // step: measured 48% CPU growing in 44pt steps against 30% with a
+            // fixed height (SPEC 14, M5). The height comes from the source
+            // text, which does not change while the translation arrives.
+            let wanted = max(sourceFieldHeight * 2.2, PanelLayout.workingTranslationHeight)
+            return min(max(wanted, PanelLayout.minimumTranslationHeight),
+                       max(availableTranslationHeight, PanelLayout.minimumTranslationHeight))
+        case .done:
+            let wanted = translationContentHeight + 16
+            return min(max(wanted, PanelLayout.minimumTranslationHeight),
+                       max(availableTranslationHeight, PanelLayout.minimumTranslationHeight))
         }
+    }
+
+    /// The height of the translation text.
+    ///
+    /// This is measured from the string rather than read back from the laid-out
+    /// view. Reading it back put the panel's height in a loop with its own
+    /// layout: every streamed piece changed the height, which re-laid out the
+    /// panel (and the text), which reported a new height. Measured while a
+    /// translation streamed, that loop cost 27 points of CPU (58% with it, 30%
+    /// with the report removed); measuring the string costs one text
+    /// measurement per evaluation and breaks the loop (SPEC 14, M5).
+    private var translationContentHeight: CGFloat {
+        TextMetrics.height(
+            coordinator.panel.translation,
+            width: PanelLayout.contentWidth,
+            size: PanelLayout.translationFontSize,
+            lineSpacing: PanelLayout.translationLineSpacing
+        )
+    }
+
+    /// How tall the translation area may grow before the panel stops growing.
+    private var availableTranslationHeight: CGFloat {
+        PanelLayout.maxHeight
+            - PanelLayout.topBarHeight
+            - sourceFieldHeight
+            - PanelLayout.dividerHeight
+            - PanelLayout.bottomBarHeight
+            - PanelLayout.quickBarHeight
     }
 
     // MARK: top band
@@ -454,6 +484,15 @@ struct PanelRootView: View {
 
     // MARK: translation
 
+    @ViewBuilder
+    private var translationText: some View {
+        Text(coordinator.panel.translation)
+            .font(.system(size: PanelLayout.translationFontSize))
+            .lineSpacing(PanelLayout.translationLineSpacing)
+            .textRenderer(FadeInTextRenderer(revealed: reveal.revealed))
+            .textSelection(.enabled)
+    }
+
     private var translationArea: some View {
         Group {
             switch coordinator.panel.phase {
@@ -464,29 +503,9 @@ struct PanelRootView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel("訳文、準備しています")
             case .translating, .done:
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical) {
-                        Text(coordinator.panel.translation)
-                            .font(.system(size: PanelLayout.translationFontSize))
-                            .lineSpacing(PanelLayout.translationLineSpacing)
-                            .textRenderer(FadeInTextRenderer(revealed: reveal.revealed))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .id("translation")
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                                model.translationContentHeight = height
-                            }
-                    }
-                    .defaultScrollAnchor(.top)
-                    .scrollIndicators(.automatic)
-                    // Growing text keeps the top in view; `.defaultScrollAnchor`
-                    // alone still let the text view scroll to the end as the
-                    // translation streamed in.
-                    .onChange(of: coordinator.panel.scrollReset) { _, _ in
-                        proxy.scrollTo("translation", anchor: .top)
-                    }
-                }
+                translationScroll
             case .failed(let failure):
                 failureView(failure)
             }
@@ -494,6 +513,40 @@ struct PanelRootView: View {
         .padding(.horizontal, PanelLayout.innerPadding)
         .padding(.vertical, 8)
         .frame(height: translationHeight, alignment: .top)
+    }
+
+    /// What VoiceOver calls the translation area, which is also what says which
+    /// phase the panel is in (SPEC 4.2 の状態).
+    private var translationAreaLabel: String {
+        switch coordinator.panel.phase {
+        case .empty: return "訳文"
+        case .preparing: return "訳文、準備しています"
+        case .translating: return "訳文、翻訳中"
+        case .done: return "訳文"
+        case .failed(let failure): return "訳文、エラー、\(failure.message)"
+        }
+    }
+
+    private var translationScroll: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                translationText
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .id("translation")
+            }
+            .defaultScrollAnchor(.top)
+            .scrollIndicators(.automatic)
+            // Growing text keeps the top in view; `.defaultScrollAnchor`
+            // alone still let the text view scroll to the end as the
+            // translation streamed in.
+            .onChange(of: coordinator.panel.scrollReset) { _, _ in
+                proxy.scrollTo("translation", anchor: .top)
+            }
+            // VoiceOver names the translation as a whole, so it can be told
+            // apart from the source field above it, and says which phase the
+            // panel is in (SPEC 4.2 の状態, SPEC 18).
+            .accessibilityLabel(translationAreaLabel)
+        }
     }
 
     private func failureView(_ failure: TranslationCoordinator.TranslationFailure) -> some View {
@@ -517,6 +570,8 @@ struct PanelRootView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("訳文、エラー、\(failure.message)")
     }
 
     // MARK: bottom band

@@ -120,11 +120,17 @@ final class TranslationCoordinator {
     /// priority is 対話 > 画面 > PDF, so the screen overlay gives way here.
     var onDialogueRequestStarted: (() -> Void)?
 
-    /// How often streamed text is published to the UI. Laying out the whole
-    /// translation costs about half a millisecond, and the reveal animation
-    /// runs at 30Hz on top of it, so publishing faster than this only buys
-    /// more layout work (33ms measured 17% CPU, 100ms about 10%).
-    private static let publishInterval = Duration.milliseconds(100)
+    /// How often streamed text is published to the panel.
+    ///
+    /// The first piece is published at once; after that the panel waits this
+    /// long. M1-M4 published on every streamed piece, which re-laid out and
+    /// redrew the whole translation dozens of times a second. M5 measured
+    /// 100ms, 300ms, 500ms and 2000ms against each other and found no
+    /// reproducible difference (19.3-19.8% CPU at every setting; M5.md 4.2),
+    /// because the reveal's own redraw sets the cost. 300ms is kept anyway: it
+    /// holds the publish rate below the reveal rate, so no layout work is done
+    /// for text that cannot be seen yet.
+    private static let publishInterval = Duration.milliseconds(300)
 
     init(engine: EngineManager, store: TranslationStore) {
         self.engine = engine
@@ -617,12 +623,13 @@ final class TranslationCoordinator {
             // Published once per chunk so the log shows how long the first
             // character took (SPEC 14: PDF の処理中でも待たされないこと).
             var loggedFirstPiece = false
-            // Publishing every streamed piece re-lays out the panel's text on
-            // each one, which drags AppKit's vibrancy update for the glass
-            // background along with it (about 27% CPU for a three paragraph
-            // translation). The reveal only advances at 30Hz, so nothing is
-            // lost by publishing at that rate.
-            var lastPublish = ContinuousClock.now
+            // Publishing re-lays out and redraws the whole translation, so
+            // publishing on every streamed piece spends CPU in proportion to
+            // the model's speed rather than to what the eye can follow (SPEC
+            // 14, M5.md 4.2). The first piece is published at once, so the
+            // text starts to appear as soon as the engine answers; later
+            // pieces wait for the interval.
+            var lastPublish = ContinuousClock.now - Self.publishInterval
             for try await piece in client.stream(request) {
                 if !loggedFirstPiece, !piece.isEmpty {
                     loggedFirstPiece = true

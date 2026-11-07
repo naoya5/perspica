@@ -80,7 +80,9 @@ final class PDFQueue {
     }
 
     var activeJob: PDFJob? {
-        running ?? jobs.first { $0.jobState == .queued }
+        running
+            ?? jobs.first { $0.jobState == .running }
+            ?? jobs.first { $0.jobState == .queued }
     }
 
     var hasActiveJob: Bool { activeJob != nil }

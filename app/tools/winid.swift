@@ -27,8 +27,9 @@ for window in windows {
     let layer = window[kCGWindowLayer as String] as? Int ?? 0
     let alpha = window[kCGWindowAlpha as String] as? Double ?? 0
     let onScreen = window[kCGWindowIsOnscreen as String] as? Bool ?? false
+    let name = window[kCGWindowName as String] as? String ?? ""
     print("id=\(number) layer=\(layer) alpha=\(alpha) onscreen=\(onScreen) "
-        + "x=\(Int(x)) y=\(Int(y)) w=\(Int(width)) h=\(Int(height))")
+        + "x=\(Int(x)) y=\(Int(y)) w=\(Int(width)) h=\(Int(height)) name=\(name.isEmpty ? "-" : name)")
     found = true
 }
 

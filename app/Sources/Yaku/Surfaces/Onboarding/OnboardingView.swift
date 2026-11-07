@@ -258,27 +258,32 @@ struct OnboardingView: View {
         systemImage: String,
         title: String,
         message: String,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 12) {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 26, weight: .light))
-                        .foregroundStyle(Color.accentColor)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
-                            .font(.system(size: 19, weight: .semibold))
-                        Text(message)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+        // M5 (SPEC 15): the pages were top-aligned, so a short page left a big
+        // empty band under it. Centre the content in the page instead, and
+        // still let a taller page scroll.
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 12) {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 26, weight: .light))
+                            .foregroundStyle(Color.accentColor)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(title)
+                                .font(.system(size: 19, weight: .semibold))
+                            Text(message)
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
+                    content()
                 }
-                content()
+                .padding(28)
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .center)
             }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -328,6 +333,7 @@ private struct OnboardingLicenseSheet: View {
                     model.acceptLicense(for: entry)
                     dismiss()
                 }
+                .buttonStyle(.glassProminent)
                 .keyboardShortcut(.defaultAction)
             }
         }

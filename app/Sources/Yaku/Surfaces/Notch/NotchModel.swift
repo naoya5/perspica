@@ -85,6 +85,21 @@ final class NotchModel {
 
     var stageJapanese: String { PDFStage.japaneseName(for: stage) }
 
+    /// What VoiceOver calls the island. The compact island is only an icon and
+    /// a percentage, so without this it reads as nothing at all (SPEC 18).
+    var accessibilitySummary: String {
+        switch state {
+        case .closed: return "Yaku の島"
+        case .drop: return dropMessage
+        case .activity:
+            return "PDF の仕事中、\(fileName)、\(stageJapanese)、\(progressText)"
+        case .done:
+            return "PDF の翻訳が終わりました、\(fileName)、\(elapsedText)"
+        case .error:
+            return "PDF を訳せませんでした、\(fileName)、\(errorMessage)"
+        }
+    }
+
     var progressText: String { "\(Int((progress * 100).rounded()))%" }
 
     var elapsedText: String {

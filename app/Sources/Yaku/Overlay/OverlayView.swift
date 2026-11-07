@@ -81,6 +81,12 @@ struct OverlayRootView: View {
                 if block.hasTranslation {
                     OverlayBlockView(block: block, windowHeight: model.windowHeight, showSource: showsSource)
                         .onTapGesture { actions.copyBlock(block.id) }
+                        // SwiftUI otherwise hands the blocks to VoiceOver in the
+                        // order the translations arrived, which is not the order
+                        // they are read in (measured: 0, 1, 4, 2, 3 for the
+                        // article sample). Priority sorts them back into the
+                        // reading order the model already holds (SPEC 18).
+                        .accessibilitySortPriority(Double(model.blocks.count - block.id))
                 }
             }
 
@@ -132,7 +138,7 @@ struct OverlayRootView: View {
                     }
                 }
                 .padding(4)
-                .glassEffect(.regular, in: .capsule)
+                .yakuGlass(in: .capsule)
             }
             .frame(width: rect.width, height: rect.height)
             .position(x: rect.midX, y: proxy.size.height - rect.midY)
@@ -181,11 +187,13 @@ struct OverlayRootView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .glassEffect(.regular, in: .capsule)
+            .yakuGlass(in: .capsule)
             .padding(.bottom, 84)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("文字を読み取っています")
     }
 
     /// 「コピーしました」, just above the band (SPEC 4.6 の 4).
@@ -197,12 +205,14 @@ struct OverlayRootView: View {
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .glassEffect(.regular, in: .capsule)
+                .yakuGlass(in: .capsule)
                 .padding(.bottom, 84)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
         .transition(.opacity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
     }
 
     private func message(
@@ -225,8 +235,10 @@ struct OverlayRootView: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 18)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18, style: .continuous))
+        .yakuGlass(in: .rect(cornerRadius: 18, style: .continuous))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(text)
     }
 }
 
@@ -251,7 +263,7 @@ private struct OverlayBlockView: View {
         let top = windowHeight - block.frame.maxY
         let height = block.frame.height + overflow
         Text(text)
-            .font(.system(size: fontSize))
+            .font(.system(size: fontSize, weight: block.isBold ? .bold : .regular))
             .foregroundStyle(block.textColor.color)
             .multilineTextAlignment(.leading)
             .lineLimit(nil)

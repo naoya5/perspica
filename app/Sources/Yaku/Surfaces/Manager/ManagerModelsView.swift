@@ -44,6 +44,11 @@ struct ManagerModelsView: View {
         let downloading = model.downloader.state.modelID == entry.id && model.downloader.state.isActive
         let selected = AppSettings.shared.selectedModelID == entry.id
             && AppSettings.shared.customModelPath.isEmpty
+        // The engine is running M0's development file for this entry, so say
+        // that instead of 「未取得」 (SPEC 15, M5).
+        let development = !installed && !downloading
+            && ModelCatalog.models.first?.id == entry.id
+            && ModelStore.isUsingDevelopmentFile
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -57,7 +62,8 @@ struct ManagerModelsView: View {
                         .background(Color.accentColor.opacity(0.16), in: .capsule)
                 }
                 Spacer()
-                Text(stateText(entry, installed: installed, downloading: downloading))
+                Text(stateText(entry, installed: installed, downloading: downloading,
+                               development: development))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -96,6 +102,14 @@ struct ManagerModelsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if development {
+                Text("この Mac では M0 で用意した開発用のファイルを使っています。"
+                     + "「取得する」で正規のファイルを取得すると、そちらに差し替わります。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             HStack(spacing: 8) {
                 if !installed {
                     Button("取得する") { model.requestDownload(entry) }
@@ -128,9 +142,11 @@ struct ManagerModelsView: View {
         }
     }
 
-    private func stateText(_ entry: TranslationModel, installed: Bool, downloading: Bool) -> String {
+    private func stateText(_ entry: TranslationModel, installed: Bool, downloading: Bool,
+                           development: Bool = false) -> String {
         if downloading { return "取得中" }
         if installed { return "取得済み" }
+        if development { return "開発用のファイルを使用中" }
         let partial = model.partialBytes(entry)
         if partial > 0 { return "途中まで（\(ByteCount.format(partial))）" }
         return "未取得"
@@ -258,6 +274,7 @@ private struct LicenseSheet: View {
                     model.acceptLicense(for: entry)
                     dismiss()
                 }
+                .buttonStyle(.glassProminent)
                 .keyboardShortcut(.defaultAction)
             }
         }

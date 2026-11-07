@@ -52,6 +52,10 @@ struct NotchRootView: View {
         .animation(spring, value: model.islandSize)
         .animation(spring, value: model.expanded)
         .modifier(NotchShakeEffect(shakes: model.dropShake))
+        // The island has no title of its own, so VoiceOver is given the state
+        // as a name (SPEC 18). The expanded buttons keep their own names.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(model.accessibilitySummary)
     }
 
     @ViewBuilder

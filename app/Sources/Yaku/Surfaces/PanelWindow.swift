@@ -13,7 +13,6 @@ final class PanelModel {
     var focusRequest = 0
     /// Height of the glass shape, in points (SPEC 4.2: 168...600).
     var contentHeight: CGFloat = PanelLayout.minHeight
-    var translationContentHeight: CGFloat = 0
     /// Demo surfaces prefill the source field; focusing it would select the
     /// whole text, so they turn the automatic focus off.
     var autoFocusEnabled = true

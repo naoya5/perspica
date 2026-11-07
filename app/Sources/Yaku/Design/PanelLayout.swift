@@ -38,6 +38,9 @@ enum PanelLayout {
     static let emptySourceHeight: CGFloat = 56
     /// Height of the 「準備しています…」 / error area at its smallest.
     static let minimumTranslationHeight: CGFloat = 34
+    /// Height of the translation area while a translation streams (SPEC 14, M5:
+    /// the panel keeps one height so it is not re-laid out for every piece).
+    static let workingTranslationHeight: CGFloat = 240
     /// The 「作業中の PDF」 row (SPEC 4.2 の 6).
     static let pdfRowHeight: CGFloat = 48
     /// The drop state: the well replaces the whole content (SPEC 4.2).

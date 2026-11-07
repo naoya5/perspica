@@ -18,6 +18,9 @@ struct OverlayBlock: Identifiable {
     let background: RGBColor
     /// The colour the original text was written in.
     let textColor: RGBColor
+    /// True when the original text was heavy, so the translation keeps that
+    /// weight (SPEC 4.6 の 3).
+    let isBold: Bool
     /// Filled in when the translation arrives.
     var translation: String?
     /// How the translation was sized to the block, decided with the translation.

@@ -60,9 +60,14 @@ enum PDFWorkerPaths {
         return nil
     }
 
+    /// Demo only (`--demo-pdf-worker installed`): report the environment as
+    /// installed so the settings tab's 導入済み state can be photographed
+    /// without the ~950MB download, which needs the network (SPEC 15).
+    static var demoInstalled = false
+
     /// True when the environment exists, whatever interpreter it is using.
     static var isInstalled: Bool {
-        FileManager.default.isExecutableFile(atPath: installedPython.path)
+        demoInstalled || FileManager.default.isExecutableFile(atPath: installedPython.path)
     }
 
     static var uvIsAvailable: Bool {
@@ -72,8 +77,16 @@ enum PDFWorkerPaths {
     /// The size of the installed environment, which goes into the wording
     /// (SPEC 13: 「約 ___MB」).
     static var installedBytes: Int64 {
+        if demoInstalled, !isInstalledEnvironmentPresent {
+            // A plausible figure for the demo, from M3's measurement.
+            return PDFWorkerInstaller.estimatedBytes
+        }
         guard isInstalled else { return 0 }
         return directorySize(environmentDirectory)
+    }
+
+    private static var isInstalledEnvironmentPresent: Bool {
+        FileManager.default.isExecutableFile(atPath: installedPython.path)
     }
 
     static func removeInstallation() {

@@ -32,6 +32,26 @@ cp Resources/Info.plist "$CONTENTS/Info.plist"
 cp Resources/PLAMO-COMMUNITY-LICENSE-en.txt "$CONTENTS/Resources/PLAMO-COMMUNITY-LICENSE-en.txt"
 cp "$BIN_DIR/$APP_NAME" "$CONTENTS/MacOS/$APP_NAME"
 
+# The app icon. `Resources/Yaku.icon` is an Icon Composer document; actool
+# compiles it to Assets.car (the Liquid Glass icon) and Yaku.icns (for anything
+# that still asks for a plain .icns). The partial plist it writes holds
+# CFBundleIconFile / CFBundleIconName, which are merged into Info.plist here
+# rather than kept in the source plist, so the two cannot drift apart.
+if [ -d Resources/$APP_NAME.icon ]; then
+    # actool resolves relative paths against its own working directory, not
+    # this script's, so both paths are made absolute first.
+    xcrun actool "$(pwd)/Resources/$APP_NAME.icon" \
+        --compile "$(pwd)/$CONTENTS/Resources" \
+        --platform macosx \
+        --minimum-deployment-target 26.0 \
+        --app-icon "$APP_NAME" \
+        --output-partial-info-plist "$(pwd)/$CONTENTS/Resources/icon-info.plist" \
+        --output-format human-readable-text >/dev/null
+    /usr/libexec/PlistBuddy -c "Merge $CONTENTS/Resources/icon-info.plist" "$CONTENTS/Info.plist"
+    rm "$CONTENTS/Resources/icon-info.plist"
+    echo "icon: $(ls "$CONTENTS/Resources" | tr '\n' ' ')"
+fi
+
 # The PDF worker's scripts ride along so the app does not depend on the
 # checkout. The Python environment itself is installed on first use (SPEC 8.2).
 mkdir -p "$CONTENTS/Resources/pdf-worker"

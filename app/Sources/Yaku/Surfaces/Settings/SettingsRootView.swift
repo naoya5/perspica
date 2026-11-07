@@ -296,6 +296,10 @@ private struct PDFSettingsTab: View {
     }
 
     private var workerStateText: String {
+        if PDFWorkerPaths.demoInstalled {
+            return sizeText.isEmpty ? "導入済み" : "導入済み（\(sizeText)）"
+        }
+        if !settings.pdfPythonPath.isEmpty { return "開発用の Python を使います" }
         guard PDFWorkerPaths.isInstalled else { return "未導入" }
         return sizeText.isEmpty ? "導入済み" : "導入済み（\(sizeText)）"
     }

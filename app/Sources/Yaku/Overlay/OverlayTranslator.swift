@@ -25,8 +25,26 @@ final class OverlayTranslator {
     private let store: TranslationStore
 
     private var workers: [Task<Void, Never>] = []
+    /// How many workers are between "started" and "ran out of blocks", so
+    /// `extend` can top the run back up to three in flight.
+    private var activeWorkers = 0
     private var generation = 0
     private(set) var isRunning = false
+
+    /// The blocks this run is working through, in reading order, with the index
+    /// each one has in the overlay's model. A second reading pass can add to it
+    /// while it is going (`extend`).
+    private var queue: [(index: Int, block: OCRBlock)] = []
+    private var cursor = 0
+    private var remaining = 0
+    private var runTotal = 0
+    private var runStarted = 0.0
+    /// Fixed for the whole run, so a block added by the second pass is read as
+    /// the same language and written in the same form as the first ones.
+    private var sourceLanguage: String?
+    private var target = "ja"
+    private var form: TranslationForm?
+    private var model = ""
 
     init(engine: EngineManager, store: TranslationStore) {
         self.engine = engine
@@ -41,71 +59,96 @@ final class OverlayTranslator {
             return
         }
         generation += 1
-        let token = generation
+        queue = blocks.enumerated().map { (index: $0.offset, block: $0.element) }
+        cursor = 0
+        remaining = queue.count
+        runTotal = queue.count
+        runStarted = CFAbsoluteTimeGetCurrent()
         isRunning = true
+        activeWorkers = 0
 
         let settings = AppSettings.shared
         let texts = blocks.map(\.text)
         // The target language follows the screen as a whole, so one short block
         // cannot be read as a different language (SPEC 5.1).
-        let detected = LanguageDetector.detect(texts.joined(separator: " "))
-        let sourceLanguage = detected.code
-        let target = LanguageDetector.defaultTarget(forSource: sourceLanguage)
-        let form: TranslationForm? = target == "ja" ? settings.defaultForm : nil
-        let model = ModelStore.cacheKey()
+        sourceLanguage = LanguageDetector.detect(texts.joined(separator: " ")).code
+        target = LanguageDetector.defaultTarget(forSource: sourceLanguage)
+        form = target == "ja" ? settings.defaultForm : nil
+        model = ModelStore.cacheKey()
 
         AppLog.write("overlay: translating \(blocks.count) block(s) "
             + "source=\(sourceLanguage ?? "?") target=\(target) "
             + "form=\(form?.rawValue ?? "-") model=\(model)")
 
-        let started = CFAbsoluteTimeGetCurrent()
-        let total = blocks.count
-        var remaining = total
-        // A shared cursor: three workers pull the next block in reading order,
-        // so a slow block does not hold up the ones behind it.
-        var cursor = 0
+        spawnWorkers(token: generation)
+    }
 
-        func finishOne() {
-            remaining -= 1
-            guard remaining == 0 else { return }
-            guard token == generation else { return }
-            isRunning = false
-            let seconds = CFAbsoluteTimeGetCurrent() - started
-            AppLog.write(String(format: "overlay: all %d block(s) translated in %.3fs", total, seconds))
-            onFinished?(true)
-        }
+    /// Adds blocks to the run in progress: the tiled reading pass finds small
+    /// text after the first blocks are already on the screen (M5.md 3.4). The
+    /// language, form and model of the run are kept, and `onFinished` waits for
+    /// these blocks too.
+    func extend(blocks: [OCRBlock], indexes: [Int]) {
+        guard !blocks.isEmpty, blocks.count == indexes.count, generation > 0 else { return }
+        queue.append(contentsOf: zip(indexes, blocks).map { (index: $0.0, block: $0.1) })
+        remaining += blocks.count
+        runTotal += blocks.count
+        AppLog.write("overlay: \(blocks.count) more block(s) from the tiled pass")
+        if !isRunning { isRunning = true }
+        spawnWorkers(token: generation)
+    }
 
-        for _ in 0..<min(Self.maximumConcurrent, total) {
+    private func spawnWorkers(token: Int) {
+        let wanted = min(Self.maximumConcurrent, queue.count - cursor)
+        guard wanted > activeWorkers else { return }
+        for _ in 0..<(wanted - activeWorkers) {
+            activeWorkers += 1
             let task = Task { [weak self] in
                 guard let self else { return }
+                defer { self.workerStopped(token: token) }
                 while true {
                     guard token == self.generation else { return }
-                    let index = cursor
-                    guard index < total else { return }
-                    cursor += 1
+                    let index = self.cursor
+                    guard index < self.queue.count else { return }
+                    self.cursor += 1
 
-                    let block = blocks[index]
-                    let context = OverlayContext.context(forIndex: index, in: texts)
-                    let glossary = GlossaryFilter.relevant(self.store.enabledGlossaryPairs(), in: block.text)
+                    let item = self.queue[index]
+                    let context = OverlayContext.context(forIndex: item.index, in: self.queue.map(\.block.text))
+                    let glossary = GlossaryFilter.relevant(self.store.enabledGlossaryPairs(), in: item.block.text)
                     let translation = await self.translate(
-                        block: block,
-                        index: index,
+                        block: item.block,
+                        index: item.index,
                         context: context.isEmpty ? nil : context,
-                        sourceLanguage: sourceLanguage,
-                        target: target,
-                        form: form,
+                        sourceLanguage: self.sourceLanguage,
+                        target: self.target,
+                        form: self.form,
                         glossary: glossary,
-                        model: model
+                        model: self.model
                     )
                     guard token == self.generation else { return }
                     if let translation {
-                        self.onTranslation?(index, translation)
+                        self.onTranslation?(item.index, translation)
                     }
-                    finishOne()
+                    self.remaining -= 1
+                    if self.remaining == 0 {
+                        self.isRunning = false
+                        let seconds = CFAbsoluteTimeGetCurrent() - self.runStarted
+                        AppLog.write(String(
+                            format: "overlay: all %d block(s) translated in %.3fs", self.runTotal, seconds
+                        ))
+                        self.onFinished?(true)
+                        return
+                    }
                 }
             }
             workers.append(task)
         }
+    }
+
+    /// A worker that ran out of blocks (or was superseded) is no longer one of
+    /// the three that may be in flight.
+    private func workerStopped(token: Int) {
+        guard token == generation else { return }
+        activeWorkers = max(0, activeWorkers - 1)
     }
 
     /// Stops every in-flight request (their connections close, which makes
@@ -115,6 +158,10 @@ final class OverlayTranslator {
         generation += 1
         for task in workers { task.cancel() }
         workers = []
+        activeWorkers = 0
+        queue = []
+        cursor = 0
+        remaining = 0
         isRunning = false
         AppLog.write("overlay: translation cancelled")
         if notify { onFinished?(false) }

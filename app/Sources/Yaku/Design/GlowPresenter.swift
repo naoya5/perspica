@@ -59,7 +59,7 @@ final class GlowPresenter {
             active: active && open,
             cornerRadius: cornerRadius,
             cycleSeconds: cycle,
-            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            reduceMotion: AppearanceOverrides.reduceMotion
         )
     }
 }

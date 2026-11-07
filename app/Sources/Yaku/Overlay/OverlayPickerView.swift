@@ -74,7 +74,7 @@ struct OverlayPickerView: View {
                 }
             }
             .padding(3)
-            .glassEffect(.regular, in: .capsule)
+            .yakuGlass(in: .capsule)
         }
         .frame(width: capsuleSize.width, height: capsuleSize.height)
         .padding(.top, capsuleTop)

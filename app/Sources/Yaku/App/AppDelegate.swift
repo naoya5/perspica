@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = PanelModel()
     let engine = EngineManager()
     let demo = DemoOptions.current
+    let backdropController = BackdropController()
 
     lazy var store = TranslationStore()
     lazy var coordinator = TranslationCoordinator(engine: engine, store: store)
@@ -42,6 +43,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         NSApp.setActivationPolicy(.accessory)
+        installQuitHandler()
+        // SwiftUI builds its menus after launch, so look twice.
+        installQuitMenuItem()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            self?.installQuitMenuItem()
+        }
 
         if let appearance = demo.appearance {
             NSApp.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
@@ -84,6 +91,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             + "dataDir=\(AppPaths.isUsingDataDirectory)")
 
         setUpMenuBar()
+        // SPEC 15 (M5): a light or dark picture behind the glass, so the
+        // surfaces can be photographed over both without touching the Mac's
+        // wallpaper. It sits below the app's own windows.
+        if let backdrop = demo.backdrop {
+            backdropController.show(backdrop)
+        }
         // Recorded at launch because the permission cannot be granted or
         // checked without a keypress, and the log is the only way to see what
         // the selection hotkey would find.
@@ -155,16 +168,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// finishing the quit: `terminate` is accepted and then never happens.
     /// Closing the sheets first and answering `terminateNow` makes ⌘Q work in
     /// every state.
-    /// Answer `terminateNow` and close any sheet on the way out, so the model
-    /// licence cannot keep the quit from finishing.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let sheets = NSApp.windows.compactMap(\.attachedSheet)
+        AppLog.write("terminate: asked, windows=\(NSApp.windows.count) sheets=\(sheets.count) "
+            + "modal=\(NSApp.modalWindow != nil)")
+        closeSheets()
+        AppLog.write("terminate: replying terminateNow")
+        return .terminateNow
+    }
+
+    private func closeSheets() {
         for window in NSApp.windows where window.attachedSheet != nil {
             if let sheet = window.attachedSheet {
                 AppLog.write("terminate: closing a sheet")
                 window.endSheet(sheet, returnCode: .cancel)
             }
         }
-        return .terminateNow
+    }
+
+    /// The Quit Apple Event (`osascript … to quit`, the Dock's 終了, the logout
+    /// Apple Event) is answered by SwiftUI's own application delegate while a
+    /// sheet is attached: it replies 「ユーザによってキャンセルされました」
+    /// (-128) and never asks `applicationShouldTerminate`, so the app stayed
+    /// running with the licence sheet up (SPEC 15, M5). Answering the event
+    /// here, before SwiftUI's delegate sees it, makes the quit work in every
+    /// state.
+    private func installQuitHandler() {
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleQuitEvent(_:replyEvent:)),
+            forEventClass: AEEventClass(kCoreEventClass),
+            andEventID: AEEventID(kAEQuitApplication)
+        )
+    }
+
+    /// SwiftUI's 終了 menu item is a scene command: while the licence sheet is
+    /// the key window there is no active scene, so the item does nothing and
+    /// the app could not be quit from the menu or with ⌘Q (SPEC 15, M5). Point
+    /// the item at AppKit directly.
+    private func installQuitMenuItem() {
+        guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
+        for item in appMenu.items where item.keyEquivalent == "q" {
+            item.target = self
+            item.action = #selector(quitFromMenu)
+            AppLog.write("quit item patched: \(item.title)")
+            return
+        }
+    }
+
+    @objc private func quitFromMenu() {
+        AppLog.write("quit: menu item")
+        closeSheets()
+        NSApp.terminate(nil)
+    }
+
+    @objc private func handleQuitEvent(
+        _ event: NSAppleEventDescriptor,
+        replyEvent: NSAppleEventDescriptor
+    ) {
+        AppLog.write("quit event: closing sheets and terminating")
+        closeSheets()
+        NSApp.terminate(nil)
     }
 
     // MARK: menu bar
@@ -775,6 +839,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setUpDemo() {
         let text = demo.text ?? DemoText.threeParagraphs
+
+        // SPEC 15 (M5): the accessibility looks and the installed PDF worker
+        // are shown through launch options, never by changing the Mac's own
+        // settings.
+        AppearanceOverrides.reduceMotionDemo = demo.reduceMotionDemo
+        AppearanceOverrides.reduceTransparencyDemo = demo.reduceTransparencyDemo
+        AppearanceOverrides.increaseContrastDemo = demo.increaseContrastDemo
+        PDFWorkerPaths.demoInstalled = demo.pdfWorkerDemoInstalled
+
         if demo.pin {
             model.isPinned = true
             AppLog.write("demo: panel pinned")

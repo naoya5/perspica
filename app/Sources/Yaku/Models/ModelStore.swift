@@ -60,6 +60,18 @@ enum ModelStore {
         let model: TranslationModel?
     }
 
+    /// True when `resolve()` is falling back to M0's development file, which
+    /// happens on this Mac because the 0.8B file has never been downloaded
+    /// (SPEC 15, M5: the model page has to say so instead of 「未取得」).
+    static var isUsingDevelopmentFile: Bool {
+        let settings = AppSettings.shared
+        let custom = settings.customModelPath
+        if !custom.isEmpty, FileManager.default.fileExists(atPath: custom) { return false }
+        let selected = ModelCatalog.model(id: settings.selectedModelID) ?? ModelCatalog.models[0]
+        guard !isInstalled(selected) else { return false }
+        return FileManager.default.fileExists(atPath: developmentModelPath)
+    }
+
     /// The model the engine should load:
     /// a file the user picked → the selected model's download → M0's file.
     static func resolve() -> Resolution? {

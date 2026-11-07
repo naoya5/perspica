@@ -180,7 +180,10 @@ final class OverlayController {
 
     private func read(capture: ScreenCapturer.Capture, started: CFAbsoluteTime) async throws {
         let language = AppSettings.shared.overlayLanguage
-        let blocks = try await ScreenOCR.blocks(in: capture.image, language: language)
+        // The whole-picture pass first, so the first blocks go up and start
+        // translating while the tiled pass is still reading (M5.md 3.4).
+        let wholeLines = try await ScreenOCR.wholeLines(in: capture.image, language: language)
+        let blocks = OCRBlockBuilder.blocks(from: wholeLines)
         let readSeconds = CFAbsoluteTimeGetCurrent() - started
         AppLog.write(String(format: "overlay: read %d block(s) in %.3fs language=%@",
                             blocks.count, readSeconds, language))
@@ -205,25 +208,18 @@ final class OverlayController {
         let windowOffset = window.map {
             CGPoint(x: $0.frame.minX - capture.screen.frame.minX, y: $0.frame.minY - capture.screen.frame.minY)
         } ?? .zero
+        // The page's usual line height, so a heading can be told from body text
+        // when the weight is measured (`OverlayEmphasis`).
+        let sortedHeights = blocks.map(\.lineHeight).sorted()
+        let medianLineHeight = sortedHeights.isEmpty ? 0 : sortedHeights[sortedHeights.count / 2]
         model.blocks = blocks.enumerated().map { index, block in
-            let frame = ScreenGeometry.windowRect(
-                forPixelRect: block.rect,
-                capture: capture.rect,
-                scale: capture.scale,
-                screen: capture.screen
-            ).offsetBy(dx: -windowOffset.x, dy: -windowOffset.y)
-            let background = OverlayBackground.color(in: pixels, around: block.rect)
-            let textColor = OverlayBackground.textColor(in: pixels, block: block.rect, background: background)
-            let pointsPerPixel = block.rect.height > 0 ? frame.height / block.rect.height : 1
-            return OverlayBlock(
+            overlayBlock(
+                block,
                 id: index,
-                source: block.text,
-                frame: frame,
-                lineHeight: block.lineHeight * pointsPerPixel,
-                background: background,
-                textColor: textColor,
-                translation: nil,
-                layout: nil
+                capture: capture,
+                pixels: pixels,
+                windowOffset: windowOffset,
+                medianLineHeight: medianLineHeight
             )
         }
         model.phase = .showing
@@ -232,6 +228,84 @@ final class OverlayController {
         // The first block's translation is what the reader waits for; the
         // measurement of "reading to everything drawn" starts here.
         translator.start(blocks: blocks)
+
+        // The tiled pass, which is what finds small text such as a sidebar's.
+        // It runs after the first blocks are up. A block that overlaps one that
+        // is already on the screen is not added: the block it would replace is
+        // already being translated, and adding it would draw the same text
+        // twice.
+        let recovered = try await ScreenOCR.recoveredLines(in: capture.image, language: language)
+        guard !recovered.isEmpty else { return }
+        let merged = OCRBlockBuilder.blocks(
+            from: OCRTiling.mergeRecovered(base: wholeLines, extra: recovered)
+        )
+        let additions = merged.filter { candidate in
+            let frame = windowFrame(for: candidate, capture: capture, windowOffset: windowOffset)
+            return !model.blocks.contains { $0.frame.intersects(frame) }
+        }
+        guard !additions.isEmpty else { return }
+        let firstNewIndex = model.blocks.count
+        for (offset, block) in additions.enumerated() {
+            model.blocks.append(overlayBlock(
+                block,
+                id: firstNewIndex + offset,
+                capture: capture,
+                pixels: pixels,
+                windowOffset: windowOffset,
+                medianLineHeight: medianLineHeight
+            ))
+        }
+        updateHitRects()
+        translator.extend(blocks: additions, indexes: Array(firstNewIndex..<model.blocks.count))
+        AppLog.write("overlay: the tiled pass added \(additions.count) block(s)")
+    }
+
+    /// Where a recognised block lands in the overlay window's own coordinates.
+    private func windowFrame(
+        for block: OCRBlock,
+        capture: ScreenCapturer.Capture,
+        windowOffset: CGPoint
+    ) -> CGRect {
+        ScreenGeometry.windowRect(
+            forPixelRect: block.rect,
+            capture: capture.rect,
+            scale: capture.scale,
+            screen: capture.screen
+        ).offsetBy(dx: -windowOffset.x, dy: -windowOffset.y)
+    }
+
+    /// One recognised block placed on the overlay, with its colours, its fitted
+    /// font size and its weight.
+    private func overlayBlock(
+        _ block: OCRBlock,
+        id: Int,
+        capture: ScreenCapturer.Capture,
+        pixels: PixelImage,
+        windowOffset: CGPoint,
+        medianLineHeight: CGFloat
+    ) -> OverlayBlock {
+        let frame = windowFrame(for: block, capture: capture, windowOffset: windowOffset)
+        let background = OverlayBackground.color(in: pixels, around: block.rect)
+        let textColor = OverlayBackground.textColor(in: pixels, block: block.rect, background: background)
+        let pointsPerPixel = block.rect.height > 0 ? frame.height / block.rect.height : 1
+        let isBold = OverlayEmphasis.isBold(
+            in: pixels,
+            block: block.rect,
+            text: block.text,
+            lineHeight: block.lineHeight,
+            medianLineHeight: medianLineHeight
+        )
+        return OverlayBlock(
+            id: id,
+            source: block.text,
+            frame: frame,
+            lineHeight: block.lineHeight * pointsPerPixel,
+            background: background,
+            textColor: textColor,
+            isBold: isBold,
+            translation: nil,
+            layout: nil
+        )
     }
 
     /// Sizes and stores one block's translation, which makes the view draw it.

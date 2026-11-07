@@ -59,7 +59,7 @@ public struct OCRBlock: Sendable, Equatable {
 /// The three rules are the specification's: a line joins the block above it when
 /// **all** of these hold.
 ///   - the vertical gap is at most 0.8 × the line height,
-///   - the two lines' heights are within 25% of each other,
+///   - the two lines' heights are within 15% of each other,
 ///   - their left edges line up, or they overlap horizontally.
 ///
 /// Each line is compared against the last line of every open block rather than
@@ -75,6 +75,13 @@ public enum OCRBlockBuilder {
     /// The gap rule: 0.8 × the line height.
     public static let gapRatio: CGFloat = 0.8
     /// The height rule: within 25%.
+    ///
+    /// M5 tried tightening this to 15% to keep a UI row's title and its
+    /// description apart (they differ by 12–14%, so they merge). It cannot work:
+    /// the lines of a real paragraph differ by up to 21% — Vision's line box
+    /// grows with ascenders and descenders — so any tolerance that splits the
+    /// title/description pair also splits paragraphs. See `M5.md` for the
+    /// measurements; the rule is left at the specification's 25%.
     public static let heightTolerance: CGFloat = 0.25
     /// The overlap rule: at least half of the narrower line.
     public static let overlapRatio: CGFloat = 0.5
@@ -111,7 +118,7 @@ public enum OCRBlockBuilder {
             }
         }
 
-        return groups
+        let built = groups
             .compactMap { group -> OCRBlock? in
                 let ordered = group.sorted { $0.rect.minY < $1.rect.minY }
                 let confident = ordered.filter { $0.confidence >= minimumConfidence }
@@ -120,11 +127,9 @@ public enum OCRBlockBuilder {
                 let rect = ordered.reduce(CGRect.null) { $0.union($1.rect) }
                 return OCRBlock(lines: confident, rect: rect)
             }
-            .sorted { first, second in
-                first.rect.minY == second.rect.minY
-                    ? first.rect.minX < second.rect.minX
-                    : first.rect.minY < second.rect.minY
-            }
+        // Reading order: top to bottom, but column by column when the page is
+        // laid out in two columns (SPEC 9, `OverlayReadingOrder`).
+        return OverlayReadingOrder.arrange(built)
     }
 
     /// Whether `line` follows `last` under all three of the specification's

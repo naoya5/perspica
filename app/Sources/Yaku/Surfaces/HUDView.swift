@@ -71,7 +71,7 @@ struct HUDView: View {
     }
 
     private var reduceMotion: Bool {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        AppearanceOverrides.reduceMotion
     }
 
     private var openAnimation: Animation {
@@ -83,10 +83,7 @@ struct HUDView: View {
     private var shape: some View {
         content
             .frame(width: HUDLayout.width, height: model.contentHeight, alignment: .top)
-            .glassEffect(
-                .regular,
-                in: .rect(cornerRadius: HUDLayout.cornerRadius, style: .continuous)
-            )
+            .yakuGlass(in: .rect(cornerRadius: HUDLayout.cornerRadius, style: .continuous))
             .shadow(color: .black.opacity(0.22), radius: 16, y: 6)
     }
 
@@ -139,6 +136,10 @@ struct HUDView: View {
         .padding(.horizontal, HUDLayout.innerPadding)
         .padding(.vertical, HUDLayout.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // The notice replaces the whole HUD, so VoiceOver gets one element
+        // named after it rather than a stray sentence (SPEC 18).
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(notice.message)
     }
 
     @ViewBuilder
@@ -152,6 +153,7 @@ struct HUDView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel("訳文、準備しています")
             case .failed(let failure):
                 failureView(failure)
             case .translating, .done:
@@ -170,6 +172,9 @@ struct HUDView: View {
                     }
                     .defaultScrollAnchor(.top)
                     .scrollIndicators(.automatic)
+                    // Names the text without replacing it: a label on the Text
+                    // itself would be read instead of the translation.
+                    .accessibilityLabel(coordinator.optionDown ? "原文" : "訳文")
                     .onChange(of: coordinator.hud.scrollReset) { _, _ in
                         proxy.scrollTo("translation", anchor: .top)
                     }
@@ -203,6 +208,8 @@ struct HUDView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("訳文、エラー、\(failure.message)")
     }
 
     private var footer: some View {
@@ -210,6 +217,10 @@ struct HUDView: View {
             Text("\(LanguageCatalog.name(for: coordinator.hud.sourceLanguage)) → \(LanguageCatalog.name(for: coordinator.hud.targetLanguage))")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+                .accessibilityLabel(
+                    "\(LanguageCatalog.name(for: coordinator.hud.sourceLanguage)) から "
+                    + "\(LanguageCatalog.name(for: coordinator.hud.targetLanguage)) へ"
+                )
             Spacer(minLength: 4)
 
             if model.canReplace {

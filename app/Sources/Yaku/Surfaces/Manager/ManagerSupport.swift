@@ -20,7 +20,7 @@ struct ProcessingGlowOverlay: NSViewRepresentable {
             active: active,
             cornerRadius: cornerRadius,
             cycleSeconds: cycleSeconds,
-            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            reduceMotion: AppearanceOverrides.reduceMotion
         )
     }
 }
