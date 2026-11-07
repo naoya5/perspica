@@ -59,8 +59,14 @@ public struct OCRBlock: Sendable, Equatable {
 /// The three rules are the specification's: a line joins the block above it when
 /// **all** of these hold.
 ///   - the vertical gap is at most 0.8 × the line height,
-///   - the two lines' heights are within 15% of each other,
+///   - the two lines' heights are within 25% of each other,
 ///   - their left edges line up, or they overlap horizontally.
+///
+/// Two further rules split pairs those would join, both measured from the
+/// samples: a much shorter line above a longer one is a row of its own rather
+/// than a wrapped one (`lineLengthRatio`), and two lines drawn at noticeably
+/// different sizes are separate runs even when their widths match
+/// (`sizeTolerance`).
 ///
 /// Each line is compared against the last line of every open block rather than
 /// only the previous line. That is what keeps a two-column page in two blocks
@@ -103,47 +109,85 @@ public enum OCRBlockBuilder {
     /// sits in the gap, 0.22 from either side.
     ///
     /// The third UI row, `Show in Lock Screen` over `Keep recent items
-    /// visible`, is at 1.01 and no width rule can split it; it stays one block
-    /// (M5.md 8.1).
+    /// visible`, is at 1.01 and no width rule can split it; the size rule below
+    /// is what keeps them apart (M5.md 8.1, 9.2).
     ///
     /// A paragraph's last line is short but has no line below it, so it is
     /// unaffected; that is what keeps a paragraph in one block (measured: the
     /// article stays 5 blocks and the two-column sample 5).
     public static let lineLengthRatio: CGFloat = 0.7
 
-    public static func blocks(from lines: [OCRLine]) -> [OCRBlock] {
+    /// The size rule: two lines whose measured sizes differ by more than this
+    /// share are separate runs, not one wrapped paragraph.
+    ///
+    /// The line-length rule above cannot split a UI row whose title and
+    /// description are about the same width. The UI sample's third row is one:
+    /// `Show in Lock Screen` is 146.5px over `Keep recent items visible` at
+    /// 144.4px, a ratio of 1.01, yet they are drawn at 15 and 12 points. Their
+    /// sizes tell them apart where their widths do not.
+    ///
+    /// The sizes must be **comparable across scripts**, which the ink band is
+    /// not (it follows the x-height of Latin text and the taller em box of
+    /// Japanese text, and read a mixed sample's Japanese lines 35–46% larger
+    /// than its English ones at one size). `TextInk.fontSize(in:line:text:)` —
+    /// the ink's width against the recognised text's width — is, and the
+    /// numbers below are its readings over the whole-picture pass, as a share
+    /// of the larger of the two (M5.md 9.2):
+    ///
+    /// | lines | difference |
+    /// |---|---|
+    /// | the article's paragraph lines (Latin, 19pt) | 0.0–0.1% |
+    /// | the two-column sample's paragraph lines (Latin, 17pt) | 0.2–0.3% |
+    /// | a paragraph mixing Japanese and English lines (17pt) | **1.1%** |
+    /// | the UI sample's title over description (15 / 12pt) | **19.7%** |
+    ///
+    /// 8% sits in the gap: 7× the worst run that must stay together, 2.5× below
+    /// the pair that must come apart.
+    public static let sizeTolerance: CGFloat = 0.08
+
+    /// Groups lines into blocks, optionally told how large each line's text was
+    /// (in any consistent unit — only the ratio between two lines is used).
+    ///
+    /// `sizeOf` returns nil when the size cannot be measured, and the size rule
+    /// is then skipped for that line: the caller passes `TextInk`'s reading of
+    /// the picture, which needs the picture, so a caller without one keeps the
+    /// geometry-only grouping.
+    public static func blocks(from lines: [OCRLine], sizeOf: (OCRLine) -> CGFloat? = { _ in nil }) -> [OCRBlock] {
         let candidates = lines
             .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map { (line: $0, size: sizeOf($0)) }
         // Reading order: top to bottom, then left to right.
         let sorted = candidates.sorted { first, second in
-            first.rect.minY == second.rect.minY
-                ? first.rect.minX < second.rect.minX
-                : first.rect.minY < second.rect.minY
+            first.line.rect.minY == second.line.rect.minY
+                ? first.line.rect.minX < second.line.rect.minX
+                : first.line.rect.minY < second.line.rect.minY
         }
 
-        var groups: [[OCRLine]] = []
-        for line in sorted {
+        var groups: [[Int]] = []
+        for (index, item) in sorted.enumerated() {
             // The open block this line continues most closely, if any.
             var bestIndex: Int?
             var bestGap = CGFloat.greatestFiniteMagnitude
-            for (index, group) in groups.enumerated() {
-                guard let last = group.last, follows(line, last) else { continue }
-                let gap = max(0, line.rect.minY - last.rect.maxY)
+            for (groupIndex, group) in groups.enumerated() {
+                guard let lastIndex = group.last else { continue }
+                let last = sorted[lastIndex]
+                guard follows(item.line, last.line, size: item.size, lastSize: last.size) else { continue }
+                let gap = max(0, item.line.rect.minY - last.line.rect.maxY)
                 if gap < bestGap {
                     bestGap = gap
-                    bestIndex = index
+                    bestIndex = groupIndex
                 }
             }
             if let bestIndex {
-                groups[bestIndex].append(line)
+                groups[bestIndex].append(index)
             } else {
-                groups.append([line])
+                groups.append([index])
             }
         }
 
         let built = groups
             .compactMap { group -> OCRBlock? in
-                let ordered = group.sorted { $0.rect.minY < $1.rect.minY }
+                let ordered = group.map { sorted[$0].line }.sorted { $0.rect.minY < $1.rect.minY }
                 let confident = ordered.filter { $0.confidence >= minimumConfidence }
                 // Nothing readable in this run: leave it alone.
                 guard !confident.isEmpty else { return nil }
@@ -156,7 +200,15 @@ public enum OCRBlockBuilder {
     }
 
     /// Whether `line` follows `last` under all of the specification's rules.
-    public static func follows(_ line: OCRLine, _ last: OCRLine) -> Bool {
+    ///
+    /// `size` and `lastSize` are the two lines' measured text sizes, in any
+    /// consistent unit; leave them nil to apply the geometric rules alone.
+    public static func follows(
+        _ line: OCRLine,
+        _ last: OCRLine,
+        size: CGFloat? = nil,
+        lastSize: CGFloat? = nil
+    ) -> Bool {
         let lastHeight = last.rect.height
         let height = line.rect.height
         guard lastHeight > 0, height > 0, last.rect.width > 0, line.rect.width > 0 else { return false }
@@ -172,9 +224,20 @@ public enum OCRBlockBuilder {
         guard aligned || overlapping else { return false }
 
         // A much shorter line above a longer one is a line of its own, not a
-        // wrapped one (a UI row's title above its description). Checked last,
-        // so it only ever splits a pair the rules above would have joined.
-        return last.rect.width >= lineLengthRatio * line.rect.width
+        // wrapped one (a UI row's title above its description). Checked after
+        // the rules above, so it only ever splits a pair they would have joined.
+        guard last.rect.width >= lineLengthRatio * line.rect.width else { return false }
+
+        // Two lines drawn at noticeably different sizes are separate runs even
+        // when their widths match (a UI row whose title and description happen
+        // to be the same length). See `sizeTolerance`.
+        if let size, let lastSize {
+            let largest = max(size, lastSize)
+            if largest > 0 {
+                guard abs(size - lastSize) <= sizeTolerance * largest else { return false }
+            }
+        }
+        return true
     }
 
     /// The width two rectangles share horizontally (0 when they are apart).

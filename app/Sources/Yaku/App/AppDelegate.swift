@@ -1113,7 +1113,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let started = CFAbsoluteTimeGetCurrent()
                 let lines = try await ScreenOCR.lines(in: image, language: language)
-                let blocks = OCRBlockBuilder.blocks(from: lines)
+                let pixels = PixelImage(cgImage: image)
+                let sizeOf: (OCRLine) -> CGFloat? = { line in
+                    guard let pixels else { return nil }
+                    return TextInk.fontSize(in: pixels, line: line.rect, text: line.text)
+                }
+                let blocks = OCRBlockBuilder.blocks(from: lines, sizeOf: sizeOf)
                 let elapsed = CFAbsoluteTimeGetCurrent() - started
                 let payload: [String: Any] = [
                     "image": path,
@@ -1127,6 +1132,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             "index": index,
                             "text": block.text,
                             "lines": block.lines.count,
+                            // Each line's measured size, for checking the size rule.
+                            "sizes": block.lines.map { line -> Any in
+                                guard let size = sizeOf(line) else { return NSNull() }
+                                return (size * 100).rounded() / 100
+                            },
                             "confidence": block.confidence,
                             "rect": [
                                 "x": Double(block.rect.minX),

@@ -257,6 +257,12 @@ private struct OverlayBlockView: View {
         // compare the two; the translation uses the size that was fitted.
         showSource ? OverlayTextFit.originalFontSize(forLineHeight: block.lineHeight) : (block.layout?.fontSize ?? 12)
     }
+    /// The width the backing is drawn at. A one-line block whose translation
+    /// needed more room grew to the right, and the backing grew with it so the
+    /// original text underneath is still covered (SPEC 4.6 の 3).
+    private var width: CGFloat {
+        showSource ? block.frame.width : (block.layout?.width ?? block.frame.width)
+    }
 
     var body: some View {
         let top = windowHeight - block.frame.maxY
@@ -273,12 +279,12 @@ private struct OverlayBlockView: View {
             .multilineTextAlignment(.leading)
             .lineLimit(nil)
             .fixedSize(horizontal: false, vertical: true)
-            .frame(width: block.frame.width, height: height, alignment: .topLeading)
+            .frame(width: width, height: height, alignment: .topLeading)
             .clipped()
             .padding(.horizontal, 2)
             .padding(.vertical, 1)
             .background(block.background.color, in: .rect(cornerRadius: 4, style: .continuous))
-            .frame(width: block.frame.width + 4, height: height + 2, alignment: .topLeading)
+            .frame(width: width + 4, height: height + 2, alignment: .topLeading)
             .offset(x: block.frame.minX - 2, y: top - 1)
             .opacity(visible ? 1 : 0)
             .onAppear {

@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreText
 import Foundation
 
 /// Measures how large the text in a line was, from the picture's own ink
@@ -120,9 +121,112 @@ public enum TextInk {
         return size * pointsPerPixel
     }
 
-    /// One line's size in the caller's points.
+    /// One line's size in the caller's points, from its ink band. The fallback
+    /// for `fontSize(in:line:text:)`, used when there is no recognised text to
+    /// measure the width against.
     public static func fontSize(in image: PixelImage, line rect: CGRect, pointsPerPixel: CGFloat = 1) -> CGFloat? {
         guard let band = bandHeight(in: image, line: rect) else { return nil }
         return fontSize(forBand: band, pointsPerPixel: pointsPerPixel)
+    }
+
+    /// One line's size from the **width of its ink** against the width the
+    /// recognised text has in the system font. This is the size the overlay
+    /// draws at, and the one the split rule compares. Like the band, the answer
+    /// is in the picture's own pixels: `pointsPerPixel` is the picture's scale
+    /// (image pixels per point), used only to solve in point space.
+    ///
+    /// The ink band above is fine for a crop-invariant reading of Latin text,
+    /// but it follows the x-height, and Japanese text has none: the band read a
+    /// sample that mixes the two at one size 35–46% larger on its Japanese
+    /// lines (34 points read as 49.6, 17 as 22.9 — M5.md 9.2), which drew every
+    /// translation from a Japanese screen far too large. The ink's width is the
+    /// same measure for every script.
+    ///
+    /// Measured against the four samples, whose true sizes are known: exact to
+    /// within 0.3% for Latin text at 13–19 points and for Japanese text at 17
+    /// (M5.md 9.2). It assumes the text was drawn in the system font, so a
+    /// screen using another face or extra letter spacing reads a little off;
+    /// for comparing two lines that cancels, because both are read the same way.
+    public static func fontSize(
+        in image: PixelImage,
+        line rect: CGRect,
+        text: String,
+        pointsPerPixel: CGFloat = 1
+    ) -> CGFloat? {
+        guard pointsPerPixel > 0, let ink = inkWidth(in: image, line: rect), ink > 0 else { return nil }
+        // Solved in points, then scaled back, because the system font switches
+        // to narrower Display metrics above 20 points: solving in the picture's
+        // own pixels would read 12–19 point text about 8% high on a 2× screen.
+        guard let size = fontSize(fromInkWidth: ink * pointsPerPixel, text: text) else { return nil }
+        return size / pointsPerPixel
+    }
+
+    /// The size at which `text` in the system font would have an ink width of
+    /// `ink`. The width grows with the size, so a bisection finds it.
+    public static func fontSize(fromInkWidth ink: CGFloat, text: String) -> CGFloat? {
+        guard ink > 0, !text.isEmpty else { return nil }
+        var narrow: CGFloat = 1
+        var wide: CGFloat = 512
+        guard unitWidth(text, size: wide) >= ink, unitWidth(text, size: narrow) <= ink else { return nil }
+        // 16 halvings of a 511-point span: 0.008 points.
+        for _ in 0..<16 {
+            let middle = (narrow + wide) / 2
+            if unitWidth(text, size: middle) < ink {
+                narrow = middle
+            } else {
+                wide = middle
+            }
+        }
+        return (narrow + wide) / 2
+    }
+
+    /// The width of the text's ink in the system font at this size.
+    public static func unitWidth(_ text: String, size: CGFloat) -> CGFloat {
+        guard !text.isEmpty else { return 0 }
+        let font = CTFontCreateUIFontForLanguage(.system, size, nil)
+            ?? CTFontCreateWithName("Helvetica" as CFString, size, nil)
+        let attributes = [kCTFontAttributeName: font] as CFDictionary
+        guard let attributed = CFAttributedStringCreate(nil, text as CFString, attributes) else { return 0 }
+        let line = CTLineCreateWithAttributedString(attributed)
+        return CTLineGetBoundsWithOptions(line, .useGlyphPathBounds).width
+    }
+
+    /// The width of the ink inside a line's box, in image pixels, or nil when
+    /// the box holds nothing to measure. The same ink rule as the band.
+    public static func inkWidth(in image: PixelImage, line rect: CGRect) -> CGFloat? {
+        let x0 = max(0, Int(rect.minX.rounded(.down)))
+        let x1 = min(image.width - 1, Int(rect.maxX.rounded(.up)))
+        let y0 = max(0, Int(rect.minY.rounded(.down)))
+        let y1 = min(image.height - 1, Int(rect.maxY.rounded(.up)))
+        guard x1 > x0, y1 > y0 else { return nil }
+
+        var luminances: [Double] = []
+        luminances.reserveCapacity((x1 - x0 + 1) * (y1 - y0 + 1) / 4)
+        for y in stride(from: y0, through: y1, by: 2) {
+            for x in stride(from: x0, through: x1, by: 2) {
+                luminances.append(image.luminance(x: x, y: y))
+            }
+        }
+        guard !luminances.isEmpty else { return nil }
+        let sorted = luminances.sorted()
+        let background = sorted[sorted.count / 2]
+        let darkText = background > 0.5
+        let threshold = background + (darkText ? -inkContrast : inkContrast)
+
+        var first = -1
+        var last = -1
+        for x in x0...x1 {
+            var ink = 0
+            for y in y0...y1 {
+                let value = image.luminance(x: x, y: y)
+                if darkText ? (value < threshold) : (value > threshold) { ink += 1 }
+            }
+            if ink > 0 {
+                if first < 0 { first = x }
+                last = x
+            }
+        }
+        guard first >= 0 else { return nil }
+        return CGFloat(last - first + 1)
     }
 }

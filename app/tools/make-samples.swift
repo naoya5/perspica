@@ -1,5 +1,6 @@
-// Draws the three M4 sample images with CoreText: an English article, a
-// two-column page, and a dark UI screen. Written to $TMPDIR/yaku-m4/.
+// Draws the M4 sample images with CoreText: an English article, a two-column
+// page, a dark UI screen, and a paragraph that mixes Japanese and English lines
+// (M5.2). Written to $TMPDIR/yaku-m4/.
 //
 //   swift make-samples.swift <output folder>
 import AppKit
@@ -205,6 +206,40 @@ func ui() {
     write(context, "ui.png")
 }
 
+// MARK: 4. a paragraph that mixes Japanese and English lines
+
+/// One paragraph whose lines mix the two scripts, so the size rule (M5.md 9.2)
+/// can be checked against the worst case it could break: a Japanese line and an
+/// English line of the same 17 points, in one paragraph. The heading is there
+/// so the sample also has a line of a clearly different size.
+///
+/// The three lines are broken by hand rather than by wrapping, so each is long
+/// enough (0.7 of the line below it, M5.md 8.1) that the line-length rule
+/// leaves the paragraph whole and only the size rule can split it.
+func mixed() {
+    let context = makeContext()
+    fill(context, CGRect(x: 0, y: 0, width: width, height: height), white.cgColor)
+    drawText(context, attributed("混ざった段落", size: 34, color: nearBlack, bold: true, lineSpacing: 2),
+             in: CGRect(x: 72, y: 60, width: width - 144, height: 50))
+
+    // Japanese, English, Japanese, all at 17 points. The ink band reads the
+    // English line 29% smaller than the Japanese one above it, which would
+    // split them; the width of the ink reads them within 2% (M5.md 9.2).
+    let body = """
+        エンコーダは、同一の層が 6 層積層された構成となっている。各層には 2 つのサブレイヤが存在し、1 つ目は multi-head self-attention 機構である。
+        We employ a residual connection around each of the two sub-layers, followed by layer normalization, and the same holds for every other sub-layer.
+        これら 2 つのサブレイヤのそれぞれに残差接続を採用し、続いてレイヤ正規化を行う。
+        """
+    drawText(context, attributed(body, size: 17, color: nearBlack, lineSpacing: 8),
+             in: CGRect(x: 72, y: 140, width: width - 144, height: 180))
+
+    let second = "デコーダもまた、同一の層が 6 層積層された構成となっている。エンコーダ層の 2 つのサブレイヤに加え、デコーダは第 3 のサブレイヤを挿入しており、これがエンコーダ積層の出力に対して multi-head attention を実行する。"
+    drawText(context, attributed(second, size: 17, color: nearBlack, lineSpacing: 8),
+             in: CGRect(x: 72, y: 400, width: width - 144, height: 240))
+    write(context, "mixed.png")
+}
+
 article()
 columns()
 ui()
+mixed()

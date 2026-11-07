@@ -273,4 +273,81 @@ struct OCRBlockTests {
         #expect(block.lineHeight == 21)
         #expect(OCRBlock(lines: [], rect: CGRect(x: 0, y: 0, width: 10, height: 30)).lineHeight == 30)
     }
+
+    @Test("a row whose title and description are the same width splits on size")
+    func sizeRuleSplitsSameWidthRow() {
+        // The UI sample's `Show in Lock Screen` (146.5px, 15pt) over `Keep
+        // recent items visible` (144.4px, 12pt): 1.01 of its width, so no width
+        // rule can split it, but the sizes differ by 20% (M5.md 9.2).
+        let lines = [
+            line("Show in Lock Screen", x: 100, y: 100, width: 146.5, height: 17),
+            line("Keep recent items visible", x: 100, y: 123, width: 144.4, height: 15),
+        ]
+        let sizes = [15.0, 12.0]
+        let blocks = OCRBlockBuilder.blocks(from: lines) { line in
+            sizes[line.text == "Show in Lock Screen" ? 0 : 1]
+        }
+        #expect(blocks.count == 2)
+        #expect(blocks[0].text == "Show in Lock Screen")
+        #expect(blocks[1].text == "Keep recent items visible")
+    }
+
+    @Test("lines within 8% of each other stay one block")
+    func sizeRuleKeepsNearSizes() {
+        // A paragraph mixing Japanese and English lines reads 1.1% apart at
+        // one size (M5.md 9.2), so it must not split.
+        let lines = [
+            line("エンコーダは、同一の層が6層積層された", x: 100, y: 100, width: 400),
+            line("multi-head self-attention 機構であり、", x: 100, y: 126, width: 400),
+            line("We employ a residual connection", x: 100, y: 152, width: 400),
+        ]
+        let sizes: [String: CGFloat] = [
+            "エンコーダは、同一の層が6層積層された": 17.18,
+            "multi-head self-attention 機構であり、": 17.07,
+            "We employ a residual connection": 16.99,
+        ]
+        let blocks = OCRBlockBuilder.blocks(from: lines) { sizes[$0.text] }
+        #expect(blocks.count == 1)
+        #expect(blocks[0].lines.count == 3)
+    }
+
+    @Test("the size split sits at 8%")
+    func sizeToleranceValue() {
+        #expect(OCRBlockBuilder.sizeTolerance == 0.08)
+        let lines = [
+            line("Title", x: 100, y: 100, width: 100),
+            line("Description", x: 100, y: 123, width: 100),
+        ]
+        func splits(_ first: CGFloat, _ second: CGFloat) -> Bool {
+            OCRBlockBuilder.blocks(from: lines) { $0.text == "Title" ? first : second }.count == 2
+        }
+        // 1.16 / 1.0 is 16%, over the tolerance; 1.08 / 1.0 is exactly 8%.
+        #expect(splits(1.16, 1.0))
+        #expect(!splits(1.07, 1.0))
+        #expect(!splits(1.0, 1.0))
+    }
+
+    @Test("the size rule is skipped when a line's size is unknown")
+    func sizeRuleSkippedWithoutSizes() {
+        let lines = [
+            line("Show in Lock Screen", x: 100, y: 100, width: 146.5, height: 17),
+            line("Keep recent items visible", x: 100, y: 123, width: 144.4, height: 15),
+        ]
+        // Without sizes the two lines are one run, as M5 found.
+        #expect(OCRBlockBuilder.blocks(from: lines).count == 1)
+        // And a line whose size cannot be measured is left to the geometry.
+        #expect(OCRBlockBuilder.blocks(from: lines) { $0.text == "Show in Lock Screen" ? 15 : nil }.count == 1)
+    }
+
+    @Test("the size rule only ever splits, never joins")
+    func sizeRuleOnlySplits() {
+        // Two lines the geometric rules keep apart, at the same size, stay
+        // apart: the size rule cannot pull them together.
+        let lines = [
+            line("Group by app", x: 100, y: 100, width: 94, height: 15),
+            line("Collect alerts from one app together", x: 100, y: 122, width: 207, height: 13),
+        ]
+        let blocks = OCRBlockBuilder.blocks(from: lines) { _ in 14 }
+        #expect(blocks.count == 2)
+    }
 }

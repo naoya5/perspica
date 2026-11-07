@@ -21,6 +21,14 @@ struct OverlayBlock: Identifiable {
     /// tight (Vision's box is the ink, not the line) can still be drawn at its
     /// own size instead of being shrunk to the floor.
     let availableHeight: CGFloat
+    /// How many lines the original text was read as. A one-line block may grow
+    /// to the right instead of wrapping its translation (SPEC 4.6 の 3).
+    let lineCount: Int
+    /// The widest this block may grow to the right, nil when it may not (a
+    /// block of two lines or more keeps its own width). Filled in once every
+    /// block of a batch is placed, because the limit is the next block's left
+    /// edge (SPEC 4.6 の 3).
+    var widenTo: CGFloat?
     /// The colour the original text sat on, taken from a ring around the block.
     let background: RGBColor
     /// The colour the original text was written in.
@@ -77,6 +85,9 @@ final class OverlayModel {
     /// The band sits in the same place the controller reports to the window.
     static let bandSize = CGSize(width: 400, height: 44)
     static let bandInset: CGFloat = 24
+    /// How much room is left between a block that grew to the right and the
+    /// block it grew towards (SPEC 4.6 の 3).
+    static let widenGap: CGFloat = 8
 
     static func bandRect(windowSize: CGSize) -> CGRect {
         CGRect(

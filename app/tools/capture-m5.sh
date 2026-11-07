@@ -113,7 +113,7 @@ for appearance in light dark; do
     fi
 done
 
-# The two samples the M5 reading-order and bold-heading fixes are visible on
+# The three samples the M5 reading-order and bold-heading fixes are visible on
 # (SPEC 9, M5.md 3.1). The article is in the four-way set already.
 for appearance in light dark; do
     if wanted samples; then
@@ -123,6 +123,13 @@ for appearance in light dark; do
         done
     fi
 done
+
+# The paragraph that mixes Japanese and English lines, which is what the size
+# rule of the split has to leave alone (SPEC 9, M5.md 9.2).
+if wanted samples; then
+    shot "M5-overlay-mixed-light" light light WAIT=10 \
+        --demo-image "${SAMPLES:-${TMPDIR:-/tmp}/yaku-m4}/mixed.png" --demo-quit-after 60
+fi
 
 # The M5 fixes are about what the UI says, not about what the glass sits on, so
 # they are captured as windows (the backdrop window is above ordinary windows

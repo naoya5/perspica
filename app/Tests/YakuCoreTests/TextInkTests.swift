@@ -169,6 +169,118 @@ struct TextInkTests {
         #expect(TextInk.fontSize(in: image, line: CGRect(x: 5, y: 5, width: 40, height: 20)) == nil)
         #expect(TextInk.fontSize(forBand: 2) == nil)
     }
+
+    // MARK: measuring from the width of the ink
+
+    /// The sizes the samples draw their text at (M5.md 9.2), and lines long
+    /// enough that one pixel of edge does not matter.
+    private static let widthCases: [(String, CGFloat)] = [
+        ("The dominant sequence transduction models", 19),
+        ("Show in Lock Screen", 15),
+        ("Keep recent items visible", 12),
+        ("エンコーダは、同一の層が6層積層された構成", 17),
+        ("混ざった段落", 34),
+    ]
+
+    @Test("the width of the ink gives back the size the text was drawn at", arguments: [1.0, 2.0] as [CGFloat])
+    func widthFollowsTheSize(scale: CGFloat) throws {
+        // Measured on the samples themselves: exact to within 0.3% for Latin
+        // text at 13–19 points and for Japanese text at 17 (M5.md 9.2). The
+        // answer comes back in the picture's own pixels, so at 2× it is twice
+        // the point size. The margin leaves room for a partly covered edge
+        // pixel.
+        for (text, size) in Self.widthCases {
+            let (image, ink) = draw(text, size: size, scale: scale)
+            let pixels = try #require(TextInk.fontSize(
+                in: image, line: ink, text: text, pointsPerPixel: 1 / scale))
+            #expect(abs(pixels / scale - size) / size < 0.04,
+                    "drew \(size)pt at \(scale)×, measured \(pixels / scale)pt: \(text)")
+        }
+    }
+
+    @Test("the width is solved in points, so a 2× picture reads the same size")
+    func widthSolvesInPoints() throws {
+        // The system font switches to narrower Display metrics above 20 points,
+        // so solving in a 2× picture's own pixels reads 12-point text about 8%
+        // high. Passing the picture's scale is what avoids that.
+        let (image, ink) = draw("Keep recent items visible", size: 12, scale: 2)
+        let naive = try #require(TextInk.fontSize(in: image, line: ink, text: "Keep recent items visible"))
+        let scaled = try #require(TextInk.fontSize(
+            in: image, line: ink, text: "Keep recent items visible", pointsPerPixel: 0.5))
+        #expect(naive / 2 > 12 * 1.05, "\(naive / 2)")
+        #expect(abs(scaled / 2 - 12) / 12 < 0.02, "\(scaled / 2)")
+    }
+
+    @Test("the width reads Japanese and English text at one size the same")
+    func widthIsTheSameForEveryScript() throws {
+        // This is why the split rule compares widths and not ink bands: the
+        // band follows the x-height, so it reads the Japanese line of a mixed
+        // sample 35–46% larger than the English one at the same size (M5.md
+        // 9.2), and a paragraph would split at every script change.
+        let japanese = draw("エンコーダは、同一の層が6層積層された構成", size: 17)
+        let english = draw("We employ a residual connection", size: 17)
+        let japaneseWidth = try #require(TextInk.fontSize(
+            in: japanese.image, line: japanese.ink, text: "エンコーダは、同一の層が6層積層された構成"))
+        let englishWidth = try #require(TextInk.fontSize(
+            in: english.image, line: english.ink, text: "We employ a residual connection"))
+        #expect(abs(japaneseWidth - englishWidth) / englishWidth < 0.03,
+                "\(japaneseWidth) vs \(englishWidth)")
+        // The band does not: it is what the two would have been compared with.
+        let japaneseBand = try #require(TextInk.fontSize(in: japanese.image, line: japanese.ink))
+        let englishBand = try #require(TextInk.fontSize(in: english.image, line: english.ink))
+        #expect(japaneseBand > englishBand * 1.25, "band \(japaneseBand) vs \(englishBand)")
+    }
+
+    @Test("the width does not change with the size of the crop around it")
+    func widthIgnoresTheCrop() throws {
+        let (image, ink) = draw("Show in Lock Screen", size: 15)
+        let tight = try #require(TextInk.fontSize(in: image, line: ink, text: "Show in Lock Screen"))
+        let loose = try #require(TextInk.fontSize(
+            in: image, line: ink.insetBy(dx: -6, dy: -3), text: "Show in Lock Screen"))
+        #expect(abs(tight - loose) < 0.3, "\(tight) vs \(loose)")
+    }
+
+    @Test("the width measures light text on a dark screen the same")
+    func widthLightOnDark() throws {
+        let (image, ink) = draw("Play a sound", size: 15)
+        var pixels = image.pixels
+        for offset in stride(from: 0, to: pixels.count, by: 4) {
+            pixels[offset] = 255 - pixels[offset]
+            pixels[offset + 1] = 255 - pixels[offset + 1]
+            pixels[offset + 2] = 255 - pixels[offset + 2]
+        }
+        let inverted = PixelImage(width: image.width, height: image.height, pixels: pixels)
+        let dark = try #require(TextInk.fontSize(in: image, line: ink, text: "Play a sound"))
+        let light = try #require(TextInk.fontSize(in: inverted, line: ink, text: "Play a sound"))
+        #expect(abs(dark - light) < 0.3, "\(dark) vs \(light)")
+    }
+
+    @Test("a wider ink means a larger size")
+    func widthOrdering() throws {
+        var previous: CGFloat = 0
+        for size in [12, 15, 19, 34, 40] as [CGFloat] {
+            let measured = try #require(TextInk.fontSize(
+                fromInkWidth: TextInk.unitWidth("Settings", size: size), text: "Settings"))
+            #expect(abs(measured - size) < 0.05, "\(size) came back as \(measured)")
+            #expect(measured > previous)
+            previous = measured
+        }
+    }
+
+    @Test("there is no size to report without text or without ink")
+    func widthNeedsText() throws {
+        let (image, ink) = draw("Settings", size: 14)
+        #expect(TextInk.fontSize(in: image, line: ink, text: "") == nil)
+        #expect(TextInk.fontSize(fromInkWidth: 0, text: "Settings") == nil)
+        #expect(TextInk.fontSize(fromInkWidth: 100, text: "") == nil)
+        #expect(TextInk.unitWidth("", size: 14) == 0)
+        // Ink too wide for any size in the search: reported as nil, not as the
+        // top of the range.
+        #expect(TextInk.fontSize(fromInkWidth: 100_000, text: "Settings") == nil)
+        // A box with no ink at all has nothing to measure.
+        #expect(TextInk.fontSize(
+            in: image, line: CGRect(x: 5, y: 5, width: 4, height: 4), text: "Settings") == nil)
+    }
 }
 
 /// The same picture, cropped to `rect`, with the origin moved to its corner.
