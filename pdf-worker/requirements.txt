@@ -1,0 +1,7 @@
+# The PDF worker's Python environment (SPEC 8.2).
+#
+# pdf2zh-next 2.9.0 pulls in bitstring 5.x, which breaks BabelDOC's
+# `from bitstring import BitStream` at import time. Pinning bitstring below 5 is
+# what the prototype found to work (lab/plamo-pdf-translate/NOTES.md).
+pdf2zh-next==2.9.0
+bitstring<5

@@ -1,0 +1,5 @@
+# Built products and SwiftPM's cache.
+app/.build/
+app/build/
+# Screenshots from the capture scripts: large, and regenerated each milestone.
+docs/checks/shots/

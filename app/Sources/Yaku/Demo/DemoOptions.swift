@@ -1,0 +1,127 @@
+import Foundation
+
+/// Launch options (SPEC 15). M2 adds the manager, settings and onboarding
+/// surfaces, the page inside them, and `--data-dir`.
+struct DemoOptions {
+    /// `--demo-surface panel|hud|manager|settings|onboarding|notch|overlay`
+    var surface: String?
+    /// `--demo-state empty|translating|done|error|no-permission`
+    var state: String?
+    /// `--demo-text "<文>"`
+    var text: String?
+    /// `--demo-anchor <x>,<y>`: where the HUD points, in the same coordinate
+    /// space as accessibility bounds (origin at the top left of the main
+    /// display, y growing downward).
+    var anchor: CGPoint?
+    /// `--demo-glow <秒>`: hold the processing light on without translating.
+    var glowSeconds: Double?
+    /// `--demo-pin`: pin the panel and the HUD, so a stray click during a
+    /// screenshot does not close them.
+    var pin = false
+    /// `--demo-translate "<英文>"`: translate headlessly and exit.
+    var translate: String?
+    /// `--demo-quit-after <秒>`
+    var quitAfter: Double?
+    /// `--appearance light|dark`
+    var appearance: String?
+    /// `--engine-idle-seconds <秒>`
+    var engineIdleSeconds: Double?
+    /// `--demo-page translate|pdf|history|glossary|models` for the manager, or
+    /// `1`〜`4` for the onboarding.
+    var page: String?
+    /// `--demo-tab 一般|ショートカット|エンジン|PDF|画面翻訳|プライバシー`
+    var tab: String?
+    /// `--data-dir <フォルダ>`: use this folder instead of Application Support.
+    var dataDir: String?
+    /// `--demo-glossary off`: ignore the glossary, for the before/after check.
+    var glossaryEnabled = true
+    /// `--demo-first-run`: show the onboarding even if it has been seen.
+    var forceOnboarding = false
+    /// `--demo-download <0.8b|2b|8b>`: fetch that model on launch, so the
+    /// download path can be checked without clicking. The licence is accepted
+    /// as part of the option (the sheet itself still needs a hand).
+    var downloadModelID: String?
+    /// `--demo-download-cancel <秒>`: stop the transfer after this many
+    /// seconds, keeping the partial file so the next run resumes it.
+    var downloadCancelAfter: Double?
+    /// `--demo-download-gate`: ask for the licence instead of starting, so the
+    /// sheet can be photographed.
+    var downloadGate = false
+    /// `--demo-close-after <秒>`: close the hand-opened windows again, so the
+    /// memory after closing can be measured.
+    var closeWindowsAfter: Double?
+    /// `--demo-pdf <path>`: translate that PDF through the same path a drop
+    /// takes (SPEC 15).
+    var pdf: String?
+    /// `--pdf-pages <範囲>`: pages to translate, e.g. `1-3`.
+    var pdfPages: String?
+    /// `--pdf-python <path>`: use this interpreter for the PDF worker instead
+    /// of the installed environment (SPEC 8.2, development).
+    var pdfPython: String?
+    /// `--demo-translate-after <秒>`: start a panel translation this long after
+    /// launch, so a PDF job and a panel translation really overlap (SPEC 7.3).
+    var translateAfter: Double?
+    /// `--demo-cancel-after <秒>`: cancel the running PDF job this long after
+    /// launch, so the cancel path can be checked without clicking (SPEC 8.2).
+    var cancelAfter: Double?
+    /// `--demo-image <png>`: read that image instead of the screen and lay the
+    /// translation over it, placed from the screen's top left (SPEC 15, M4).
+    var demoImage: String?
+    /// `--demo-scale <倍率>`: the scale the demo image was captured at, so its
+    /// pixels map onto points (SPEC 15, M4).
+    var demoScale: Double?
+    /// `--demo-dump-blocks`: print the blocks read from `--demo-image` as JSON
+    /// and exit, so the reading can be checked without a screen (M4).
+    var dumpBlocks = false
+
+    static let current = DemoOptions(arguments: CommandLine.arguments)
+
+    init(arguments: [String]) {
+        var index = 1
+        while index < arguments.count {
+            func next() -> String? {
+                index += 1
+                return index < arguments.count ? arguments[index] : nil
+            }
+            switch arguments[index] {
+            case "--demo-surface": surface = next()
+            case "--demo-state": state = next()
+            case "--demo-text": text = next()
+            case "--demo-anchor": anchor = next().flatMap(Self.parseAnchor)
+            case "--demo-glow": glowSeconds = next().flatMap(Double.init)
+            case "--demo-pin": pin = true
+            case "--demo-translate": translate = next()
+            case "--demo-quit-after": quitAfter = next().flatMap(Double.init)
+            case "--appearance": appearance = next()
+            case "--engine-idle-seconds": engineIdleSeconds = next().flatMap(Double.init)
+            case "--demo-page": page = next()
+            case "--demo-tab": tab = next()
+            case "--data-dir": dataDir = next()
+            case "--demo-glossary":
+                let value = next()
+                glossaryEnabled = value != "off"
+            case "--demo-first-run": forceOnboarding = true
+            case "--demo-download": downloadModelID = next()
+            case "--demo-download-cancel": downloadCancelAfter = next().flatMap(Double.init)
+            case "--demo-download-gate": downloadGate = true
+            case "--demo-close-after": closeWindowsAfter = next().flatMap(Double.init)
+            case "--demo-pdf": pdf = next()
+            case "--pdf-pages": pdfPages = next()
+            case "--pdf-python": pdfPython = next()
+            case "--demo-translate-after": translateAfter = next().flatMap(Double.init)
+            case "--demo-cancel-after": cancelAfter = next().flatMap(Double.init)
+            case "--demo-image": demoImage = next()
+            case "--demo-scale": demoScale = next().flatMap(Double.init)
+            case "--demo-dump-blocks": dumpBlocks = true
+            default: break
+            }
+            index += 1
+        }
+    }
+
+    static func parseAnchor(_ value: String) -> CGPoint? {
+        let parts = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard parts.count == 2, let x = Double(parts[0]), let y = Double(parts[1]) else { return nil }
+        return CGPoint(x: x, y: y)
+    }
+}
