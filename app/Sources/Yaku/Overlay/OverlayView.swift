@@ -257,11 +257,16 @@ private struct OverlayBlockView: View {
         // compare the two; the translation uses the size that was fitted.
         showSource ? OverlayTextFit.originalFontSize(forLineHeight: block.lineHeight) : (block.layout?.fontSize ?? 12)
     }
-    private var overflow: CGFloat { showSource ? 0 : (block.layout?.overflow ?? 0) }
 
     var body: some View {
         let top = windowHeight - block.frame.maxY
-        let height = block.frame.height + overflow
+        // The backing covers the original text and grows downward when the
+        // translation needs more room (SPEC 4.6 の 3). It never shrinks below
+        // the block, and it always covers what was fitted into it, so a line is
+        // never clipped.
+        let height = showSource
+            ? max(block.frame.height, block.lineHeight)
+            : max(block.frame.height, block.layout?.textHeight ?? 0)
         Text(text)
             .font(.system(size: fontSize, weight: block.isBold ? .bold : .regular))
             .foregroundStyle(block.textColor.color)

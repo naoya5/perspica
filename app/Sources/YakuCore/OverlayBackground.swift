@@ -83,6 +83,13 @@ public struct PixelImage: Sendable {
             blue: Double(pixels[offset + 2]) / 255
         )
     }
+
+    /// One pixel's luminance, 0 for black and 1 for white (0 outside the
+    /// picture). The ink rules read the picture through this.
+    public func luminance(x: Int, y: Int) -> Double {
+        guard let color = color(x: x, y: y) else { return 0 }
+        return 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue
+    }
 }
 
 /// Reads the colours the overlay paints a block with (SPEC 4.6 の 3): the

@@ -187,10 +187,73 @@ struct OCRBlockTests {
         #expect(OCRBlockBuilder.minimumConfidence == 0.3)
         #expect(OCRBlockBuilder.gapRatio == 0.8)
         #expect(OCRBlockBuilder.heightTolerance == 0.25)
+        #expect(OCRBlockBuilder.lineLengthRatio == 0.7)
         #expect(OCRBlockBuilder.horizontalOverlap(
             CGRect(x: 0, y: 0, width: 100, height: 10),
             CGRect(x: 60, y: 0, width: 100, height: 10)
         ) == 40)
+    }
+
+    @Test("a short title above a long description is two blocks, not a wrap")
+    func titleAboveDescription() {
+        // The UI sample's own pair: `Play a sound` is 88px wide over a 157px
+        // description, so 0.56 — the two are separate rows (M5.md 8.1).
+        let lines = [
+            line("Play a sound", x: 100, y: 100, width: 88, height: 17),
+            line("Use the system alert sound", x: 100, y: 123, width: 157, height: 15),
+        ]
+        let blocks = OCRBlockBuilder.blocks(from: lines)
+        #expect(blocks.count == 2)
+        #expect(blocks[0].text == "Play a sound")
+        #expect(blocks[1].text == "Use the system alert sound")
+        // Each is drawn at its own width, not at the other's.
+        #expect(blocks[0].rect.width == 88)
+        #expect(blocks[1].rect.width == 157)
+    }
+
+    @Test("a wrapped line stays in its paragraph")
+    func wrappedLineStays() {
+        // The narrowest pair the samples actually wrapped is 0.92 (M5.md 8.1),
+        // so a line above at 0.92 of the line below it is a wrap, not a row.
+        let lines = [
+            line("That is, the output of each sub-layer", x: 100, y: 100, width: 280),
+            line("Sublayer(x) is the function implemented.", x: 100, y: 126, width: 304),
+        ]
+        #expect(OCRBlockBuilder.blocks(from: lines).count == 1)
+    }
+
+    @Test("the split sits at 0.7 of the next line's width")
+    func lineLengthBoundary() {
+        let wide = line("A long description of the setting.", x: 100, y: 126, width: 200)
+        // Just under the ratio: the line above is a short title, so the line
+        // below it is a row of its own and does not join.
+        #expect(!OCRBlockBuilder.follows(wide, line("Title", x: 100, y: 100, width: 138)))
+        // Just over: the line above is nearly as wide, so it is a wrapped line.
+        #expect(OCRBlockBuilder.follows(wide, line("A wrapped line of text.", x: 100, y: 100, width: 142)))
+    }
+
+    @Test("a paragraph's short last line does not split it off")
+    func shortLastLine() {
+        // Nothing follows the short line, so the rule has nothing to compare it
+        // with: the article stays whole (M5.md 8.1).
+        let lines = [
+            line("The dominant sequence transduction", x: 100, y: 100, width: 300),
+            line("models are based on complex networks.", x: 100, y: 126, width: 300),
+            line("Attention is all you need.", x: 100, y: 152, width: 150),
+        ]
+        let blocks = OCRBlockBuilder.blocks(from: lines)
+        #expect(blocks.count == 1)
+        #expect(blocks[0].lines.count == 3)
+    }
+
+    @Test("two short lines in a row are still separate rows")
+    func twoShortLines() {
+        let lines = [
+            line("Group by app", x: 100, y: 100, width: 94, height: 15),
+            line("Collect alerts from one app together", x: 100, y: 122, width: 207, height: 13),
+        ]
+        let blocks = OCRBlockBuilder.blocks(from: lines)
+        #expect(blocks.count == 2)
     }
 
     @Test("an empty page has no blocks")

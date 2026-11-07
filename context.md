@@ -1,7 +1,7 @@
 # translate-app - ローカル翻訳アプリ（仮称 Yaku）
 
 **Created:** 2026-11-06
-**Status:** Prototype（M5 は条件つきで合格。M5.1 として画面翻訳の UI の見本の 2 点を子スレッド thr_mjgkgsm835 で直す。手の確認 A2・A5・A7・B はそのあと）
+**Status:** Prototype（M5・M5.1 を受け取った。M5.2 として短いラベルの訳と大きさの違う 2 行を子スレッド thr_mjgkgsm835 で直す。手の確認 A2・A5・A7・B はそのあと）
 
 ## What We're Building
 

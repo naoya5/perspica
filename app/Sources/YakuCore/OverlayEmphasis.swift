@@ -66,7 +66,7 @@ public enum OverlayEmphasis {
         luminances.reserveCapacity((x1 - x0 + 1) * (y1 - y0 + 1) / 4)
         for y in stride(from: y0, through: y1, by: 2) {
             for x in stride(from: x0, through: x1, by: 2) {
-                luminances.append(luminance(image, x, y))
+                luminances.append(image.luminance(x: x, y: y))
             }
         }
         guard !luminances.isEmpty else { return 0 }
@@ -80,15 +80,10 @@ public enum OverlayEmphasis {
         for y in y0...y1 {
             for x in x0...x1 {
                 total += 1
-                let value = luminance(image, x, y)
+                let value = image.luminance(x: x, y: y)
                 if darkText ? (value < threshold) : (value > threshold) { ink += 1 }
             }
         }
         return total > 0 ? Double(ink) / Double(total) : 0
-    }
-
-    private static func luminance(_ image: PixelImage, _ x: Int, _ y: Int) -> Double {
-        guard let color = image.color(x: x, y: y) else { return 0 }
-        return 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue
     }
 }

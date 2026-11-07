@@ -12,8 +12,15 @@ struct OverlayBlock: Identifiable {
     /// at the window's bottom left).
     let frame: CGRect
     /// One original line's height in the window's points (the block is
-    /// several lines tall, so its frame cannot stand in for this).
+    /// several lines tall, so its frame cannot stand in for this). Measured
+    /// from the picture's ink, not from Vision's box (`TextInk`), because the
+    /// box moves with the crop the text was read from.
     let lineHeight: CGFloat
+    /// How tall the translation may be before it counts as spilling out. One
+    /// full line at the original size, so a single-line block whose box is
+    /// tight (Vision's box is the ink, not the line) can still be drawn at its
+    /// own size instead of being shrunk to the floor.
+    let availableHeight: CGFloat
     /// The colour the original text sat on, taken from a ring around the block.
     let background: RGBColor
     /// The colour the original text was written in.

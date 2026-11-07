@@ -209,8 +209,11 @@ final class OverlayController {
             CGPoint(x: $0.frame.minX - capture.screen.frame.minX, y: $0.frame.minY - capture.screen.frame.minY)
         } ?? .zero
         // The page's usual line height, so a heading can be told from body text
-        // when the weight is measured (`OverlayEmphasis`).
-        let sortedHeights = blocks.map(\.lineHeight).sorted()
+        // when the weight is measured (`OverlayEmphasis`). It comes from the
+        // picture's ink like the size itself, so the two are compared in the
+        // same units and with the same precision (`TextInk`).
+        let measured = blocks.map { measuredLineHeight(of: $0, pixels: pixels, fallback: $0.lineHeight) }
+        let sortedHeights = measured.sorted()
         let medianLineHeight = sortedHeights.isEmpty ? 0 : sortedHeights[sortedHeights.count / 2]
         model.blocks = blocks.enumerated().map { index, block in
             overlayBlock(
@@ -219,7 +222,9 @@ final class OverlayController {
                 capture: capture,
                 pixels: pixels,
                 windowOffset: windowOffset,
-                medianLineHeight: medianLineHeight
+                medianLineHeight: medianLineHeight,
+                lineHeightPixels: measured[index],
+                origin: "whole"
             )
         }
         model.phase = .showing
@@ -252,7 +257,9 @@ final class OverlayController {
                 capture: capture,
                 pixels: pixels,
                 windowOffset: windowOffset,
-                medianLineHeight: medianLineHeight
+                medianLineHeight: medianLineHeight,
+                lineHeightPixels: measuredLineHeight(of: block, pixels: pixels, fallback: block.lineHeight),
+                origin: "tiled"
             ))
         }
         updateHitRects()
@@ -282,24 +289,36 @@ final class OverlayController {
         capture: ScreenCapturer.Capture,
         pixels: PixelImage,
         windowOffset: CGPoint,
-        medianLineHeight: CGFloat
+        medianLineHeight: CGFloat,
+        lineHeightPixels: CGFloat,
+        origin: String
     ) -> OverlayBlock {
         let frame = windowFrame(for: block, capture: capture, windowOffset: windowOffset)
         let background = OverlayBackground.color(in: pixels, around: block.rect)
         let textColor = OverlayBackground.textColor(in: pixels, block: block.rect, background: background)
         let pointsPerPixel = block.rect.height > 0 ? frame.height / block.rect.height : 1
+        let boxLineHeight = block.lineHeight * pointsPerPixel
+        let lineHeight = lineHeightPixels * pointsPerPixel
         let isBold = OverlayEmphasis.isBold(
             in: pixels,
             block: block.rect,
             text: block.text,
-            lineHeight: block.lineHeight,
+            lineHeight: lineHeightPixels,
             medianLineHeight: medianLineHeight
         )
+        // The drawn size comes from the line height, so the reading that
+        // produced it is recorded here: the whole-picture pass and a tile report
+        // different boxes for the same line, which is what made equally sized
+        // labels come out at different sizes (M5.md 8.2).
+        AppLog.write(String(format: "overlay: block %d %@ frame=%.0fx%.0f lineHeight=%.1f (box %.1f) lines=%d bold=%@ %@",
+                            id, origin, frame.width, frame.height, lineHeight, boxLineHeight,
+                            block.lines.count, isBold ? "yes" : "no", String(block.text.prefix(40))))
         return OverlayBlock(
             id: id,
             source: block.text,
             frame: frame,
-            lineHeight: block.lineHeight * pointsPerPixel,
+            lineHeight: lineHeight,
+            availableHeight: max(frame.height, lineHeight),
             background: background,
             textColor: textColor,
             isBold: isBold,
@@ -308,13 +327,32 @@ final class OverlayController {
         )
     }
 
+    /// One original line's height in **image pixels**, measured from the
+    /// picture's ink (`TextInk`). `fallback` is Vision's box height, used when
+    /// the ink cannot be read (an empty block, or text too small to measure).
+    private func measuredLineHeight(of block: OCRBlock, pixels: PixelImage, fallback: CGFloat) -> CGFloat {
+        let bands = block.lines.compactMap { TextInk.bandHeight(in: pixels, line: $0.rect) }
+        guard let band = bands.sorted().dropFirst(bands.count / 2).first,
+              let size = TextInk.fontSize(forBand: band)
+        else { return fallback }
+        return OverlayTextFit.lineHeightToFontSize * size
+    }
+
     /// Sizes and stores one block's translation, which makes the view draw it.
     private func apply(_ translation: String, to index: Int) {
         guard index >= 0, index < model.blocks.count else { return }
         let frame = model.blocks[index].frame
         let minimumScale = CGFloat(AppSettings.shared.overlayMinScale)
+        // The room the translation is fitted into is the block's box, but never
+        // less than one line at the original size: Vision's box is the ink, and
+        // a single line's ink is shorter than the line the translation needs,
+        // which would shrink every one-line block to the floor (`TextInk`).
+        let available = CGSize(
+            width: frame.width,
+            height: max(model.blocks[index].availableHeight, 1)
+        )
         let layout = OverlayTextFit.layout(
-            blockSize: frame.size,
+            blockSize: available,
             originalFontSize: OverlayTextFit.originalFontSize(forLineHeight: model.blocks[index].lineHeight),
             minimumScale: minimumScale,
             measure: { width, size in
@@ -324,7 +362,11 @@ final class OverlayController {
         model.blocks[index].translation = translation
         model.blocks[index].layout = layout
         updateHitRects()
-        AppLog.write("overlay: block \(index) translation=\(translation)")
+        AppLog.write(String(format: "overlay: block %d translation=%@", index, translation))
+        // The fitted size, so a block that came out too small can be traced to
+        // its input (the frame and the line height) rather than guessed at.
+        AppLog.write(String(format: "overlay: block %d layout size=%.1fpt scale=%.2f width=%.0f height=%.0f overflow=%.1f",
+                            index, layout.fontSize, layout.scale, frame.width, layout.textHeight, layout.overflow))
         if !firstBlockLogged {
             firstBlockLogged = true
             let elapsed = CFAbsoluteTimeGetCurrent() - runStarted

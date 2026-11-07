@@ -87,6 +87,29 @@ public enum OCRBlockBuilder {
     public static let overlapRatio: CGFloat = 0.5
     /// How far two left edges may differ and still count as lined up.
     public static let alignmentRatio: CGFloat = 0.5
+    /// The line-length rule: a line shorter than this share of the line below
+    /// it is a line of its own, not a wrapped one.
+    ///
+    /// A UI row is a short title above a long description, and the two are
+    /// separate rows rather than one wrapped sentence. Their heights cannot
+    /// tell them apart (a paragraph's own lines differ by up to 21%, a
+    /// title/description pair by 12–14% — see `heightTolerance`), but their
+    /// lengths can.
+    ///
+    /// Measured over every pair the three rules above would join, in the
+    /// whole-picture and the tiled pass of the article, two-column and UI
+    /// samples (M5.md 8.1): a wrapped line's line above is 0.92–5.02 × its
+    /// width, and the two title/description pairs are at 0.45 and 0.56. 0.7
+    /// sits in the gap, 0.22 from either side.
+    ///
+    /// The third UI row, `Show in Lock Screen` over `Keep recent items
+    /// visible`, is at 1.01 and no width rule can split it; it stays one block
+    /// (M5.md 8.1).
+    ///
+    /// A paragraph's last line is short but has no line below it, so it is
+    /// unaffected; that is what keeps a paragraph in one block (measured: the
+    /// article stays 5 blocks and the two-column sample 5).
+    public static let lineLengthRatio: CGFloat = 0.7
 
     public static func blocks(from lines: [OCRLine]) -> [OCRBlock] {
         let candidates = lines
@@ -132,8 +155,7 @@ public enum OCRBlockBuilder {
         return OverlayReadingOrder.arrange(built)
     }
 
-    /// Whether `line` follows `last` under all three of the specification's
-    /// rules.
+    /// Whether `line` follows `last` under all of the specification's rules.
     public static func follows(_ line: OCRLine, _ last: OCRLine) -> Bool {
         let lastHeight = last.rect.height
         let height = line.rect.height
@@ -147,7 +169,12 @@ public enum OCRBlockBuilder {
         let aligned = abs(line.rect.minX - last.rect.minX) <= alignmentRatio * min(lastHeight, height)
         let overlap = horizontalOverlap(last.rect, line.rect)
         let overlapping = overlap >= overlapRatio * min(last.rect.width, line.rect.width)
-        return aligned || overlapping
+        guard aligned || overlapping else { return false }
+
+        // A much shorter line above a longer one is a line of its own, not a
+        // wrapped one (a UI row's title above its description). Checked last,
+        // so it only ever splits a pair the rules above would have joined.
+        return last.rect.width >= lineLengthRatio * line.rect.width
     }
 
     /// The width two rectangles share horizontally (0 when they are apart).
