@@ -8,7 +8,7 @@ PLaMo 3 Translate（GGUF）を llama-server の子プロセスとして動かし
 ## 入れる
 
 ```sh
-cd projects/translate-app/app
+cd app
 ./make-app.sh install     # ビルド・署名して ~/Applications/Yaku.app に置く
 open ~/Applications/Yaku.app
 ```
@@ -67,9 +67,9 @@ PDF はメニューバーのアイコン・パネル・管理画面・ノッチ�
 ## 作り直す
 
 ```sh
-cd projects/translate-app/app
+cd app
 swift build              # YakuCore + Yaku
-swift test               # 175 テスト
+swift test               # 221 テスト
 ./make-app.sh            # build/Yaku.app を作って署名
 ./make-app.sh install    # ~/Applications/Yaku.app を置き換える
 ```

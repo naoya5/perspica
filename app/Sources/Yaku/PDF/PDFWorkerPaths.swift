@@ -15,7 +15,7 @@ enum PDFWorkerPaths {
     /// The checked-in fallback used while developing, mirroring
     /// `ModelStore.developmentModelPath`.
     static let developmentScriptsDirectory =
-        "/Users/naoya/docs/agentic-os/projects/translate-app/pdf-worker"
+        "/Users/naoya/projects/production/Yaku/pdf-worker"
 
     static var scriptsDirectory: URL? {
         let bundled = Bundle.main.bundleURL

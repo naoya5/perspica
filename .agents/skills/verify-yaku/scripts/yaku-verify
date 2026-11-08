@@ -1,0 +1,257 @@
+#!/bin/sh
+# Drive the real Yaku app for verification. Run from anywhere, outside the
+# Claude Code sandbox (SwiftPM, screencapture and `open` all fail inside it).
+#
+#   yaku-verify doctor
+#   yaku-verify build
+#   yaku-verify begin <run-name>
+#   yaku-verify shot <name> [WAIT=<s>] [--appearance light|dark] <yaku args...>
+#   yaku-verify translate "<text>" [yaku args...]
+#   yaku-verify cpu <name> <settle-s> <window-s> <yaku args...>
+#   yaku-verify wait-free [max-seconds]
+#   yaku-verify log [pattern]
+#   yaku-verify end
+#
+# State for the current run lives in $STATE_DIR; evidence in $RUN_DIR, which
+# `end` never deletes.
+set -eu
+
+REPO=$(cd "$(dirname "$0")/../../../.." && pwd)
+APP_DIR="$REPO/app"
+BIN="$APP_DIR/.build/arm64-apple-macosx/release/Yaku"
+INSTALLED="$HOME/Applications/Yaku.app"
+LOCK="$HOME/Library/Application Support/Yaku/Yaku.lock"
+APP_LOG="$HOME/Library/Logs/Yaku/app.log"
+STATE_DIR="${YAKU_VERIFY_STATE:-/tmp/yaku-verify-state}"
+EVIDENCE_ROOT="$REPO/docs/checks/shots/verify"
+WINID=${WINID:-/tmp/winid}
+OPAQUE=${OPAQUE:-/tmp/opaque}
+
+die() { echo "error: $*" >&2; exit 1; }
+
+lock_holder() {
+    [ -f "$LOCK" ] || return 0
+    pid=$(head -1 "$LOCK" 2>/dev/null | tr -dc 0-9)
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo "$pid"
+    return 0
+}
+
+screen_locked() {
+    printf 'import CoreGraphics\nprint((CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Int ?? 0)\n' \
+        | swift - 2>/dev/null | tail -1
+}
+
+run_dir() {
+    [ -f "$STATE_DIR/run_dir" ] || die "no run in progress; start one with: yaku-verify begin <run-name>"
+    cat "$STATE_DIR/run_dir"
+}
+
+log_mark() { wc -l < "$APP_LOG" 2>/dev/null | tr -d ' ' || echo 0; }
+
+cmd_doctor() {
+    ok=1
+    if [ -x "$BIN" ]; then
+        newest=$(find "$APP_DIR/Sources" -name '*.swift' -newer "$BIN" | head -1)
+        if [ -n "$newest" ]; then echo "STALE  release binary is older than $newest (run: yaku-verify build)"; ok=0
+        else echo "ok     release binary is current: $BIN"; fi
+    else
+        echo "MISSING release binary (run: yaku-verify build)"; ok=0
+    fi
+    holder=$(lock_holder)
+    if [ -n "$holder" ]; then
+        command=$(ps -o command= -p "$holder")
+        case "$command" in
+            "$INSTALLED"/*)
+                echo "note   the installed Yaku (pid=$holder) is running; 'begin' stops it and 'end' reopens it" ;;
+            *)
+                echo "BUSY   another Yaku (pid=$holder) holds the lock: $(echo "$command" | cut -c1-160)"
+                echo "       probably another agent or worktree (git worktree list); wait for it, do not kill it"
+                ok=0 ;;
+        esac
+    else
+        echo "ok     no Yaku is running"
+    fi
+    [ "$(screen_locked)" = "1" ] && { echo "LOCKED screen is locked: nothing is drawn, shots fail, CPU reads 0%"; ok=0; } \
+        || echo "ok     screen is unlocked"
+    command -v llama-server >/dev/null && echo "ok     llama-server: $(command -v llama-server)" \
+        || { echo "MISSING llama-server on PATH (brew install llama.cpp)"; ok=0; }
+    model=$(sed -n '/developmentModelPath =/,+1p' "$APP_DIR/Sources/Yaku/Models/ModelStore.swift" \
+        | grep -o '"[^"]*"' | tr -d '"\n')
+    dl="$HOME/Library/Application Support/Yaku/models"
+    if ls "$dl"/*.gguf >/dev/null 2>&1 || ls "$dl"/*/*.gguf >/dev/null 2>&1; then echo "ok     downloaded model in $dl"
+    elif [ -n "$model" ] && [ -f "$model" ]; then echo "ok     development model: $model"
+    else echo "MISSING no model: translation cannot run"; ok=0; fi
+    [ -x "$WINID" ] && [ -x "$OPAQUE" ] && echo "ok     capture helpers $WINID $OPAQUE" \
+        || echo "note   capture helpers missing; 'build' compiles them"
+    if [ -f "$STATE_DIR/run_dir" ]; then echo "note   run in progress: $(cat "$STATE_DIR/run_dir")"; fi
+    [ "$ok" = 1 ] && echo "doctor: ready" || { echo "doctor: not ready"; exit 1; }
+}
+
+cmd_build() {
+    cd "$APP_DIR"
+    swift build -c release > "${TMPDIR:-/tmp}/yaku-verify-build.log" 2>&1 \
+        || { grep -E 'error:' "${TMPDIR:-/tmp}/yaku-verify-build.log" | head -20; die "build failed"; }
+    grep -E 'warning:' "${TMPDIR:-/tmp}/yaku-verify-build.log" | grep -v 'org.swift.swiftpm' | head -20 || true
+    [ -x "$WINID" ] || swiftc -O tools/winid.swift -o "$WINID"
+    [ -x "$OPAQUE" ] || swiftc -O tools/opaque.swift -o "$OPAQUE"
+    echo "built: $BIN"
+}
+
+cmd_begin() {
+    name=${1:?usage: yaku-verify begin <run-name>}
+    [ -f "$STATE_DIR/run_dir" ] && die "a run is in progress ($(cat "$STATE_DIR/run_dir")); finish it with: yaku-verify end"
+    holder=$(lock_holder)
+    if [ -n "$holder" ]; then
+        command=$(ps -o command= -p "$holder")
+        case "$command" in
+            "$INSTALLED"/*) ;;
+            *) die "another Yaku (pid=$holder, not the installed app) holds the lock; run: yaku-verify wait-free. $command" ;;
+        esac
+    fi
+    mkdir -p "$STATE_DIR"
+    dir="$EVIDENCE_ROOT/$(date +%Y%m%d-%H%M%S)-$name"
+    mkdir -p "$dir"
+    echo "$dir" > "$STATE_DIR/run_dir"
+    mkdir -p "$STATE_DIR/data"
+    : > "$STATE_DIR/pids"
+    holder=$(lock_holder)
+    if [ -n "$holder" ]; then
+        command=$(ps -o command= -p "$holder")
+        case "$command" in
+            "$INSTALLED"/*)
+                echo "$INSTALLED" > "$STATE_DIR/reopen"
+                kill -TERM "$holder"
+                i=0; while kill -0 "$holder" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
+                kill -0 "$holder" 2>/dev/null && die "installed Yaku pid=$holder did not quit"
+                echo "stopped the installed Yaku (pid=$holder); 'end' reopens it" ;;
+            *) die "another Yaku (pid=$holder) took the lock while starting; run: yaku-verify end, then begin again" ;;
+        esac
+    fi
+    echo "evidence: $dir"
+}
+
+# A failed build leaves the previous binary in place, and measuring it reports
+# the old code's numbers as the new code's.
+require_fresh() {
+    [ -x "$BIN" ] || die "no release binary; run: yaku-verify build"
+    newest=$(find "$APP_DIR/Sources" -name '*.swift' -newer "$BIN" | head -1)
+    [ -z "$newest" ] || die "release binary is older than $newest; the last build failed or was skipped (run: yaku-verify build)"
+}
+
+# Start our own instance, wait, and leave it running; returns its pid.
+start_instance() {
+    "$BIN" --data-dir "$STATE_DIR/data" "$@" >/dev/null 2>&1 &
+    pid=$!
+    echo "$pid" >> "$STATE_DIR/pids"
+    echo "$pid"
+}
+
+stop_instance() {
+    pid=$1
+    kill -TERM "$pid" 2>/dev/null || true
+    i=0; while kill -0 "$pid" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
+    kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null || true
+    grep -v "^$pid\$" "$STATE_DIR/pids" > "$STATE_DIR/pids.tmp" || true
+    mv "$STATE_DIR/pids.tmp" "$STATE_DIR/pids"
+}
+
+cmd_shot() {
+    name=${1:?usage: yaku-verify shot <name> [WAIT=<s>] <yaku args...>}; shift
+    wait_s=8
+    case "${1:-}" in WAIT=*) wait_s=${1#WAIT=}; shift ;; esac
+    require_fresh
+    dir=$(run_dir)
+    [ -n "$(lock_holder)" ] && die "a Yaku is already running; shots need ours to be the only one"
+    [ "$(screen_locked)" = "1" ] && die "screen is locked; unlock it first"
+    mark=$(log_mark)
+    pid=$(start_instance "$@")
+    sleep "$wait_s"
+    [ "$(lock_holder)" = "$pid" ] || { stop_instance "$pid"; die "our instance (pid=$pid) does not hold the lock; another Yaku started first. Nothing was captured"; }
+    SHOTS="$dir" MIN_OPAQUE=${MIN_OPAQUE:-8000} WINID="$WINID" OPAQUE="$OPAQUE" \
+        sh -c ". '$APP_DIR/tools/capture-lib.sh'; capture_windows '$name'"
+    tail -n +$((mark + 1)) "$APP_LOG" > "$dir/$name.log" 2>/dev/null || true
+    stop_instance "$pid"
+    echo "log: $dir/$name.log"
+}
+
+cmd_translate() {
+    text=${1:?usage: yaku-verify translate "<text>" [yaku args...]}; shift
+    require_fresh
+    dir=$(run_dir)
+    [ -n "$(lock_holder)" ] && die "a Yaku is already running"
+    mark=$(log_mark)
+    pid=$(start_instance --demo-translate "$text" --demo-quit-after "${QUIT_AFTER:-90}" "$@")
+    sleep 1
+    [ "$(lock_holder)" = "$pid" ] || { stop_instance "$pid"; die "our instance (pid=$pid) does not hold the lock; another Yaku started first"; }
+    i=0
+    while kill -0 "$pid" 2>/dev/null && [ $i -lt 600 ]; do sleep 0.2; i=$((i+1)); done
+    stop_instance "$pid"
+    n=$(ls "$dir"/translate-*.log 2>/dev/null | wc -l | tr -d ' ')
+    out="$dir/translate-$((n + 1)).log"
+    tail -n +$((mark + 1)) "$APP_LOG" > "$out"
+    grep -E 'demo-translate (engineStartup|result|engine failed)|demo-translate: ' "$out" || { echo "no result line; see $out"; exit 1; }
+    echo "log: $out"
+}
+
+cmd_cpu() {
+    name=${1:?usage: yaku-verify cpu <name> <settle-s> <window-s> <yaku args...>}
+    settle=${2:?settle seconds}; window=${3:?window seconds}; shift 3
+    require_fresh
+    dir=$(run_dir)
+    [ -n "$(lock_holder)" ] && die "a Yaku is already running"
+    [ "$(screen_locked)" = "1" ] && die "screen is locked; CPU would read 0%"
+    pid=$(start_instance "$@")
+    sleep "$settle"
+    kill -0 "$pid" 2>/dev/null || die "instance exited before the window; raise --demo-quit-after"
+    [ "$(lock_holder)" = "$pid" ] || { stop_instance "$pid"; die "our instance (pid=$pid) does not hold the lock; another Yaku started first. Nothing was captured"; }
+    cpu=$(python3 "$APP_DIR/tools/measure_cpu.py" "$pid" "$window")
+    mem=$(footprint "$pid" 2>/dev/null | awk '/phys_footprint:/ {print $2, $3; exit}')
+    stop_instance "$pid"
+    line="$name cpu=$cpu footprint=$mem settle=${settle}s window=${window}s args=$*"
+    echo "$line" | tee -a "$dir/cpu.txt"
+}
+
+cmd_wait_free() {
+    max=${1:-900}; free=0; waited=0
+    while [ "$free" -lt 10 ]; do
+        [ "$waited" -ge "$max" ] && die "the lock was still busy after ${max}s (holder pid=$(lock_holder))"
+        if [ -n "$(lock_holder)" ]; then free=0; else free=$((free + 1)); fi
+        sleep 2; waited=$((waited + 2))
+    done
+    echo "lock free for 20s (waited ${waited}s)"
+}
+
+cmd_log() {
+    dir=$(run_dir)
+    cat "$dir"/*.log 2>/dev/null | grep -E "${1:-.}" || true
+}
+
+cmd_end() {
+    [ -d "$STATE_DIR" ] || { echo "nothing to clean up"; return 0; }
+    if [ -f "$STATE_DIR/pids" ]; then
+        for pid in $(cat "$STATE_DIR/pids"); do
+            kill -0 "$pid" 2>/dev/null && { kill -TERM "$pid"; echo "stopped our instance pid=$pid"; } || true
+        done
+        sleep 1
+    fi
+    dir=$(cat "$STATE_DIR/run_dir" 2>/dev/null || true)
+    if [ -f "$STATE_DIR/reopen" ]; then
+        open "$(cat "$STATE_DIR/reopen")" && echo "reopened the installed Yaku" \
+            || echo "warning: could not reopen; run: open '$(cat "$STATE_DIR/reopen")'"
+    fi
+    rm -rf "$STATE_DIR"
+    [ -n "$dir" ] && echo "evidence kept: $dir" && ls "$dir"
+}
+
+case "${1:-}" in
+    doctor) shift; cmd_doctor "$@" ;;
+    build) shift; cmd_build "$@" ;;
+    begin) shift; cmd_begin "$@" ;;
+    shot) shift; cmd_shot "$@" ;;
+    translate) shift; cmd_translate "$@" ;;
+    cpu) shift; cmd_cpu "$@" ;;
+    wait-free) shift; cmd_wait_free "$@" ;;
+    log) shift; cmd_log "$@" ;;
+    end) shift; cmd_end "$@" ;;
+    *) sed -n '2,15p' "$0"; exit 2 ;;
+esac

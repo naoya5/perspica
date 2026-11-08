@@ -445,7 +445,7 @@ PFN の PLaMo 3 Translate を Mac の中だけで動かし、文・PDF・画面�
 ## 17. コードの構成
 
 ```
-projects/translate-app/
+Yaku/
 ├── SPEC.md                 このファイル
 ├── context.md              決めたこと・進み具合
 ├── app/
