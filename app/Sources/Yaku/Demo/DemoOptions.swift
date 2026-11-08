@@ -64,6 +64,24 @@ struct DemoOptions {
     /// `--demo-cancel-after <秒>`: cancel the running PDF job this long after
     /// launch, so the cancel path can be checked without clicking (SPEC 8.2).
     var cancelAfter: Double?
+    /// `--demo-copy-at <秒>[,<秒>…]`: press ⌘⇧C in the panel (⌘C in the HUD)
+    /// at these times after launch. The key goes into the app's own event
+    /// queue, so it takes the same key monitor a real press does.
+    var copyAt: [Double] = []
+    /// `--demo-reject-at <秒>[,<秒>…]`: drop a file that is not a PDF on the
+    /// island at these times after launch, through the same refusal a real drop
+    /// gets (SPEC 4.5).
+    var rejectAt: [Double] = []
+    /// `--demo-snapshot-at <秒>[,<秒>…]`: draw the visible windows into PNGs
+    /// at these times after launch (`WindowSnapshot`), for a terminal that has
+    /// no screen recording permission.
+    var snapshotAt: [Double] = []
+    /// `--demo-click <x>,<y>` with `--demo-click-at <秒>[,<秒>…]`: click that
+    /// point of the frontmost normal window (points from its top left, as in a
+    /// window capture) at these times. The click goes into the app's own event
+    /// queue, so the control under it handles it like a real click.
+    var clickPoint: CGPoint?
+    var clickAt: [Double] = []
     /// `--demo-image <png>`: read that image instead of the screen and lay the
     /// translation over it, placed from the screen's top left (SPEC 15, M4).
     var demoImage: String?
@@ -125,6 +143,11 @@ struct DemoOptions {
             case "--pdf-python": pdfPython = next()
             case "--demo-translate-after": translateAfter = next().flatMap(Double.init)
             case "--demo-cancel-after": cancelAfter = next().flatMap(Double.init)
+            case "--demo-copy-at": copyAt = Self.parseTimes(next())
+            case "--demo-reject-at": rejectAt = Self.parseTimes(next())
+            case "--demo-snapshot-at": snapshotAt = Self.parseTimes(next())
+            case "--demo-click": clickPoint = next().flatMap(Self.parseAnchor)
+            case "--demo-click-at": clickAt = Self.parseTimes(next())
             case "--demo-image": demoImage = next()
             case "--demo-scale": demoScale = next().flatMap(Double.init)
             case "--demo-dump-blocks": dumpBlocks = true
@@ -144,5 +167,12 @@ struct DemoOptions {
         let parts = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         guard parts.count == 2, let x = Double(parts[0]), let y = Double(parts[1]) else { return nil }
         return CGPoint(x: x, y: y)
+    }
+
+    /// `"20,20.8"` → `[20, 20.8]`; a part that is not a number is skipped.
+    static func parseTimes(_ value: String?) -> [Double] {
+        (value ?? "").split(separator: ",").compactMap {
+            Double($0.trimmingCharacters(in: .whitespaces))
+        }
     }
 }

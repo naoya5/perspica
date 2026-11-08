@@ -649,6 +649,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         event.modifierFlags.intersection(.deviceIndependentFlagsMask) == modifiers
     }
 
+    /// `--demo-copy-at`: ⌘C when the HUD is the key window, ⌘⇧C otherwise,
+    /// posted to the app's own queue so `handleKey` sees it like a press.
+    private func postDemoCopyKey() {
+        let modifiers: NSEvent.ModifierFlags = hud.isKeyWindow ? [.command] : [.command, .shift]
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: NSApp.keyWindow?.windowNumber ?? 0,
+            context: nil,
+            characters: "c",
+            charactersIgnoringModifiers: "c",
+            isARepeat: false,
+            keyCode: 8
+        ) else { return }
+        AppLog.write("demo: copy key \(hud.isKeyWindow ? "⌘C (HUD)" : "⌘⇧C (panel)")")
+        NSApp.postEvent(event, atStart: false)
+    }
+
+    /// `--demo-click`: a mouse down and up at `point` (from the top left) of
+    /// the frontmost normal window, posted to the app's own queue.
+    private func postDemoClick(at point: CGPoint) {
+        guard let window = NSApp.orderedWindows.first(where: { $0.isVisible && $0.level == .normal }) else {
+            AppLog.write("demo: click with no window to click")
+            return
+        }
+        let location = CGPoint(x: point.x, y: window.frame.height - point.y)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            guard let event = NSEvent.mouseEvent(
+                with: type,
+                location: location,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: type == .leftMouseDown ? 1 : 0
+            ) else { continue }
+            NSApp.postEvent(event, atStart: false)
+        }
+        AppLog.write("demo: click at \(Int(point.x)),\(Int(point.y)) in window \(window.windowNumber)")
+    }
+
     // MARK: PDF (SPEC 8)
 
     private func setUpPDF() {
@@ -893,6 +938,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 self.pdfQueue.cancel(job)
+            }
+        }
+
+        // `--demo-copy-at`: the copy shortcut, pressed at those times.
+        for time in demo.copyAt {
+            DispatchQueue.main.asyncAfter(deadline: .now() + time) { [weak self] in
+                self?.postDemoCopyKey()
+            }
+        }
+
+        // `--demo-reject-at`: a file that is not a PDF, dropped on the island.
+        for time in demo.rejectAt {
+            DispatchQueue.main.asyncAfter(deadline: .now() + time) { [weak self] in
+                AppLog.write("demo: a text file dropped on the island")
+                self?.notch?.demoDrop(URL(fileURLWithPath: "/tmp/notes.txt"))
+            }
+        }
+
+        // `--demo-snapshot-at`: the visible windows, drawn into PNGs.
+        for time in demo.snapshotAt {
+            DispatchQueue.main.asyncAfter(deadline: .now() + time) {
+                WindowSnapshot.writeAll(label: String(format: "t%05.2f", time))
+            }
+        }
+
+        // `--demo-click` / `--demo-click-at`: a click on that point.
+        if let point = demo.clickPoint {
+            for time in demo.clickAt {
+                DispatchQueue.main.asyncAfter(deadline: .now() + time) { [weak self] in
+                    self?.postDemoClick(at: point)
+                }
             }
         }
 

@@ -333,6 +333,11 @@ final class NotchController {
 
     // MARK: demo
 
+    /// `--demo-reject-at`: the island's drop handler, without the drag.
+    func demoDrop(_ url: URL) {
+        acceptDrop(url)
+    }
+
     func applyDemoState(_ state: String) {
         switch state {
         case "drop": model.setDemoDrop()
