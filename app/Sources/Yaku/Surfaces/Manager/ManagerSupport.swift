@@ -108,19 +108,19 @@ struct ManagerPlaceholder: View {
     var message: String
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Design.Space.m) {
             Image(systemName: systemImage)
                 .font(.system(size: 34, weight: .light))
                 .foregroundStyle(.tertiary)
             Text(title)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: Design.Font.sectionTitle, weight: .semibold))
             Text(message)
-                .font(.system(size: 13))
+                .font(.system(size: Design.Font.body))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(24)
+        .padding(Design.Space.xxl)
     }
 }
 
@@ -130,7 +130,7 @@ struct ManagerSectionLabel: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: Design.Font.caption, weight: .semibold))
             .foregroundStyle(.secondary)
     }
 }

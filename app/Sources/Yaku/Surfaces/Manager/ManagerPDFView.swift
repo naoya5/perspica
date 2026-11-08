@@ -12,6 +12,9 @@ struct ManagerPDFView: View {
 
     @State private var dropHover = false
     @State private var thumbnails: [UUID: NSImage] = [:]
+    /// Which job's full error message is open in the 詳細 popover (M7 9).
+    @State private var errorJobID: UUID?
+    @State private var errorJobMessage = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,17 +33,24 @@ struct ManagerPDFView: View {
 
     private var dropWell: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.quaternary)
-            VStack(spacing: 6) {
-                Image(systemName: "doc.text")
+            RoundedRectangle(cornerRadius: Design.Radius.well, style: .continuous)
+                .fill(dropHover ? AnyShapeStyle(Color.accentColor.opacity(0.12)) : AnyShapeStyle(.quaternary))
+            // M7 9: a dashed edge that becomes a solid accent edge while a file
+            // is over it, so the drop target is unmistakable.
+            RoundedRectangle(cornerRadius: Design.Radius.well, style: .continuous)
+                .strokeBorder(
+                    dropHover ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary),
+                    style: StrokeStyle(lineWidth: dropHover ? 2 : 1, dash: dropHover ? [] : [6, 4])
+                )
+            VStack(spacing: Design.Space.s) {
+                Image(systemName: dropHover ? "arrow.down.doc.fill" : "doc.text")
                     .font(.system(size: 26, weight: .light))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(dropHover ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
                 Text(dropHover ? "ここにドロップ" : "PDF をドロップして日本語に")
-                    .font(.system(size: 13))
+                    .font(.system(size: Design.Font.body, weight: dropHover ? .semibold : .regular))
                     .foregroundStyle(dropHover ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                 Text("レイアウトはそのまま")
-                    .font(.system(size: 11))
+                    .font(.system(size: Design.Font.caption))
                     .foregroundStyle(.tertiary)
                 Button("PDF を開く…") { onChoosePDF() }
                     .controlSize(.small)
@@ -48,8 +58,8 @@ struct ManagerPDFView: View {
             }
         }
         .frame(height: 150)
-        .padding(20)
-        .scaleEffect(dropHover ? 1.01 : 1.0)
+        .padding(Design.pagePadding)
+        .scaleEffect(dropHover ? 1.02 : 1.0)
         .animation(.snappy(duration: 0.25), value: dropHover)
         .onDrop(of: [UTType.fileURL], isTargeted: $dropHover) { providers in
             handleDrop(providers)
@@ -57,15 +67,36 @@ struct ManagerPDFView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Design.Space.m) {
             Image(systemName: "doc.text")
                 .font(.system(size: 30, weight: .light))
                 .foregroundStyle(.tertiary)
             Text("まだ PDF を訳していません")
-                .font(.system(size: 13))
+                .font(.system(size: Design.Font.body))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The full failure text, one line in the row and everything here (M7 9).
+    private var errorDetail: some View {
+        VStack(alignment: .leading, spacing: Design.Space.s) {
+            Text("失敗の詳細")
+                .font(.system(size: Design.Font.label, weight: .semibold))
+            ScrollView {
+                Text(errorJobMessage)
+                    .font(.system(size: Design.Font.caption))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 200)
+            HStack {
+                Spacer()
+                Button("閉じる") { errorJobID = nil }
+            }
+        }
+        .padding(Design.Space.l)
+        .frame(width: 420)
     }
 
     // MARK: list
@@ -80,16 +111,16 @@ struct ManagerPDFView: View {
     }
 
     private func row(_ job: PDFJob) -> some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: Design.Space.m) {
             thumbnail(for: job)
                 .frame(width: 34, height: 44)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(job.fileName)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: Design.Font.body, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                HStack(spacing: 8) {
+                HStack(spacing: Design.Space.s) {
                     Text("\(job.pageCount) ページ")
                     Text(job.jobState.japaneseName)
                         .foregroundStyle(stateColor(job))
@@ -101,7 +132,7 @@ struct ManagerPDFView: View {
                             .monospacedDigit()
                     }
                 }
-                .font(.system(size: 11))
+                .font(.system(size: Design.Font.caption))
                 .foregroundStyle(.secondary)
 
                 if job.jobState == .running {
@@ -109,14 +140,30 @@ struct ManagerPDFView: View {
                         .frame(maxWidth: 260)
                 }
                 if job.jobState == .failed, !job.errorMessage.isEmpty {
-                    Text(job.errorMessage)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
+                    // M7 9: one line in the row; the whole message is in 詳細.
+                    HStack(spacing: Design.Space.s) {
+                        Text(job.errorMessage)
+                            .font(.system(size: Design.Font.caption))
+                            .foregroundStyle(.red)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Button("詳細") {
+                            errorJobMessage = job.errorMessage
+                            errorJobID = job.id
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.borderless)
+                        .popover(isPresented: Binding(
+                            get: { errorJobID == job.id },
+                            set: { if !$0 { errorJobID = nil } }
+                        ), arrowEdge: .bottom) {
+                            errorDetail
+                        }
+                    }
                 }
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: Design.Space.s)
 
             actions(job)
         }

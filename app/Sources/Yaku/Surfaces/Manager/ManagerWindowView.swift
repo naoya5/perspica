@@ -57,6 +57,9 @@ struct ManagerWindowView: View {
                     .tag(section)
             }
         }
+        // M7: the system's own sidebar material and selection, so the selected
+        // row is macOS 26's rounded accent row rather than a flat highlight.
+        .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 176, ideal: 196, max: 240)
         .safeAreaInset(edge: .bottom) {
             engineFooter
@@ -64,18 +67,33 @@ struct ManagerWindowView: View {
     }
 
     private var engineFooter: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("エンジン")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-            Text(model.engineStatusText)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+        HStack(spacing: Design.Space.s) {
+            Circle()
+                .fill(engineTone)
+                .frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("エンジン")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(model.engineStatusText)
+                    .font(.system(size: Design.Font.caption))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Design.Space.m)
+        .padding(.vertical, Design.Space.s)
+    }
+
+    /// The footer's dot: the same state word the text shows, in one colour.
+    private var engineTone: Color {
+        switch model.engine.state {
+        case .running: .green
+        case .starting: .orange
+        case .failed: .red
+        case .stopped: .secondary
+        }
     }
 
     // MARK: detail

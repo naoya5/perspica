@@ -101,6 +101,15 @@ public enum LanguageCatalog {
         return byCode[code]?.japaneseName ?? code
     }
 
+    /// The two-letter code a row or a badge shows for a language (M7 5, 6):
+    /// `en` → `EN`, `zh-hans` → `ZH`. `nil` (or empty) is 「自動」, the same word
+    /// the source slot uses.
+    public static func shortCode(for code: String?) -> String {
+        guard let code, !code.isEmpty else { return automaticName }
+        let base = code.split(separator: "-").first.map(String.init) ?? code
+        return base.uppercased()
+    }
+
     public static var frequent: [Language] {
         frequentCodes.compactMap { byCode[$0] }
     }

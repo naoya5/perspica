@@ -9,25 +9,19 @@ struct ManagerModelsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    ManagerSectionLabel(text: "モデル")
-                    Spacer()
-                    if let note = model.modelNote {
-                        Text(note)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: Design.Space.l) {
+                DesignSection("モデル", note: model.modelNote) {
+                    VStack(alignment: .leading, spacing: Design.Space.l) {
+                        ForEach(ModelCatalog.models) { entry in
+                            card(entry)
+                        }
                     }
-                }
-
-                ForEach(ModelCatalog.models) { entry in
-                    card(entry)
                 }
 
                 existingFileCard
                 engineCard
             }
-            .padding(20)
+            .padding(Design.pagePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationTitle("モデル")
@@ -50,25 +44,21 @@ struct ManagerModelsView: View {
             && ModelCatalog.models.first?.id == entry.id
             && ModelStore.isUsingDevelopmentFile
 
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        return VStack(alignment: .leading, spacing: Design.Space.m) {
+            HStack(alignment: .firstTextBaseline, spacing: Design.Space.s) {
                 Text(entry.displayName)
                     .font(.system(size: 14, weight: .semibold))
                 if selected {
-                    Text("使用中")
-                        .font(.system(size: 10, weight: .semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.16), in: .capsule)
+                    DesignBadge(text: "使用中", systemImage: "checkmark.circle.fill", tone: .accent)
                 }
-                Spacer()
-                Text(stateText(entry, installed: installed, downloading: downloading,
-                               development: development))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                Spacer(minLength: Design.Space.s)
+                // M7 8: one badge shape for every state, so 使用中 / 未取得 /
+                // 取得中 read as the same kind of thing.
+                stateBadge(entry, installed: installed, downloading: downloading,
+                           development: development)
             }
 
-            HStack(spacing: 16) {
+            HStack(spacing: Design.Space.l) {
                 detail("大きさ", entry.sizeInGigabytes)
                 detail("必要なメモリ", entry.memoryHint)
                 detail("速さ", entry.speedHint)
@@ -77,7 +67,7 @@ struct ManagerModelsView: View {
 
             if downloading {
                 let state = model.downloader.state
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Design.Space.xs) {
                     ProgressView(value: state.progress)
                     HStack {
                         Text(state.progressText)
@@ -86,31 +76,31 @@ struct ManagerModelsView: View {
                         Button("取り消す") { model.cancelDownload() }
                             .controlSize(.small)
                     }
-                    .font(.system(size: 11))
+                    .font(.system(size: Design.Font.caption))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                 }
             } else if let message = downloadMessage(entry) {
                 Text(message)
-                    .font(.system(size: 11))
+                    .font(.system(size: Design.Font.caption))
                     .foregroundStyle(.secondary)
             }
 
             if let note = entry.memoryNote {
                 Text(note)
-                    .font(.system(size: 11))
+                    .font(.system(size: Design.Font.caption))
                     .foregroundStyle(.secondary)
             }
 
             if development {
                 Text("この Mac では M0 で用意した開発用のファイルを使っています。"
                      + "「取得する」で正規のファイルを取得すると、そちらに差し替わります。")
-                    .font(.system(size: 11))
+                    .font(.system(size: Design.Font.caption))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: Design.Space.s) {
                 if !installed {
                     Button("取得する") { model.requestDownload(entry) }
                         .disabled(model.downloader.state.isActive)
@@ -119,16 +109,14 @@ struct ManagerModelsView: View {
                         .disabled(selected)
                     Button("削除", role: .destructive) { model.deleteModel(entry) }
                 }
-                Spacer()
+                Spacer(minLength: Design.Space.s)
                 Text(entry.repository)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .textSelection(.enabled)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 12, style: .continuous))
+        .designCard()
     }
 
     private func detail(_ title: String, _ value: String) -> some View {
@@ -137,19 +125,33 @@ struct ManagerModelsView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
             Text(value)
-                .font(.system(size: 12))
+                .font(.system(size: Design.Font.label))
                 .monospacedDigit()
         }
     }
 
-    private func stateText(_ entry: TranslationModel, installed: Bool, downloading: Bool,
-                           development: Bool = false) -> String {
-        if downloading { return "取得中" }
-        if installed { return "取得済み" }
-        if development { return "開発用のファイルを使用中" }
+    /// The one badge every state goes through (M7 8). The wording is the same
+    /// as before; 取得中 gains the percentage the brief asks for.
+    private func stateBadge(_ entry: TranslationModel, installed: Bool, downloading: Bool,
+                            development: Bool = false) -> DesignBadge {
+        if downloading {
+            let percent = Int((model.downloader.state.progress * 100).rounded())
+            return DesignBadge(text: "取得中 \(percent)%",
+                               systemImage: "arrow.down.circle", tone: .accent)
+        }
+        if installed {
+            return DesignBadge(text: "取得済み", systemImage: "checkmark.circle", tone: .success)
+        }
+        if development {
+            return DesignBadge(text: "開発用のファイルを使用中",
+                               systemImage: "hammer", tone: .warning)
+        }
         let partial = model.partialBytes(entry)
-        if partial > 0 { return "途中まで（\(ByteCount.format(partial))）" }
-        return "未取得"
+        if partial > 0 {
+            return DesignBadge(text: "途中まで（\(ByteCount.format(partial))）",
+                               systemImage: "pause.circle", tone: .warning)
+        }
+        return DesignBadge(text: "未取得", systemImage: "circle.dashed", tone: .neutral)
     }
 
     private func downloadMessage(_ entry: TranslationModel) -> String? {
@@ -170,16 +172,16 @@ struct ManagerModelsView: View {
     // MARK: existing file and engine
 
     private var existingFileCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Design.Space.s) {
             Text("既存のファイルを使う")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: Design.Font.body, weight: .semibold))
             Text(AppSettings.shared.customModelPath.isEmpty
                  ? "手元の GGUF を選んで使えます。"
                  : "いま: \(AppSettings.shared.customModelPath)")
-                .font(.system(size: 11))
+                .font(.system(size: Design.Font.caption))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
-            HStack(spacing: 8) {
+            HStack(spacing: Design.Space.s) {
                 Button("ファイルを選ぶ…") { chooseFile() }
                 if !AppSettings.shared.customModelPath.isEmpty {
                     Button("既定に戻す") {
@@ -190,21 +192,19 @@ struct ManagerModelsView: View {
                 }
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 12, style: .continuous))
+        .designCard()
     }
 
     private var engineCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Design.Space.s) {
             Text("エンジン")
-                .font(.system(size: 13, weight: .semibold))
-            HStack(spacing: 16) {
+                .font(.system(size: Design.Font.body, weight: .semibold))
+            HStack(spacing: Design.Space.l) {
                 detail("状態", model.engineStatusText)
                 detail("待ち受け", model.engineMemoryText)
                 detail("止めるまで", idleText)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: Design.Space.s) {
                 Button("起動し直す") {
                     Task { await model.engine.restart() }
                 }
@@ -214,9 +214,7 @@ struct ManagerModelsView: View {
                 .disabled(!model.engine.isRunning)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 12, style: .continuous))
+        .designCard()
     }
 
     private var idleText: String {
@@ -244,27 +242,27 @@ private struct LicenseSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Design.Space.m) {
             Text("PLaMo Community License")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: Design.Font.sectionTitle, weight: .semibold))
             Text("\(entry.displayName) を取得する前に、ライセンスを確認してください。")
-                .font(.system(size: 12))
+                .font(.system(size: Design.Font.label))
                 .foregroundStyle(.secondary)
 
             ScrollView {
                 Text(licenseText)
-                    .font(.system(size: 11))
+                    .font(.system(size: Design.Font.caption))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(height: 260)
-            .padding(8)
-            .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 8, style: .continuous))
+            .padding(Design.Space.s)
+            .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: Design.Radius.field, style: .continuous))
 
             HStack {
                 Link("ライセンスの全文を開く",
                      destination: URL(string: "https://plamo.preferredai.jp/info/plamo-community-license-en")!)
-                    .font(.system(size: 11))
+                    .font(.system(size: Design.Font.caption))
                 Spacer()
                 Button("やめる") {
                     model.licenseModel = nil
@@ -278,7 +276,7 @@ private struct LicenseSheet: View {
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
+        .padding(Design.pagePadding)
         .frame(width: 560)
     }
 

@@ -383,7 +383,8 @@ final class PDFQueue {
         stage: String,
         fileName: String = "attention.pdf",
         pageCount: Int = 15,
-        seconds: Double = 96.4
+        seconds: Double = 96.4,
+        errorMessage: String = "PDF を訳せませんでした"
     ) -> PDFJob {
         let job = PDFJob(
             inputBookmark: Data(),
@@ -393,7 +394,7 @@ final class PDFQueue {
             state: state,
             pageCount: pageCount,
             seconds: state == .done ? seconds : 0,
-            errorMessage: state == .failed ? "PDF を訳せませんでした" : "",
+            errorMessage: state == .failed ? errorMessage : "",
             progress: progress,
             stage: stage
         )

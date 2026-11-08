@@ -17,8 +17,13 @@ struct ManagerTranslateView: View {
     private static let translationLineSpacing: CGFloat = translationFontSize * 0.5
 
     var body: some View {
-        HSplitView {
+        // Two equal panes. Not HSplitView: inside NavigationSplitView it
+        // ignored the floating sidebar's inset, squeezed the sidebar and pushed
+        // the translation pane about 15 pt past the window's right edge
+        // (M7 review).
+        HStack(spacing: 0) {
             sourcePane
+            Divider()
             translationPane
         }
         .navigationTitle("翻訳")
@@ -34,65 +39,83 @@ struct ManagerTranslateView: View {
     // MARK: source
 
     private var sourcePane: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ManagerSectionLabel(text: "原文")
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $coordinator.manager.sourceText)
-                    .font(.system(size: 15))
-                    .scrollContentBackground(.hidden)
-                    // M5 (SPEC 15): an empty scrollbar track was showing down
-                    // the right edge of the source field.
-                    .scrollIndicators(.hidden)
-                    .onChange(of: coordinator.manager.sourceText) { _, _ in
-                        coordinator.managerTextChanged()
-                    }
-                if coordinator.manager.sourceText.isEmpty {
-                    Text("訳したい文を入力")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 1)
-                        .padding(.leading, 5)
-                        .allowsHitTesting(false)
-                }
-            }
-            HStack(spacing: 8) {
-                Text("⌘↩ で訳す")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                Spacer()
+        VStack(alignment: .leading, spacing: Design.Space.s) {
+            HStack(spacing: Design.Space.s) {
+                ManagerSectionLabel(text: "原文")
+                Spacer(minLength: 0)
                 if let language = coordinator.manager.sourceLanguage {
                     Text("\(LanguageCatalog.name(for: language)) \(coordinator.manager.sourceText.count) 字")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: Design.Font.caption))
+                        .foregroundStyle(.tertiary)
                         .monospacedDigit()
                 }
             }
+            // M7 5: the input is a card of its own, so 原文 and 訳文 read as two
+            // faces of the same tool rather than one white sheet.
+            //
+            // A vertical TextField, the same control the panel's source field
+            // uses (M1): TextEditor keeps an empty scrollbar track down its
+            // right edge even with .scrollIndicators(.hidden) (M0/M2, still
+            // visible in the M7 shots); the field does not.
+            TextField("訳したい文を入力", text: $coordinator.manager.sourceText, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15))
+                .lineLimit(4...)
+                .onChange(of: coordinator.manager.sourceText) { _, _ in
+                    coordinator.managerTextChanged()
+                }
+                .accessibilityLabel("訳したい文")
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .designCard(padding: Design.Space.m)
+                .frame(maxHeight: .infinity)
+
+            Text("⌘↩ で訳す")
+                .font(.system(size: Design.Font.caption))
+                .foregroundStyle(.tertiary)
         }
-        .padding(16)
-        .frame(minWidth: 300, idealWidth: 420)
+        .padding(Design.pagePadding)
+        .frame(minWidth: 300, maxWidth: .infinity)
     }
 
     // MARK: translation
 
     private var translationPane: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
+        VStack(alignment: .leading, spacing: Design.Space.s) {
+            HStack(spacing: Design.Space.s) {
                 ManagerSectionLabel(text: "訳文")
-                Spacer()
-                if let elapsed = coordinator.manager.elapsed {
-                    Text(String(format: "%.2f 秒 · %@ · この Mac の中で処理",
-                                elapsed, coordinator.modelDisplayName))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                }
+                // The direction of the pair, in the header where it is read
+                // first (M7 5).
+                DesignLanguageDirection(
+                    source: coordinator.manager.sourceLanguage,
+                    target: coordinator.manager.targetLanguage
+                )
+                Spacer(minLength: Design.Space.s)
                 copyButton
             }
             translationBody
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .designCard(padding: Design.Space.m)
+
+            // Under the card, opposite the source pane's "⌘↩ で訳す": in the
+            // header it pushed the copy button off the edge and wrapped onto
+            // two lines at the default width (M7 review).
+            Text(elapsedSummary)
+                .font(.system(size: Design.Font.caption))
+                .foregroundStyle(.tertiary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .contentTransition(.numericText())
         }
-        .padding(16)
-        .frame(minWidth: 300)
+        .padding(Design.pagePadding)
+        .frame(minWidth: 300, maxWidth: .infinity)
+    }
+
+    /// Always one line of text, so the card keeps the same height before and
+    /// after the first translation.
+    private var elapsedSummary: String {
+        guard let elapsed = coordinator.manager.elapsed else { return "この Mac の中で処理" }
+        return String(format: "%.2f 秒 · %@ · この Mac の中で処理", elapsed, coordinator.modelDisplayName)
     }
 
     @ViewBuilder
@@ -149,6 +172,8 @@ struct ManagerTranslateView: View {
     }
 
     private var copyButton: some View {
+        // M7 5: 訳す is the one prominent action; the copy is a quiet, labelled
+        // secondary button, so the two are never mistaken for each other.
         Button {
             model.copy(coordinator.manager.translation)
             withAnimation(.snappy(duration: 0.25)) { copied = true }
@@ -157,10 +182,13 @@ struct ManagerTranslateView: View {
                 withAnimation(.snappy(duration: 0.25)) { copied = false }
             }
         } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+            Label(copied ? "コピーしました" : "コピー",
+                  systemImage: copied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: Design.Font.caption))
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
+        .controlSize(.small)
         .disabled(coordinator.manager.translation.isEmpty)
         .help("訳文をコピー")
         .accessibilityLabel("訳文をコピー")

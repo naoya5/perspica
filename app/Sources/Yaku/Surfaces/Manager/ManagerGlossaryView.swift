@@ -45,9 +45,9 @@ struct ManagerGlossaryView: View {
             Text("原語").frame(maxWidth: .infinity, alignment: .leading)
             Text("訳語").frame(maxWidth: .infinity, alignment: .leading)
         }
-        .font(.system(size: 11, weight: .semibold))
+        .font(.system(size: Design.Font.caption, weight: .semibold))
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Design.Space.l)
         .padding(.vertical, 6)
     }
 
@@ -69,11 +69,11 @@ struct ManagerGlossaryView: View {
             Spacer()
 
             Text("有効な項目のうち原文に現れるものが訳に渡されます。")
-                .font(.system(size: 11))
+                .font(.system(size: Design.Font.caption))
                 .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Design.Space.l)
+        .padding(.vertical, Design.Space.m)
     }
 
     // MARK: table
@@ -89,7 +89,7 @@ struct ManagerGlossaryView: View {
             }
         }
         .listStyle(.inset)
-        .environment(\.defaultMinListRowHeight, 26)
+        .environment(\.defaultMinListRowHeight, Design.rowMinHeight)
     }
 
     private func row(_ entry: GlossaryEntry) -> some View {
@@ -128,20 +128,27 @@ struct ManagerGlossaryView: View {
                 model.deleteGlossary(model.selectedEntries())
             } label: {
                 Label("削除", systemImage: "minus")
+                    .labelStyle(.titleAndIcon)
             }
             .disabled(model.selectedGlossary.isEmpty)
 
+            // M7 7: the two arrows looked alike. Each now carries the word it
+            // does, so 読み込む and 書き出す cannot be mixed up.
             Button {
                 importCSV()
             } label: {
-                Label("CSV を読み込む", systemImage: "square.and.arrow.down")
+                Label("読み込む", systemImage: "square.and.arrow.down")
+                    .labelStyle(.titleAndIcon)
             }
+            .help("用語集の CSV を読み込む")
 
             Button {
                 exportCSV()
             } label: {
-                Label("CSV を書き出す", systemImage: "square.and.arrow.up")
+                Label("書き出す", systemImage: "square.and.arrow.up")
+                    .labelStyle(.titleAndIcon)
             }
+            .help("用語集を CSV に書き出す")
         }
     }
 

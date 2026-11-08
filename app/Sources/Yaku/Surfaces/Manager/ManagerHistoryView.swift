@@ -9,9 +9,14 @@ struct ManagerHistoryView: View {
     @Bindable var state: ManagerState
 
     var body: some View {
-        HSplitView {
+        // Not HSplitView: inside NavigationSplitView it ignored the floating
+        // sidebar's inset, squeezed the sidebar and pushed the detail about
+        // 15 pt past the window's right edge (M7 review).
+        HStack(spacing: 0) {
             list
+            Divider()
             detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle("履歴")
         .toolbar {
@@ -73,29 +78,32 @@ struct ManagerHistoryView: View {
                 }
             }
         }
-        .frame(minWidth: 280, idealWidth: 320)
+        .frame(width: 320)
     }
 
     private func row(_ item: HistoryItem) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: Design.Space.s) {
                 Image(systemName: originSymbol(item.origin))
                     .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                Text(item.date, format: .dateTime.year().month().day().hour().minute())
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
+                // M7 6: the direction of the pair, then how long ago.
+                DesignLanguageDirection(source: item.sourceLanguage, target: item.targetLanguage)
+                Spacer(minLength: Design.Space.xs)
+                Text(RelativeTime.text(for: item.date))
+                    .font(.system(size: Design.Font.caption))
+                    .foregroundStyle(.tertiary)
                     .monospacedDigit()
             }
             Text(item.source.replacingOccurrences(of: "\n", with: " "))
-                .font(.system(size: 12))
+                .font(.system(size: Design.Font.body))
                 .lineLimit(1)
             Text(item.target.replacingOccurrences(of: "\n", with: " "))
-                .font(.system(size: 12))
+                .font(.system(size: Design.Font.body))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
     }
 
     private func originSymbol(_ origin: String) -> String {
@@ -112,23 +120,30 @@ struct ManagerHistoryView: View {
     private var detail: some View {
         if let item = model.selectedHistory {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: Design.Space.l) {
+                    HStack(spacing: Design.Space.s) {
+                        DesignLanguageDirection(source: item.sourceLanguage, target: item.targetLanguage)
+                        Spacer(minLength: Design.Space.s)
+                        Text(item.date, format: .dateTime.year().month().day().hour().minute())
+                            .font(.system(size: Design.Font.caption))
+                            .foregroundStyle(.tertiary)
+                            .monospacedDigit()
+                    }
                     field("原文", item.source, language: item.sourceLanguage)
                     field("訳文", item.target, language: item.targetLanguage)
-                    HStack(spacing: 8) {
+                    HStack(spacing: Design.Space.s) {
                         Button("訳文をコピー") { model.copy(item.target) }
                         Button("原文をコピー") { model.copy(item.source) }
-                        Spacer()
-                        Text(String(format: "%@ → %@ · %@ · %.2f 秒",
-                                    LanguageCatalog.name(for: item.sourceLanguage),
-                                    LanguageCatalog.name(for: item.targetLanguage),
+                        Spacer(minLength: Design.Space.s)
+                        Text(String(format: "%@ · %.2f 秒",
                                     item.frontApp.isEmpty ? "—" : item.frontApp,
                                     item.seconds))
-                            .font(.system(size: 11))
+                            .font(.system(size: Design.Font.caption))
                             .foregroundStyle(.tertiary)
+                            .monospacedDigit()
                     }
                 }
-                .padding(20)
+                .padding(Design.pagePadding)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(minWidth: 320)
@@ -143,18 +158,19 @@ struct ManagerHistoryView: View {
     }
 
     private func field(_ title: String, _ text: String, language: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
+        VStack(alignment: .leading, spacing: Design.Space.s) {
+            HStack(spacing: Design.Space.s) {
                 ManagerSectionLabel(text: title)
                 Text(LanguageCatalog.name(for: language))
-                    .font(.system(size: 11))
+                    .font(.system(size: Design.Font.caption))
                     .foregroundStyle(.tertiary)
             }
             Text(text)
-                .font(.system(size: title == "訳文" ? 17 : 14))
+                .font(.system(size: title == "訳文" ? Design.Font.translation : 14))
                 .lineSpacing(title == "訳文" ? 8.5 : 4)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .designCard(padding: Design.Space.m)
         }
     }
 }

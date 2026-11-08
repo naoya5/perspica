@@ -38,6 +38,20 @@ struct LanguageCatalogTests {
         #expect(LanguageCatalog.name(for: "xx") == "xx")
     }
 
+    @Test("the short code a row or a badge shows")
+    func shortCodes() {
+        #expect(LanguageCatalog.shortCode(for: "en") == "EN")
+        #expect(LanguageCatalog.shortCode(for: "ja") == "JA")
+        // A region or script suffix is dropped, so zh-hans and zh-hant both
+        // read as ZH in the narrow direction chip.
+        #expect(LanguageCatalog.shortCode(for: "zh-hans") == "ZH")
+        #expect(LanguageCatalog.shortCode(for: "zh-hant") == "ZH")
+        #expect(LanguageCatalog.shortCode(for: nil) == "自動")
+        #expect(LanguageCatalog.shortCode(for: "") == "自動")
+        // A code that is not one of the 53 still shows something.
+        #expect(LanguageCatalog.shortCode(for: "xx") == "XX")
+    }
+
     @Test("recogniser identifiers are normalised")
     func normalisation() {
         #expect(LanguageCatalog.normalizedCode("en") == "en")

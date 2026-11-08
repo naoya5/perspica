@@ -4,12 +4,21 @@ import YakuCore
 /// The settings window (SPEC 4.4). A `Settings` scene with one tab per row of
 /// the specification's table; the PDF and overlay tabs show the M3 / M4 items
 /// but leave them inert.
+///
+/// M7: every tab is built the same way (a section heading, the card, the
+/// explanation as the section's footer), and the window is only as tall as the
+/// tab it is showing, so a short tab does not leave half a window empty.
 struct SettingsRootView: View {
     @Bindable var settings: AppSettings
     @Bindable var model: ManagerModel
     @Bindable var coordinator: TranslationCoordinator
     @Bindable var pdf: PDFQueue
     @Bindable var state: SettingsState
+
+    @State private var contentHeight: CGFloat = 0
+
+    /// SPEC 4.4: the width is fixed; M7 changes only the height.
+    private static let width: CGFloat = 560
 
     var body: some View {
         TabView(selection: $state.tab) {
@@ -32,7 +41,17 @@ struct SettingsRootView: View {
                 .tabItem { Label(SettingsTab.privacy.title, systemImage: SettingsTab.privacy.systemImage) }
                 .tag(SettingsTab.privacy)
         }
-        .frame(width: 560)
+        .frame(width: Self.width)
+        // A `Form` in the grouped style has an intrinsic height, so the tab
+        // view does too; `fixedSize` makes the view that height instead of
+        // stretching to the window. The height is then handed to the window.
+        .fixedSize(horizontal: false, vertical: true)
+        .measureContentHeight()
+        .onPreferenceChange(ContentHeightKey.self) { height in
+            guard height > 0 else { return }
+            contentHeight = height
+        }
+        .background(SettingsWindowSizer(contentHeight: contentHeight, width: Self.width))
         // The settings window is a hand-opened window like the manager, so it
         // needs the same treatment: an accessory app's window does not come to
         // the front on its own.
@@ -69,12 +88,13 @@ private struct GeneralSettingsTab: View {
                     }
                 if launchAtLoginFailed {
                     Text("登録できませんでした。~/Applications に置いた Yaku.app で試してください。")
-                        .font(.system(size: 11))
+                        .font(.system(size: Design.Font.caption))
                         .foregroundStyle(.red)
                 }
+            } header: {
+                Text("起動")
+            } footer: {
                 Text("システム設定の「ログイン項目」に「Yaku」として出ます。いまの状態: \(LoginItem.statusText)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
 
             Section {
@@ -92,17 +112,19 @@ private struct GeneralSettingsTab: View {
                     Text("です・ます").tag(TranslationForm.polite)
                 }
                 .pickerStyle(.segmented)
+            } header: {
+                Text("翻訳")
+            } footer: {
                 Text("文体は目的の言語が日本語のときだけ使われます。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
 
             Section {
                 Toggle("入力後に自動で訳す", isOn: $settings.autoTranslate)
                 Toggle("ノッチを使う", isOn: $settings.useNotch)
+            } header: {
+                Text("動作")
+            } footer: {
                 Text("ノッチは PDF のドロップ先と進み具合に使います。ノッチのある画面でだけ出ます。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -128,21 +150,31 @@ private struct ShortcutSettingsTab: View {
                         conflicted: conflicts.contains(binding.id)
                     )
                 }
+            } header: {
+                Text("キー")
+            } footer: {
+                Text("欄を押してからキーを押すと登録できます。どれもどこでも効きます。")
             }
+
             if !conflicts.isEmpty {
                 Section {
-                    HStack(alignment: .top, spacing: 8) {
+                    HStack(alignment: .top, spacing: Design.Space.s) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
                         Text("同じキーが重なっています。どちらかを変えてください。")
-                            .font(.system(size: 12))
+                            .font(.system(size: Design.Font.label))
                     }
+                } header: {
+                    Text("重なり")
                 }
             }
+
             Section {
                 Text("パネルの中では ⌘↩（訳す）、⌘⇧C（コピー）、⌘D（入れ替え）、⌘O（PDF）、⌘P（ピン）、⌘N（管理画面）が使えます。")
-                    .font(.system(size: 11))
+                    .font(.system(size: Design.Font.caption))
                     .foregroundStyle(.secondary)
+            } header: {
+                Text("パネルの中")
             }
         }
         .formStyle(.grouped)
@@ -177,9 +209,10 @@ private struct EngineSettingsTab: View {
                     settings.customModelPath = ""
                     Task { await model.engine.restart() }
                 }
+            } header: {
+                Text("モデル")
+            } footer: {
                 Text("変えるとエンジンを起動し直します。ファイルは「モデル」の画面で取得できます。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
 
             Section {
@@ -192,16 +225,22 @@ private struct EngineSettingsTab: View {
                 .onChange(of: settings.engineIdleMinutes) { _, new in
                     model.engine.configure(idleSeconds: new <= 0 ? 0 : Double(new) * 60)
                 }
+            } header: {
+                Text("停止")
+            } footer: {
+                Text("PDF の処理中は止まりません。")
             }
 
             Section {
                 LabeledContent("状態", value: model.engineStatusText)
                 LabeledContent("待ち受け", value: model.engineMemoryText)
-                HStack {
+                HStack(spacing: Design.Space.s) {
                     Button("起動し直す") { Task { await model.engine.restart() } }
                     Button("止める") { Task { await model.engine.stop() } }
                         .disabled(!model.engine.isRunning)
                 }
+            } header: {
+                Text("状態")
             }
         }
         .formStyle(.grouped)
@@ -221,18 +260,18 @@ private struct PDFSettingsTab: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("PDF ワーカー", value: workerStateText)
+                LabeledContent("状態", value: workerStateText)
                 if pdf.installer.phase == .running {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: Design.Space.xs) {
                         ProgressView(value: pdf.installer.progress)
                         Text(pdf.installer.message)
-                            .font(.system(size: 11))
+                            .font(.system(size: Design.Font.caption))
                             .foregroundStyle(.secondary)
                         Button("取り消す") { pdf.installer.cancel() }
                             .controlSize(.small)
                     }
                 } else {
-                    HStack {
+                    HStack(spacing: Design.Space.s) {
                         Button("導入する") { Task { await pdf.installer.install() } }
                             .disabled(PDFWorkerPaths.isInstalled || pdf.installer.phase == .running)
                         Button("削除", role: .destructive) { PDFWorkerPaths.removeInstallation() }
@@ -240,13 +279,14 @@ private struct PDFSettingsTab: View {
                     }
                     if case .failed(let message) = pdf.installer.phase {
                         Text(message)
-                            .font(.system(size: 11))
+                            .font(.system(size: Design.Font.caption))
                             .foregroundStyle(.red)
                     }
-                    Text("PDF の翻訳には追加の部品（約 \(PDFWorkerInstaller.estimatedSizeText)、取得に数分）が必要です。")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
                 }
+            } header: {
+                Text("PDF ワーカー")
+            } footer: {
+                Text("PDF の翻訳には追加の部品（約 \(PDFWorkerInstaller.estimatedSizeText)、取得に数分）が必要です。")
             }
 
             Section {
@@ -255,29 +295,31 @@ private struct PDFSettingsTab: View {
                     Text("選んだフォルダ").tag(false)
                 }
                 if !settings.pdfOutputSameFolder {
-                    HStack {
+                    HStack(spacing: Design.Space.s) {
                         Text(outputFolderText)
-                            .font(.system(size: 12))
+                            .font(.system(size: Design.Font.label))
                             .foregroundStyle(settings.pdfOutputFolder.isEmpty ? .secondary : .primary)
                             .lineLimit(1)
                             .truncationMode(.middle)
-                        Spacer()
+                        Spacer(minLength: Design.Space.s)
                         Button("選ぶ…") { chooseOutputFolder() }
                             .controlSize(.small)
                     }
                 }
                 Toggle("完了したら開く", isOn: $settings.pdfOpenWhenDone)
                 Toggle("対訳版も作る", isOn: $settings.pdfMakeDual)
+            } header: {
+                Text("出力")
             }
 
             Section {
-                HStack {
+                HStack(spacing: Design.Space.s) {
                     Text(pythonPathText)
-                        .font(.system(size: 12))
+                        .font(.system(size: Design.Font.label))
                         .foregroundStyle(settings.pdfPythonPath.isEmpty ? .secondary : .primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Spacer()
+                    Spacer(minLength: Design.Space.s)
                     Button("選ぶ…") { choosePython() }
                         .controlSize(.small)
                     if !settings.pdfPythonPath.isEmpty {
@@ -285,9 +327,10 @@ private struct PDFSettingsTab: View {
                             .controlSize(.small)
                     }
                 }
-                Text("開発用: lab の .venv/bin/python を選ぶと、そちらで PDF を訳します。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+            } header: {
+                Text("開発用")
+            } footer: {
+                Text("lab の .venv/bin/python を選ぶと、そちらで PDF を訳します。")
             }
         }
         .formStyle(.grouped)
@@ -369,24 +412,33 @@ private struct OverlaySettingsTab: View {
                         }
                     }
                 }
-                LabeledContent("重ねる文字の最小の大きさ") {
-                    HStack {
-                        Slider(value: $settings.overlayMinScale, in: 0.5...1.0, step: 0.05) {
-                            Text("最小の大きさ")
-                        }
-                        .frame(width: 180)
-                        Text("元の \(Int((settings.overlayMinScale * 100).rounded()))%")
-                            .font(.system(size: 12))
-                            .monospacedDigit()
-                    }
-                }
+            } header: {
+                Text("読み取り")
+            } footer: {
+                Text("「自動」にすると、画面の文字から言語を判定します。")
             }
 
             Section {
-                Text("読み取る言語を「自動」にすると、画面の文字から言語を判定します。"
-                    + "訳は元の文字の位置に重ねて出ます。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                // M7: the value sits with the label on the top line, and the
+                // slider gets the full width under it, instead of the value
+                // being wedged beside a short slider.
+                HStack {
+                    Text("重ねる文字の最小の大きさ")
+                    Spacer(minLength: Design.Space.s)
+                    Text("元の \(Int((settings.overlayMinScale * 100).rounded()))%")
+                        .font(.system(size: Design.Font.label))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                }
+                Slider(value: $settings.overlayMinScale, in: 0.5...1.0, step: 0.05) {
+                    Text("重ねる文字の最小の大きさ")
+                }
+                .labelsHidden()
+            } header: {
+                Text("重ねる文字")
+            } footer: {
+                Text("訳は元の文字の位置に重ねて出ます。小さすぎる文字は訳しません。")
             }
         }
         .formStyle(.grouped)
@@ -414,10 +466,14 @@ private struct PrivacySettingsTab: View {
                     Text("ずっと").tag(0)
                 }
                 .disabled(!settings.keepHistory)
+            } header: {
+                Text("履歴")
+            } footer: {
+                Text("期間を過ぎた履歴は起動時に消します。")
             }
 
             Section {
-                HStack {
+                HStack(spacing: Design.Space.s) {
                     Button("履歴とキャッシュを消す", role: .destructive) {
                         model.store.deleteAllHistory()
                         model.store.deleteAllCache()
@@ -428,13 +484,14 @@ private struct PrivacySettingsTab: View {
                     }
                     if cleared {
                         Text("消しました")
-                            .font(.system(size: 11))
+                            .font(.system(size: Design.Font.caption))
                             .foregroundStyle(.secondary)
                     }
                 }
+            } header: {
+                Text("消去")
+            } footer: {
                 Text("訳した文はこの Mac の外に出ません。ネットワークを使うのはモデルの取得だけです。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

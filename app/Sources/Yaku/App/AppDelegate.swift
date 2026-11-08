@@ -810,6 +810,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch demo.state {
         case "done":
             pdfQueue.applyDemoJob(state: .done, progress: 1, stage: "Save PDF")
+            // A failed row as well, with a long worker error, so the one-line
+            // row and its 詳細 popover can be photographed (M7 9).
+            pdfQueue.applyDemoJob(
+                state: .failed, progress: 0.31, stage: "Translate Paragraphs",
+                fileName: "manual.pdf", pageCount: 42,
+                errorMessage: "PDF を訳せませんでした: ModuleNotFoundError: "
+                    + "No module named 'babeldoc'（設定の「PDF」からワーカーを入れ直してください）"
+            )
         case "pdf-running", "running":
             pdfQueue.applyDemoJob(state: .running, progress: 0.42, stage: "Translate Paragraphs")
         case "failed":
