@@ -30,6 +30,9 @@ final class OverlayTranslator {
     private var activeWorkers = 0
     private var generation = 0
     private(set) var isRunning = false
+    /// Blocks of this run left untranslated on purpose: code, or a translation
+    /// that only repeated the source. The original stays visible for those.
+    private(set) var skippedCount = 0
 
     /// The blocks this run is working through, in reading order, with the index
     /// each one has in the overlay's model. A second reading pass can add to it
@@ -66,11 +69,15 @@ final class OverlayTranslator {
         runStarted = CFAbsoluteTimeGetCurrent()
         isRunning = true
         activeWorkers = 0
+        skippedCount = 0
 
         let settings = AppSettings.shared
-        let texts = blocks.map(\.text)
+        let allTexts = blocks.map(\.text)
+        let prose = allTexts.filter { !CodeLikeText.isCodeLike($0) }
+        let texts = prose.isEmpty ? allTexts : prose
         // The target language follows the screen as a whole, so one short block
-        // cannot be read as a different language (SPEC 5.1).
+        // cannot be read as a different language (SPEC 5.1). Code is left out:
+        // a page of English prose with Python in it was read as Dutch.
         sourceLanguage = LanguageDetector.detect(texts.joined(separator: " ")).code
         target = LanguageDetector.defaultTarget(forSource: sourceLanguage)
         form = target == "ja" ? settings.defaultForm : nil
@@ -181,6 +188,11 @@ final class OverlayTranslator {
     ) async -> String? {
         let text = block.text
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        if CodeLikeText.isCodeLike(text) {
+            skippedCount += 1
+            AppLog.write("overlay: block \(index) left as is (code or symbols)")
+            return nil
+        }
         let blockStarted = CFAbsoluteTimeGetCurrent()
 
         let cacheKey = CacheKey.key(
@@ -194,6 +206,10 @@ final class OverlayTranslator {
         )
         if let hit = store.cached(key: cacheKey) {
             AppLog.write("overlay: block \(index) cache=hit")
+            if CodeLikeText.isUnchanged(source: text, translation: hit) {
+                skippedCount += 1
+                return nil
+            }
             record(text: text, translation: hit, sourceLanguage: sourceLanguage, target: target,
                    form: form, seconds: CFAbsoluteTimeGetCurrent() - blockStarted)
             return hit
@@ -243,6 +259,11 @@ final class OverlayTranslator {
 
         let joined = TextChunker.join(finished, chunks: chunks)
         guard !joined.isEmpty else { return nil }
+        if CodeLikeText.isUnchanged(source: text, translation: joined) {
+            skippedCount += 1
+            AppLog.write("overlay: block \(index) left as is (the translation repeated the source)")
+            return nil
+        }
         if chunks.count == 1 { store.store(key: cacheKey, target: joined) }
         record(text: text, translation: joined, sourceLanguage: sourceLanguage, target: target,
                form: form, seconds: CFAbsoluteTimeGetCurrent() - blockStarted)

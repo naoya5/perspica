@@ -100,7 +100,7 @@ final class HUDController {
         noticeTask?.cancel()
         noticeTask = nil
         self.capture = capture
-        self.anchor = anchor ?? capture.bounds
+        self.anchor = anchor ?? capture.bounds ?? mouseAnchor()
         model.notice = nil
         model.canReplace = capture.canReplace
         present()

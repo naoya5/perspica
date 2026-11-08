@@ -45,6 +45,13 @@ final class OverlayController {
             guard let self, completed else { return }
             // Nothing came back at all: say so rather than leaving the band on a
             // blank screen (SPEC 13 の文言に合わせる).
+            if self.model.translatedCount == 0, self.translator.skippedCount > 0 {
+                self.model.blocks = []
+                self.model.hitRects = []
+                self.model.phase = .empty
+                AppLog.write("overlay: every block was code or already in the target language")
+                return
+            }
             if self.model.translatedCount == 0 {
                 self.model.blocks = []
                 self.model.hitRects = []

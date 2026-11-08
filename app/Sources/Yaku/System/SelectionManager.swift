@@ -41,9 +41,10 @@ enum SelectionReader {
         let windowTitle = focusedWindowTitle(for: focused)
 
         if let text = selectedText(of: focused), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let bounds = selectedBounds(of: focused)
+            let (bounds, boundsSource) = selectionAnchor(of: focused)
             let context = contextText(of: focused, frontApp: frontApp, windowTitle: windowTitle)
-            AppLog.write("selection: accessibility read \(text.count) chars bounds=\(String(describing: bounds))")
+            AppLog.write("selection: accessibility read \(text.count) chars "
+                + "bounds=\(String(describing: bounds)) from=\(boundsSource)")
             return SelectionCapture(
                 text: text,
                 element: focused,
@@ -139,6 +140,53 @@ enum SelectionReader {
         var rect = CGRect.zero
         guard AXValueGetValue((value as! AXValue), .cgRect, &rect) else { return nil }
         return rect.isEmpty ? nil : rect
+    }
+
+    /// Where the HUD goes (SPEC 4.3): the selection's own rectangle when the
+    /// app reports one. Safari and other WebKit views answer the text-marker
+    /// attributes instead of `kAXBoundsForRange`; when neither works the mouse
+    /// is used, which has just made the selection in most cases.
+    private static func selectionAnchor(of element: AXUIElement) -> (CGRect?, String) {
+        if let rect = usable(selectedBounds(of: element)) { return (rect, "range") }
+        var current: AXUIElement? = element
+        for _ in 0..<8 {
+            guard let candidate = current else { break }
+            if let rect = usable(textMarkerBounds(of: candidate)) { return (rect, "text-marker") }
+            current = parent(of: candidate)
+        }
+        return (mouseLocationInAXCoordinates(), "mouse")
+    }
+
+    /// A selection taller than most of the screen (select all on a long page)
+    /// says nothing about where the reader is looking.
+    private static func usable(_ rect: CGRect?) -> CGRect? {
+        guard let rect, rect.width >= 1, rect.height >= 1 else { return nil }
+        let screenHeight = NSScreen.screens.map(\.frame.height).max() ?? 0
+        return rect.height > screenHeight * 0.6 ? nil : rect
+    }
+
+    private static func textMarkerBounds(of element: AXUIElement) -> CGRect? {
+        var range: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, "AXSelectedTextMarkerRange" as CFString, &range) == .success,
+              let range else { return nil }
+        var value: CFTypeRef?
+        let result = AXUIElementCopyParameterizedAttributeValue(
+            element,
+            "AXBoundsForTextMarkerRange" as CFString,
+            range,
+            &value
+        )
+        guard result == .success, let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetValue((value as! AXValue), .cgRect, &rect) else { return nil }
+        return rect.isEmpty ? nil : rect
+    }
+
+    private static func parent(of element: AXUIElement) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        return (value as! AXUIElement)
     }
 
     private static func isSettable(_ element: AXUIElement) -> Bool {

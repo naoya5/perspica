@@ -131,6 +131,13 @@ if wanted samples; then
         --demo-image "${SAMPLES:-${TMPDIR:-/tmp}/yaku-m4}/mixed.png" --demo-quit-after 60
 fi
 
+# A documentation page with a code block: the code must stay as it is, not come
+# back from the model in another font (manual check F4).
+if wanted code; then
+    shot "M5-overlay-code-light" light light WAIT=12 \
+        --demo-image "${SAMPLES:-${TMPDIR:-/tmp}/yaku-m4}/code.png" --demo-quit-after 60
+fi
+
 # The M5 fixes are about what the UI says, not about what the glass sits on, so
 # they are captured as windows (the backdrop window is above ordinary windows
 # and would cover the manager). capture_windows also wants the backdrop skipped,
