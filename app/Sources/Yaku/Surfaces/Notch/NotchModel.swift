@@ -22,9 +22,11 @@ final class NotchModel {
     /// Set when the island is clicked open (file name, stage, bar, buttons).
     var expanded = false
     var dropHover = false
-    var dropMessage = "PDF をドロップして日本語に"
-    /// Drives the one-off shake for a non-PDF drop.
+    var dropMessage = NotchModel.dropPrompt
+    /// One whole number per refused drop; `ShakeEffect` shakes once for each.
     var dropShake: CGFloat = 0
+
+    static let dropPrompt = "PDF をドロップして日本語に"
 
     var fileName = ""
     var progress: Double = 0
@@ -47,6 +49,14 @@ final class NotchModel {
     var demoHold = false
 
     private var startedAt: Date?
+
+    /// A refused drop's return to closed, and done's close after 4 seconds.
+    /// Each new one replaces the pending one of its kind, so a timer started
+    /// for an earlier drop or job never cuts a later one short. They are kept
+    /// apart because the island takes a drop in any state, and a refusal while
+    /// done must not cancel done's close.
+    @ObservationIgnored private var dropReturn: Task<Void, Never>?
+    @ObservationIgnored private var doneClose: Task<Void, Never>?
 
     // MARK: geometry
 
@@ -157,7 +167,7 @@ final class NotchModel {
         if state != .drop {
             state = .drop
             expanded = false
-            dropMessage = "PDF をドロップして日本語に"
+            dropMessage = Self.dropPrompt
         }
         dropHover = isOverIsland
     }
@@ -166,20 +176,39 @@ final class NotchModel {
         guard state == .drop else { return }
         state = .closed
         dropHover = false
-        dropMessage = "PDF をドロップして日本語に"
+        dropMessage = Self.dropPrompt
     }
 
+    /// A file that is not a PDF: say so, shake once, and close 1.8 seconds
+    /// after the last refusal (SPEC 4.5).
     func rejectDrop() {
         dropMessage = "PDF だけ対応しています"
         dropHover = false
-        withAnimation(.easeInOut(duration: 0.30)) { dropShake = 1 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            self?.dropShake = 0
+        withAnimation(.easeInOut(duration: 0.30)) { dropShake += 1 }
+        dropReturn?.cancel()
+        dropReturn = Task {
+            do {
+                try await Task.sleep(for: .seconds(1.8))
+            } catch {
+                return
+            }
+            guard state == .drop else { return }
+            dropMessage = Self.dropPrompt
+            state = .closed
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
-            guard let self, self.state == .drop else { return }
-            self.dropMessage = "PDF をドロップして日本語に"
-            self.state = .closed
+    }
+
+    /// done は 4 秒で closed に戻る (SPEC 4.5), unless the island is open then.
+    func closeAfterDone() {
+        doneClose?.cancel()
+        doneClose = Task {
+            do {
+                try await Task.sleep(for: .seconds(4))
+            } catch {
+                return
+            }
+            guard state == .done, !expanded else { return }
+            close()
         }
     }
 

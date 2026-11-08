@@ -20,6 +20,9 @@ final class OverlayController {
     private var window: OverlayWindow?
     private var monitors: [Any] = []
     private var dismissTask: Task<Void, Never>?
+    /// The toast's 1.2-second wait. A new toast replaces it, so a second copy
+    /// keeps 「コピーしました」 up for its own 1.2 seconds.
+    private var toastTask: Task<Void, Never>?
     /// When the current run began, so the time from the capture to the first and
     /// the last block being drawn can be logged (SPEC 14 の F4 の目標).
     private var runStarted: CFAbsoluteTime = 0
@@ -658,30 +661,28 @@ final class OverlayController {
     private func copyBlock(_ index: Int) {
         guard index >= 0, index < model.blocks.count else { return }
         let text = model.blocks[index].translation ?? ""
-        guard !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        guard Clipboard.copy(text) else { return }
         AppLog.write("overlay: copied block \(index) (\(text.count) chars)")
         toast("コピーしました")
     }
 
     private func copyAll() {
         let text = model.blocks.compactMap(\.translation).filter { !$0.isEmpty }.joined(separator: "\n")
-        guard !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        guard Clipboard.copy(text) else { return }
         AppLog.write("overlay: copied all (\(model.blocks.count) blocks)")
         toast("コピーしました")
     }
 
     private func toast(_ message: String) {
         model.toast = message
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            guard let self, self.model.toast == message else { return }
-            self.model.toast = nil
+        toastTask?.cancel()
+        toastTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(1.2))
+            } catch {
+                return
+            }
+            self?.model.toast = nil
         }
     }
 

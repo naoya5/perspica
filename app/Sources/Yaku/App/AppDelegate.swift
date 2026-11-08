@@ -558,7 +558,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard frame.insetBy(dx: -14, dy: -8).contains(NSEvent.mouseLocation) else { return }
 
         AppLog.write("panel: file dragged over the status item")
-        model.dropMessage = "PDF をドロップして日本語に"
+        model.dropMessage = PanelModel.dropPrompt
         model.dropHover = false
         model.isDropTarget = true
         openPanel(reason: "icon-drag")
@@ -586,7 +586,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case 8: // C
             if matches(event, modifiers: [.command, .shift]) {
-                coordinator.copyPanelTranslation()
+                coordinator.copyTranslation(on: .panel)
                 return true
             }
         case 2: // D
@@ -631,7 +631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case 8: // C
             if matches(event, modifiers: [.command]) {
-                hud.copy()
+                coordinator.copyTranslation(on: .hud)
                 return true
             }
         case 31: // O
@@ -765,30 +765,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func pdfRejected(_ message: String) {
         guard model.isOpen else { return }
-        shakePanel(message: message)
+        model.rejectDrop(message: message)
     }
 
     /// The panel's own drop refused a file: show the wording and shake once
     /// (SPEC 4.2).
     private func shakePanelForRejection() {
         model.isDropTarget = true
-        shakePanel(message: "PDF だけ対応しています")
-    }
-
-    private func shakePanel(message: String) {
-        model.dropMessage = message
-        model.dropHover = false
-        withAnimation(.easeInOut(duration: 0.30)) { model.dropShake = 1 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            self?.model.dropShake = 0
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
-            guard let self, self.model.isDropTarget,
-                  self.model.dropMessage != "PDF をドロップして日本語に"
-            else { return }
-            self.model.dropMessage = "PDF をドロップして日本語に"
-            self.model.isDropTarget = false
-        }
+        model.rejectDrop(message: "PDF だけ対応しています")
     }
 
     /// ⌘O and the panel's 「PDF を開く…」.
@@ -1077,7 +1061,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "drop":
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                     guard let self else { return }
-                    self.model.dropMessage = "PDF をドロップして日本語に"
+                    self.model.dropMessage = PanelModel.dropPrompt
                     self.model.isDropTarget = true
                     self.openPanel(reason: "demo-surface")
                 }

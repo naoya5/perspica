@@ -175,7 +175,7 @@ struct ManagerPDFView: View {
             Button("一覧から消す", role: .destructive) { pdf.delete(job) }
                 .disabled(job.id == pdf.runningID)
         }
-        .task(id: job.id) { generateThumbnail(for: job) }
+        .task(id: job.id) { await loadThumbnail(for: job) }
     }
 
     @ViewBuilder
@@ -228,21 +228,21 @@ struct ManagerPDFView: View {
         }
     }
 
-    /// SPEC 4.4: サムネイルは QuickLookThumbnailing.
-    private func generateThumbnail(for job: PDFJob) {
+    /// SPEC 4.4: サムネイルは QuickLookThumbnailing. The async form runs inside
+    /// the row's `.task(id:)`, so it lives as long as the row. The generator does
+    /// not stop when cancelled, so a row that went away drops the result.
+    private func loadThumbnail(for job: PDFJob) async {
         guard thumbnails[job.id] == nil, let url = PDFIntake.resolve(job.inputBookmark) else { return }
-        let id = job.id
         let request = QLThumbnailGenerator.Request(
             fileAt: url,
             size: CGSize(width: 68, height: 88),
             scale: 2,
             representationTypes: .thumbnail
         )
-        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
-            guard let representation else { return }
-            let image = representation.nsImage
-            Task { @MainActor in thumbnails[id] = image }
-        }
+        guard let representation = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request),
+              !Task.isCancelled
+        else { return }
+        thumbnails[job.id] = representation.nsImage
     }
 
     // MARK: drop handling

@@ -72,6 +72,10 @@ final class TranslationCoordinator {
         /// Bumped when a new request replaces the previous translation, so the
         /// view can put its scroll position back to the top.
         var scrollReset = 0
+        /// Bumped each time the translation is put on the clipboard, by the
+        /// button or by the shortcut, so the view shows its brief copied mark
+        /// either way (`copiedMark`).
+        var copyCount = 0
     }
 
     // MARK: state
@@ -184,14 +188,14 @@ final class TranslationCoordinator {
         translatePanel()
     }
 
-    /// ⌘⇧C in the panel: put the translation on the clipboard.
-    func copyPanelTranslation() {
-        let text = panel.translation
-        guard !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        AppLog.write("panel copy \(text.count) chars")
+    /// Puts a surface's translation on the clipboard: its copy button, ⌘⇧C in
+    /// the panel and ⌘C in the HUD. The button and the key share this, so both
+    /// bump `copyCount` and show the same mark.
+    func copyTranslation(on surface: Surface) {
+        let text = state(for: surface).translation
+        guard Clipboard.copy(text) else { return }
+        mutate(surface) { $0.copyCount += 1 }
+        AppLog.write("\(surface.rawValue) copy \(text.count) chars")
     }
 
     /// Used by the HUD's 「パネルで開く」 (⌘O).
