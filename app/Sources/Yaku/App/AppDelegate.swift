@@ -1120,6 +1120,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 let blocks = OCRBlockBuilder.blocks(from: lines, sizeOf: sizeOf)
                 let elapsed = CFAbsoluteTimeGetCurrent() - started
+                // Every line Vision found, with its box and its measured size,
+                // so a line that was left out of a block can be seen next to
+                // the block it should have joined (M6).
+                func lineJSON(_ line: OCRLine) -> [String: Any] {
+                    [
+                        "text": line.text,
+                        "size": sizeOf(line).map { ($0 * 100).rounded() / 100 } ?? NSNull(),
+                        "confidence": line.confidence,
+                        "rect": [
+                            "x": Double(line.rect.minX),
+                            "y": Double(line.rect.minY),
+                            "width": Double(line.rect.width),
+                            "height": Double(line.rect.height),
+                        ],
+                    ]
+                }
                 let payload: [String: Any] = [
                     "image": path,
                     "pixels": ["width": image.width, "height": image.height],
@@ -1127,6 +1143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     "seconds": elapsed,
                     "lineCount": lines.count,
                     "blockCount": blocks.count,
+                    "lines": lines.map(lineJSON),
                     "blocks": blocks.enumerated().map { index, block -> [String: Any] in
                         [
                             "index": index,

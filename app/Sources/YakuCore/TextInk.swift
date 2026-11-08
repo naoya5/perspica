@@ -46,6 +46,27 @@ public enum TextInk {
     /// Below this many pixels the band is too small to read a size out of.
     public static let minimumBand: CGFloat = 4
 
+    /// Whether a pixel counts as text ink against the box's background.
+    ///
+    /// A pixel counts when its luminance is more than `inkContrast` from the
+    /// background **on either side**. The side used to be chosen from the
+    /// background's own brightness (above 0.5 means dark text), which is right
+    /// for a page of text but not for a box whose background reads near the
+    /// middle of the range: a tightly cropped box that is more than half ink,
+    /// or a line on a mid-grey band, put the guess on the wrong side and the
+    /// box came back with **no ink at all**. `fontSize(in:line:text:)` then
+    /// returned nil, the overlay fell back to Vision's box height, and the M5.2
+    /// size rule compared that box value against a measured one — which is what
+    /// split `• Keeps you informed …` from its own second line on the user's
+    /// screen (`M6.md` 2.3).
+    ///
+    /// Testing both sides is the same test wherever the old guess was right, so
+    /// the fitted band constants still hold, and finds the ink where it was
+    /// wrong.
+    public static func isInk(_ value: Double, background: Double) -> Bool {
+        abs(value - background) > inkContrast
+    }
+
     /// The height of one line's ink band, in image pixels, or nil when the line
     /// holds nothing to measure.
     ///
@@ -60,7 +81,7 @@ public enum TextInk {
         guard x1 > x0, y1 > y0 else { return nil }
 
         // The line's background is the median luminance of its box; the ink is
-        // whatever sits on the far side of it.
+        // whatever sits away from it (`isInk`).
         var luminances: [Double] = []
         luminances.reserveCapacity((x1 - x0 + 1) * (y1 - y0 + 1) / 4)
         for y in stride(from: y0, through: y1, by: 2) {
@@ -71,8 +92,6 @@ public enum TextInk {
         guard !luminances.isEmpty else { return nil }
         let sorted = luminances.sorted()
         let background = sorted[sorted.count / 2]
-        let darkText = background > 0.5
-        let threshold = background + (darkText ? -inkContrast : inkContrast)
 
         // Every column is counted, so the answer depends on the text and not on
         // where the box was cut: sampling every other column was within 0.2
@@ -84,8 +103,7 @@ public enum TextInk {
         for y in y0...y1 {
             var ink = 0
             for x in x0...x1 {
-                let value = image.luminance(x: x, y: y)
-                if darkText ? (value < threshold) : (value > threshold) { ink += 1 }
+                if isInk(image.luminance(x: x, y: y), background: background) { ink += 1 }
             }
             profile.append(Double(ink) / Double(columns))
         }
@@ -210,16 +228,13 @@ public enum TextInk {
         guard !luminances.isEmpty else { return nil }
         let sorted = luminances.sorted()
         let background = sorted[sorted.count / 2]
-        let darkText = background > 0.5
-        let threshold = background + (darkText ? -inkContrast : inkContrast)
 
         var first = -1
         var last = -1
         for x in x0...x1 {
             var ink = 0
             for y in y0...y1 {
-                let value = image.luminance(x: x, y: y)
-                if darkText ? (value < threshold) : (value > threshold) { ink += 1 }
+                if isInk(image.luminance(x: x, y: y), background: background) { ink += 1 }
             }
             if ink > 0 {
                 if first < 0 { first = x }
@@ -228,5 +243,62 @@ public enum TextInk {
         }
         guard first >= 0 else { return nil }
         return CGFloat(last - first + 1)
+    }
+
+    /// One line's measured size and the reading it came from.
+    ///
+    /// The source matters because the three readings are not comparable: the
+    /// ink's width and the ink band are measured from the picture and can be
+    /// compared between two lines, while `box` is Vision's own box height, which
+    /// moves with the pass that found the line and with the ascenders and
+    /// descenders the line happens to have (M6.md 2.3). The split rule
+    /// (`OCRBlockBuilder.sizeTolerance`) may only use a measured size, so it
+    /// takes `size` and skips the line when it is nil.
+    public struct Reading: Sendable, Equatable {
+        /// The size in the picture's own pixels, or nil when the ink could not
+        /// be read.
+        public let size: CGFloat?
+        public let source: Source
+
+        public enum Source: String, Sendable, Equatable {
+            /// The ink's width against the text's width in the system font.
+            case width
+            /// The ink band: the fallback when the text cannot be measured.
+            case band
+            /// Neither worked; only Vision's box is left.
+            case box
+        }
+
+        public init(size: CGFloat?, source: Source) {
+            self.size = size
+            self.source = source
+        }
+    }
+
+    /// One line's size, preferring the reading that can be compared across
+    /// lines and across scripts.
+    public static func reading(
+        in image: PixelImage,
+        line rect: CGRect,
+        text: String,
+        pointsPerPixel: CGFloat = 1
+    ) -> Reading {
+        if let size = fontSize(in: image, line: rect, text: text, pointsPerPixel: pointsPerPixel) {
+            return Reading(size: size, source: .width)
+        }
+        if let size = fontSize(in: image, line: rect, pointsPerPixel: pointsPerPixel) {
+            return Reading(size: size, source: .band)
+        }
+        return Reading(size: nil, source: .box)
+    }
+
+    /// How a set of readings was arrived at, for the log: a line that fell back
+    /// to `box` is a line whose size could not be measured, and the number is
+    /// worth seeing rather than guessing at (M6.md 2.3).
+    public static func summary(_ sources: [Reading.Source]) -> String {
+        let width = sources.filter { $0 == .width }.count
+        let band = sources.filter { $0 == .band }.count
+        let box = sources.count - width - band
+        return "ink \(width)/\(sources.count), band \(band), box \(box)"
     }
 }

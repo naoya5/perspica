@@ -351,3 +351,168 @@ struct OCRBlockTests {
         #expect(blocks.count == 2)
     }
 }
+
+/// The wrap rule, which is what the user's screen needed: a bullet's second
+/// line came back in a box a third shorter than the line above it, and the
+/// height rule cut it off and translated the fragment alone (M6.md 2.2).
+///
+/// The numbers are real. `userLog` is the user's own log from the
+/// 2026-11-08T10:33:52Z run, which gives the boxes but not the rows; the gap
+/// there is the one a 17-point line has between two ink boxes (16 and 14 pixels
+/// tall on a 20-pixel pitch). `sample` is what `tools/make-samples.swift`'s
+/// `list()` produces, read back with `--demo-dump-blocks`.
+@Suite("OCR wrapped lines")
+struct OCRWrapTests {
+    /// `• Keeps you informed. …` over `one outcome.`, from the user's log.
+    private func userLog() -> [OCRLine] {
+        [
+            line("• Keeps you informed. It reports progress at each milestone, asks when a decision is needed, and aggregates the results into",
+                 x: 69, y: 435, width: 971, height: 16),
+            line("one outcome.", x: 94, y: 455, width: 92, height: 14),
+        ]
+    }
+
+    /// The same pair from the M6 sample, whose boxes are 23.4 and 16.7 tall:
+    /// 28.6% apart, which is the height rule's own limit and over it.
+    private func sample() -> [OCRLine] {
+        [
+            line("• Keeps you informed. It reports progress at each milestone, asks when a decision is needed, and aggregates the results into",
+                 x: 69.1, y: 435.0, width: 948, height: 23.4),
+            line("one outcome.", x: 94.2, y: 464.7, width: 107, height: 16.7),
+        ]
+    }
+
+    @Test("a short continuation line joins the line above it")
+    func continuationJoins() {
+        for lines in [userLog(), sample()] {
+            let blocks = OCRBlockBuilder.blocks(from: lines)
+            #expect(blocks.count == 1)
+            #expect(blocks[0].lines.count == 2)
+            #expect(blocks[0].text.hasSuffix("one outcome."))
+        }
+    }
+
+    @Test("the wrap rule is what joins each pair, and a different rule split each")
+    func eachPairWasSplitByADifferentRule() {
+        // The user's pair is within the height tolerance (16 and 14 are 12.5%
+        // apart), so the height rule kept it; what split it was the **size**
+        // rule, reading 12.0 from the box against 18.5 measured (the user's own
+        // log). `TextInk.isInk` is what made the box value necessary, and the
+        // wrap rule is what makes it harmless.
+        let user = userLog()
+        let userTaller = max(user[0].rect.height, user[1].rect.height)
+        let userShorter = min(user[0].rect.height, user[1].rect.height)
+        #expect(userTaller - userShorter <= OCRBlockBuilder.heightTolerance * userTaller)
+        let userSizes: (OCRLine) -> CGFloat? = { $0.rect.height <= 14 ? 12.0 : 18.5 }
+        #expect(OCRBlockBuilder.blocks(from: user, sizeOf: userSizes).count == 1)
+
+        // The sample's pair is 28.6% apart, over the height tolerance, so the
+        // height rule is what would have split it.
+        let listed = sample()
+        let listedTaller = max(listed[0].rect.height, listed[1].rect.height)
+        let listedShorter = min(listed[0].rect.height, listed[1].rect.height)
+        #expect(listedTaller - listedShorter > OCRBlockBuilder.heightTolerance * listedTaller)
+    }
+
+    @Test("the hanging indent of a bullet's second line is not a new block")
+    func hangingIndentJoins() {
+        // 22pt to the right: under the text rather than under the marker.
+        let lines = [
+            line("• Briefs each agent. Agents don't see your conversation", x: 69, y: 280, width: 904, height: 21),
+            line("the work.", x: 91, y: 307, width: 76, height: 20),
+        ]
+        #expect(OCRBlockBuilder.blocks(from: lines).count == 1)
+    }
+
+    @Test("a new list item is never a continuation")
+    func newItemIsNotAContinuation() {
+        // The two bullets that follow each other in the user's log. Their own
+        // spacing (58pt apart) already separates them, so the rule is checked
+        // directly: a bullet is never a wrapped continuation, however close the
+        // line is.
+        let first = line("• Delegates first. It splits the goal into parts", x: 69, y: 203, width: 854, height: 19)
+        let second = line("• Briefs each agent. Agents don't see your conversation", x: 69, y: 280, width: 904, height: 21)
+        #expect(!OCRBlockBuilder.continuesSentence(second, first))
+        #expect(OCRBlockBuilder.blocks(from: [first, second]).count == 2)
+        // The same two lines with the bullet removed and a small gap *would*
+        // join, which is what shows the bullet is doing the work: the only
+        // difference between these two pairs is the marker.
+        let above = line("It splits the goal into parts and", x: 69, y: 203, width: 854, height: 19)
+        #expect(OCRBlockBuilder.continuesSentence(
+            line("assigns each part to one agent.", x: 69, y: 226, width: 904, height: 21), above))
+        #expect(!OCRBlockBuilder.continuesSentence(
+            line("• assigns each part to one agent.", x: 69, y: 226, width: 904, height: 21), above))
+    }
+
+    @Test("a capital letter starts a new sentence, not a continuation")
+    func capitalDoesNotContinue() {
+        // The same shape with the description starting upper case. The wrap
+        // rule leaves it alone, so the pair is back to the geometry, which
+        // keeps a 25%-or-closer pair together.
+        let lines = [
+            line("• Keeps you informed. It reports progress", x: 69, y: 435, width: 971, height: 16),
+            line("One outcome.", x: 94, y: 455, width: 92, height: 14),
+        ]
+        #expect(OCRBlockBuilder.blocks(from: lines).count == 1)
+        #expect(!OCRBlockBuilder.continuesSentence(lines[1], lines[0]))
+    }
+
+    @Test("the wrap rule waives the size rule for a continuation")
+    func continuationBeatsTheSizeRule() {
+        // 20 against 12 points is 40% apart, which splits on its own. A wrapped
+        // continuation is never cut off by a size, because the size is what was
+        // misread in the first place.
+        let sizes: (OCRLine) -> CGFloat? = { $0.text.hasPrefix("•") ? 20 : 12 }
+        #expect(OCRBlockBuilder.blocks(from: userLog(), sizeOf: sizes).count == 1)
+        // The same sizes on the same boxes, with the text saying they are
+        // separate, do split.
+        let separate = [
+            line("• Keeps you informed. It reports progress", x: 69, y: 435, width: 971, height: 16),
+            line("One outcome.", x: 94, y: 455, width: 92, height: 14),
+        ]
+        #expect(OCRBlockBuilder.blocks(from: separate, sizeOf: sizes).count == 2)
+    }
+
+    @Test("the wrap rule leaves a Japanese paragraph to the height rule")
+    func japaneseIsUnaffected() {
+        let lines = [
+            line("エンコーダは、同一の層が 6 層積層された構成となっている。", x: 72, y: 140, width: 900, height: 22),
+            line("各層には 2 つのサブレイヤが存在する。", x: 72, y: 170, width: 420, height: 22),
+        ]
+        // No case, so the wrap rule never fires; the lines are the same height
+        // and overlap, so the geometry keeps them together as it always did.
+        #expect(!OCRBlockBuilder.continuesSentence(lines[1], lines[0]))
+        #expect(OCRBlockBuilder.blocks(from: lines).count == 1)
+    }
+
+    @Test("the continuation signals")
+    func continuationSignals() {
+        func isContinuation(_ above: String, _ below: String) -> Bool {
+            OCRBlockBuilder.continuesSentence(
+                line(below, x: 100, y: 130),
+                line(above, x: 100, y: 100)
+            )
+        }
+        #expect(isContinuation("It reports progress at each milestone, and", "one outcome."))
+        #expect(isContinuation("It doesn't do the work itself", "delegates the goal."))
+        // A sentence that ended does not continue. A colon ends one too, which
+        // is the brief's own list (`.` `!` `?` `:`).
+        for ender in [".", "!", "?", ":", "。", "！", "？", "："] {
+            #expect(!isContinuation("It reports progress\(ender)", "one outcome."), Comment(rawValue: ender))
+        }
+        // A closing mark after the full stop does not hide it.
+        #expect(!isContinuation("It reports progress (see the plan.)", "one outcome."))
+        // No punctuation at all, so the sentence is still going.
+        #expect(isContinuation("It reports progress (see the plan)", "one outcome."))
+        // A capital starts a new sentence.
+        #expect(!isContinuation("It reports progress at each", "One outcome."))
+        // A new item is never a continuation.
+        #expect(!isContinuation("It reports progress at each", "• one outcome."))
+        #expect(!isContinuation("It reports progress at each", "- one outcome."))
+        #expect(!isContinuation("It reports progress at each", "1. one outcome."))
+        #expect(!isContinuation("It reports progress at each", "2) one outcome."))
+        // Nothing to compare against.
+        #expect(!isContinuation("", "one outcome."))
+        #expect(!isContinuation("It reports progress", ""))
+    }
+}

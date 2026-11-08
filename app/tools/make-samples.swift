@@ -1,8 +1,12 @@
-// Draws the M4 sample images with CoreText: an English article, a two-column
-// page, a dark UI screen, and a paragraph that mixes Japanese and English lines
-// (M5.2). Written to $TMPDIR/yaku-m4/.
+// Draws the sample images with CoreText: an English article, a two-column page,
+// a dark UI screen, a paragraph that mixes Japanese and English lines (M5.2),
+// and a documentation page of bullets whose continuation lines hang under the
+// marker (M6). Written to $TMPDIR/yaku-m4/.
 //
-//   swift make-samples.swift <output folder>
+//   swift make-samples.swift <output folder> [scale]
+//
+// `scale` renders the same page at that many pixels per point, so the 2×
+// samples come out of the same drawing code as the 1× ones (`--demo-scale 2`).
 import AppKit
 import CoreGraphics
 import CoreText
@@ -16,17 +20,23 @@ let outputDirectory = CommandLine.arguments.count > 1
     ? URL(fileURLWithPath: CommandLine.arguments[1])
     : URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("yaku-m4")
 
+/// Pixels per point in the written pictures.
+let scale: CGFloat = CommandLine.arguments.count > 2
+    ? max(1, CGFloat(Double(CommandLine.arguments[2]) ?? 1))
+    : 1
+
 func makeContext() -> CGContext {
     let context = CGContext(
         data: nil,
-        width: Int(width),
-        height: Int(height),
+        width: Int(width * scale),
+        height: Int(height * scale),
         bitsPerComponent: 8,
         bytesPerRow: 0,
         space: CGColorSpaceCreateDeviceRGB(),
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     )!
     // Draw in top-left coordinates, the way the overlay's rects are expressed.
+    context.scaleBy(x: scale, y: scale)
     context.translateBy(x: 0, y: height)
     context.scaleBy(x: 1, y: -1)
     return context
@@ -59,10 +69,23 @@ func drawText(_ context: CGContext, _ text: NSAttributedString, in rect: CGRect)
     return size.height
 }
 
-func attributed(_ text: String, size: CGFloat, color: NSColor, bold: Bool = false, lineSpacing: CGFloat = 6) -> NSAttributedString {
+func attributed(
+    _ text: String,
+    size: CGFloat,
+    color: NSColor,
+    bold: Bool = false,
+    lineSpacing: CGFloat = 6,
+    hangingIndent: CGFloat = 0
+) -> NSAttributedString {
     let style = NSMutableParagraphStyle()
     style.lineSpacing = lineSpacing
     style.lineBreakMode = .byWordWrapping
+    // A bullet list's second line starts under the text rather than under the
+    // marker, which is what a real list looks like.
+    if hangingIndent > 0 {
+        style.firstLineHeadIndent = 0
+        style.headIndent = hangingIndent
+    }
     let font = NSFont.systemFont(ofSize: size, weight: bold ? .semibold : .regular)
     return NSAttributedString(string: text, attributes: [
         .font: font,
@@ -239,7 +262,113 @@ func mixed() {
     write(context, "mixed.png")
 }
 
+// MARK: 5. a documentation page with bullets that hang
+
+/// A page shaped like the screen that broke in M6: a heading, an intro
+/// paragraph, four bullets whose continuation lines hang under the text rather
+/// than under the marker, a bold subheading, and a two-line paragraph.
+///
+/// The bullets' second lines are short and have no descenders, so Vision's box
+/// for them is about a third shorter than the box for the line above it. That
+/// is what made the grouping rule cut the fragment off and translate it alone
+/// (`M6.md` 2). The bullets are broken by hand so the sample lands on exactly
+/// those lines whatever the font does — the picture is what Vision reads.
+func list() {
+    let context = makeContext()
+    fill(context, CGRect(x: 0, y: 0, width: width, height: height), white.cgColor)
+
+    let body: CGFloat = 17
+    let leading: CGFloat = 28
+    let left: CGFloat = 72
+    let column = width - 144
+    let hanging: CGFloat = 22
+
+    drawText(context, attributed("What the orchestrator does", size: 26, color: nearBlack, bold: true, lineSpacing: 2),
+             in: CGRect(x: left, y: 44, width: column, height: 40))
+    // The intro paragraph is wrapped by CoreText: its first line ends in the
+    // middle of a sentence and the second starts in lower case, the plainest
+    // wrap there is.
+    drawText(context, attributed(
+        "The orchestrator coordinates. It doesn't do the work itself: it delegates the goal, "
+        + "briefs every agent, keeps them moving, and reports back to you.",
+        size: body, color: nearBlack, lineSpacing: 8),
+        in: CGRect(x: left, y: 104, width: column, height: 80))
+
+    let bullets: [(String, String)] = [
+        ("• Delegates first. It splits the goal into parts and assigns each part to one agent, then waits for the parts to come",
+         "back."),
+        ("• Briefs each agent. Agents don't see your conversation with the orchestrator, so the orchestrator briefs each agent on",
+         "the work."),
+        ("• Keeps agents moving. It sends them more tasks and asks for progress, and it can",
+         "halt a turn."),
+        ("• Keeps you informed. It reports progress at each milestone, asks when a decision is needed, and aggregates the results into",
+         "one outcome."),
+    ]
+    var y: CGFloat = 200
+    for (first, second) in bullets {
+        drawText(context, attributed(first, size: body, color: nearBlack, lineSpacing: 0),
+                 in: CGRect(x: left, y: y, width: column, height: 26))
+        drawText(context, attributed(second, size: body, color: nearBlack, lineSpacing: 0),
+                 in: CGRect(x: left + hanging, y: y + leading, width: column - hanging, height: 26))
+        y += 78
+    }
+
+    drawText(context, attributed("Talk to the orchestrator", size: 20, color: nearBlack, bold: true, lineSpacing: 2),
+             in: CGRect(x: left, y: y + 8, width: column, height: 32))
+    drawText(context, attributed(
+        "Agents report to the orchestrator when a task is done, when they are blocked, "
+        + "or when they find something that changes the plan.",
+        size: body, color: nearBlack, lineSpacing: 8),
+        in: CGRect(x: left, y: y + 58, width: column, height: 80))
+
+    write(context, "list.png")
+}
+
+// MARK: 6. a documentation page with a code block
+
+/// A page with a heading, an intro paragraph, a fenced code block, and a
+/// closing paragraph. The code must be left as it is rather than translated, so
+/// this sample is the one the code filter is checked on (manual check F4).
+func code() {
+    let context = makeContext()
+    fill(context, CGRect(x: 0, y: 0, width: width, height: height), white.cgColor)
+    let left: CGFloat = 120
+    let column = width - 260
+
+    drawText(context, attributed("Configure the speech pipeline", size: 30, color: nearBlack, bold: true, lineSpacing: 2),
+             in: CGRect(x: left, y: 90, width: column, height: 44))
+    drawText(context, attributed(
+        "There is no separate key for each model provider. Both models run through the same "
+        + "inference service, which handles authentication, routing and billing for the project.",
+        size: 18, color: nearBlack, lineSpacing: 8),
+        in: CGRect(x: left, y: 152, width: column, height: 80))
+
+    // The code block: a light panel with six monospaced lines.
+    let panel = CGRect(x: left, y: 240, width: column - 120, height: 244)
+    fill(context, panel, NSColor(calibratedWhite: 0.92, alpha: 1).cgColor)
+    let lines = [
+        "llm = openai.LLM(",
+        "    model=os.getenv(\"OPENROUTER_MODEL\"),",
+        "    base_url=\"https://openrouter.ai/api/v1\",",
+        ")",
+        "tts = inference.TTS(model=\"fishaudio/s2.1-pro\")",
+        "LIVEKIT_API_SECRET",
+    ]
+    for (index, line) in lines.enumerated() {
+        drawText(context, attributed(line, size: 15, color: nearBlack, lineSpacing: 0),
+                 in: CGRect(x: left + 24, y: panel.minY + 22 + CGFloat(index) * 36, width: panel.width - 48, height: 28))
+    }
+
+    drawText(context, attributed(
+        "The finished agent can hear a booking change, keep the correction and answer in the same browser session.",
+        size: 18, color: nearBlack, lineSpacing: 8),
+        in: CGRect(x: left, y: 520, width: column, height: 60))
+    write(context, "code.png")
+}
+
 article()
 columns()
 ui()
 mixed()
+list()
+code()

@@ -12,6 +12,15 @@ The paragraphs are translated by `paragraph_translator.py`, which pdf2zh-next
 runs once per paragraph through `--clitranslator`. It builds the same PFML3 the
 app does and posts it to the engine the app started.
 
+The font family for the translated text comes from the source document's own
+fonts (`pdf_font_family.py`), so a serif paper stays serif and a sans guide comes
+back sans (M6.md 3.1). `--primary-font-family` overrides it.
+
+The rate limit (`--qps`) is the translation speed: pdf2zh-next sleeps between
+paragraphs to hold that rate (`base_translator.py`), and it also decides the
+worker pool when `--pool-max-workers` is unset. The default is measured against
+a 17-page document in M6.md 3.4.
+
 pdf2zh-next and BabelDOC log to file descriptor 1, so the real stdout is kept
 aside for the JSON lines and fd 1 is pointed at stderr.
 
@@ -60,6 +69,30 @@ def clitranslator_command(args: argparse.Namespace) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
 
+def chosen_font_family(pdf: Path) -> str | None:
+    """The font family for the translation, from the source's own fonts.
+
+    Read from the document rather than fixed, so a serif paper stays serif and a
+    sans screen guide comes back sans (M6.md 3.1). When the document gives no
+    evidence the answer is sans-serif, which is what the guide measured for M6
+    needs: its body is a Type 3 font with no descriptor to read, and the
+    library's own fallback put the translation in a serif face.
+    """
+    try:
+        import pdf_font_family
+
+        answer, tally = pdf_font_family.choose(str(pdf))
+        # stderr goes to the app's pdf.log (fd 1 is already pointed at it), so
+        # the choice is traceable without adding a JSON event the app would
+        # only ignore.
+        print(f"Yaku font family: {answer} from {tally}", file=sys.stderr, flush=True)
+        return answer
+    except Exception as error:  # noqa: BLE001 - a guess is better than no font
+        print(f"Yaku font family: could not be read ({type(error).__name__}: {error})",
+              file=sys.stderr, flush=True)
+        return None
+
+
 async def run(args: argparse.Namespace) -> int:
     import logging
 
@@ -88,6 +121,11 @@ async def run(args: argparse.Namespace) -> int:
     ]
     if args.pages:
         argv += ["--pages", args.pages]
+    font_family = args.primary_font_family
+    if font_family == "auto":
+        font_family = chosen_font_family(pdf)
+    if font_family:
+        argv += ["--primary-font-family", font_family]
 
     sys.argv = argv
     settings = ConfigManager().initialize_config()
@@ -127,9 +165,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--form", default=None, choices=["plain", "polite"])
     parser.add_argument("--context", default=None)
     parser.add_argument("--glossary", default=None)
-    parser.add_argument("--qps", type=int, default=3)
-    parser.add_argument("--pool-max-workers", type=int, default=3)
+    parser.add_argument("--qps", type=int, default=24)
+    parser.add_argument("--pool-max-workers", type=int, default=4)
     parser.add_argument("--clitranslator-timeout", type=int, default=120)
+    parser.add_argument(
+        "--primary-font-family",
+        default="auto",
+        choices=["auto", "serif", "sans-serif", "script"],
+        help="font family for the translated text; `auto` reads the source PDF",
+    )
     return parser.parse_args(argv)
 
 

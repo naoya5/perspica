@@ -54,9 +54,13 @@ fi
 
 # The PDF worker's scripts ride along so the app does not depend on the
 # checkout. The Python environment itself is installed on first use (SPEC 8.2).
+# Every `.py` the worker imports has to be here: the app runs the bundle's copy
+# (`PDFWorkerPaths.scriptsDirectory`), so a script left out is a script the user
+# does not get.
 mkdir -p "$CONTENTS/Resources/pdf-worker"
-cp ../pdf-worker/translate_pdf.py "$CONTENTS/Resources/pdf-worker/translate_pdf.py"
-cp ../pdf-worker/paragraph_translator.py "$CONTENTS/Resources/pdf-worker/paragraph_translator.py"
+for script in ../pdf-worker/*.py; do
+    cp "$script" "$CONTENTS/Resources/pdf-worker/$(basename "$script")"
+done
 cp ../pdf-worker/requirements.txt "$CONTENTS/Resources/pdf-worker/requirements.txt"
 
 # llama-server is bundled only when explicitly asked for; during development

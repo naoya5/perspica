@@ -62,11 +62,15 @@ public struct OCRBlock: Sendable, Equatable {
 ///   - the two lines' heights are within 25% of each other,
 ///   - their left edges line up, or they overlap horizontally.
 ///
-/// Two further rules split pairs those would join, both measured from the
-/// samples: a much shorter line above a longer one is a row of its own rather
-/// than a wrapped one (`lineLengthRatio`), and two lines drawn at noticeably
-/// different sizes are separate runs even when their widths match
-/// (`sizeTolerance`).
+/// Four further rules change those verdicts, all measured from the samples. A
+/// line whose **text** reads as the continuation of the sentence above is a
+/// wrapped line whatever its box says (`continuesSentence`) — that is the one
+/// that matters on a real screen, because a short continuation line with no
+/// ascender or descender comes back in a box a third shorter than its
+/// predecessor's and used to be cut off and translated on its own. A much
+/// shorter line above a longer one is a row of its own rather than a wrapped one
+/// (`lineLengthRatio`), and two lines drawn at noticeably different sizes are
+/// separate runs even when their widths match (`sizeTolerance`).
 ///
 /// Each line is compared against the last line of every open block rather than
 /// only the previous line. That is what keeps a two-column page in two blocks
@@ -145,6 +149,78 @@ public enum OCRBlockBuilder {
     /// the pair that must come apart.
     public static let sizeTolerance: CGFloat = 0.08
 
+    /// How far a wrapped line may be indented from the line above and still
+    /// count as the same paragraph, as a share of the taller line's height.
+    ///
+    /// A bullet's continuation line starts under the bullet's text rather than
+    /// under the marker, so its left edge is a marker's width to the right of
+    /// the line above. `alignmentRatio` alone reads that as "not lined up", and
+    /// it is only the horizontal-overlap rule that used to save such a pair. A
+    /// marker is a couple of characters wide, so 4 × the line height is a
+    /// generous ceiling that still cannot reach the next column.
+    public static let hangingIndentRatio: CGFloat = 4
+
+    /// The punctuation a sentence ends with. A line that ends with one of these
+    /// starts a new sentence, so the line below it is not a continuation.
+    public static let sentenceEnders = ".!?:;。！？：；…"
+
+    /// The marks that may sit after a sentence-ending punctuation mark without
+    /// changing the fact that the sentence ended (`(see the plan.)`).
+    public static let closingMarks = "\"'”’)]}）］｝」』】〕〉》"
+
+    /// The characters a bullet or a dash list item begins with.
+    public static let bulletMarkers = "•‣▪▫◦·※*+–—-"
+
+    /// Whether `line` reads as the continuation of `last`'s sentence, which is
+    /// what a wrapped line looks like (SPEC 9).
+    ///
+    /// The rule is the one a reader uses: the line above does not end a
+    /// sentence, and this line starts with a lower-case letter, so the sentence
+    /// is still going. A line that opens a new list item is never a
+    /// continuation, however it starts.
+    ///
+    /// This is the signal the geometry cannot give. A short continuation line
+    /// with no ascender and no descender — `the work.`, `one outcome.` — comes
+    /// back from Vision in a box about a third shorter than the line above it,
+    /// which is more than `heightTolerance` allows, so the fragment was cut off
+    /// and translated alone (M6.md 2.2). Japanese is unaffected: its characters
+    /// have no case, so the rule never fires and the height rule, which works
+    /// well for CJK, decides.
+    public static func continuesSentence(_ line: OCRLine, _ last: OCRLine) -> Bool {
+        let above = last.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let below = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !above.isEmpty, !below.isEmpty else { return false }
+        guard !endsSentence(above) else { return false }
+        guard !opensListItem(below) else { return false }
+        return below.first?.isLowercase ?? false
+    }
+
+    /// Whether the text ends a sentence, ignoring any closing mark after the
+    /// punctuation (`… the plan.)`).
+    public static func endsSentence(_ text: String) -> Bool {
+        var characters = Substring(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        while let last = characters.last, closingMarks.contains(last) {
+            characters = characters.dropLast()
+        }
+        guard let last = characters.last else { return false }
+        return sentenceEnders.contains(last)
+    }
+
+    /// Whether the text opens a new list item rather than continuing the line
+    /// above: a bullet, a dash, or a number or single letter followed by `.` or
+    /// `)` — `•`, `-`, `1.`, `2)`, `a.`.
+    public static func opensListItem(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first else { return false }
+        if bulletMarkers.contains(first) { return true }
+        guard first.isNumber || (first.isLetter && first.isLowercase) else { return false }
+        // At most three characters: `1.`, `12.`, `a)`, `1)`.
+        let prefix = trimmed.prefix(3)
+        guard prefix.count >= 2 else { return false }
+        let after = prefix[prefix.index(after: prefix.startIndex)]
+        return after == "." || after == ")"
+    }
+
     /// Groups lines into blocks, optionally told how large each line's text was
     /// (in any consistent unit — only the ratio between two lines is used).
     ///
@@ -203,6 +279,15 @@ public enum OCRBlockBuilder {
     ///
     /// `size` and `lastSize` are the two lines' measured text sizes, in any
     /// consistent unit; leave them nil to apply the geometric rules alone.
+    ///
+    /// A line whose text reads as a wrapped continuation
+    /// (`continuesSentence`) is treated as one: the height rule, the
+    /// hanging-indent rule and the two split rules are then waived, because
+    /// they all rest on Vision's box and the text is a better witness than the
+    /// box is. The size rule is waived with them, so a continuation is never
+    /// cut off by a size that was misread; the cost is that a UI row whose
+    /// description happens to begin in lower case would join its title, which
+    /// none of the samples does (M6.md 2.4).
     public static func follows(
         _ line: OCRLine,
         _ last: OCRLine,
@@ -213,25 +298,34 @@ public enum OCRBlockBuilder {
         let height = line.rect.height
         guard lastHeight > 0, height > 0, last.rect.width > 0, line.rect.width > 0 else { return false }
 
-        guard abs(lastHeight - height) <= heightTolerance * max(lastHeight, height) else { return false }
+        let wrapped = continuesSentence(line, last)
+        let taller = max(lastHeight, height)
+        let shorter = min(lastHeight, height)
+
+        guard wrapped || abs(lastHeight - height) <= heightTolerance * taller else { return false }
 
         let gap = line.rect.minY - last.rect.maxY
-        guard gap <= gapRatio * min(lastHeight, height) else { return false }
+        guard gap <= gapRatio * (wrapped ? taller : shorter) else { return false }
 
-        let aligned = abs(line.rect.minX - last.rect.minX) <= alignmentRatio * min(lastHeight, height)
+        let aligned = abs(line.rect.minX - last.rect.minX) <= alignmentRatio * (wrapped ? taller : shorter)
         let overlap = horizontalOverlap(last.rect, line.rect)
         let overlapping = overlap >= overlapRatio * min(last.rect.width, line.rect.width)
-        guard aligned || overlapping else { return false }
+        // A wrapped line's own indent: the second line of a bullet starts under
+        // the bullet's text, to the right of the line above and no further than
+        // a marker's width.
+        let indent = line.rect.minX - last.rect.minX
+        let hanging = wrapped && indent >= -1 && indent <= hangingIndentRatio * taller
+        guard aligned || overlapping || hanging else { return false }
 
         // A much shorter line above a longer one is a line of its own, not a
         // wrapped one (a UI row's title above its description). Checked after
         // the rules above, so it only ever splits a pair they would have joined.
-        guard last.rect.width >= lineLengthRatio * line.rect.width else { return false }
+        guard wrapped || last.rect.width >= lineLengthRatio * line.rect.width else { return false }
 
         // Two lines drawn at noticeably different sizes are separate runs even
         // when their widths match (a UI row whose title and description happen
         // to be the same length). See `sizeTolerance`.
-        if let size, let lastSize {
+        if !wrapped, let size, let lastSize {
             let largest = max(size, lastSize)
             if largest > 0 {
                 guard abs(size - lastSize) <= sizeTolerance * largest else { return false }

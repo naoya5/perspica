@@ -61,7 +61,7 @@ public enum OverlayEmphasis {
         guard x1 > x0, y1 > y0 else { return 0 }
 
         // The background is the block's median luminance; the text is whatever
-        // sits on the far side of it.
+        // sits away from it, on either side (`TextInk.isInk`).
         var luminances: [Double] = []
         luminances.reserveCapacity((x1 - x0 + 1) * (y1 - y0 + 1) / 4)
         for y in stride(from: y0, through: y1, by: 2) {
@@ -72,16 +72,13 @@ public enum OverlayEmphasis {
         guard !luminances.isEmpty else { return 0 }
         let sorted = luminances.sorted()
         let background = sorted[sorted.count / 2]
-        let darkText = background > 0.5
-        let threshold = background + (darkText ? -inkContrast : inkContrast)
 
         var ink = 0
         var total = 0
         for y in y0...y1 {
             for x in x0...x1 {
                 total += 1
-                let value = image.luminance(x: x, y: y)
-                if darkText ? (value < threshold) : (value > threshold) { ink += 1 }
+                if TextInk.isInk(image.luminance(x: x, y: y), background: background) { ink += 1 }
             }
         }
         return total > 0 ? Double(ink) / Double(total) : 0

@@ -189,25 +189,30 @@ final class OverlayController {
         let language = AppSettings.shared.overlayLanguage
         // The whole-picture pass first, so the first blocks go up and start
         // translating while the tiled pass is still reading (M5.md 3.4).
+        let visionStarted = CFAbsoluteTimeGetCurrent()
         let wholeLines = try await ScreenOCR.wholeLines(in: capture.image, language: language)
+        let visionSeconds = CFAbsoluteTimeGetCurrent() - visionStarted
 
         guard let pixels = PixelImage(cgImage: capture.image) else {
             throw ScreenCapturer.CaptureError.failed("画像を読み取れませんでした")
         }
-        // The lines' own sizes, so two lines drawn at noticeably different
-        // sizes are kept apart even when their widths match (M5.md 9.2). The
-        // ink's width is used rather than the ink band, because the band reads
-        // Japanese text larger than English text of the same size and would
-        // split a paragraph at every script change
-        // (`TextInk.fontSize(in:line:text:)`).
+        // One reading per line, shared by the split rule and by the size the
+        // translation is drawn at, so the picture is scanned once per line
+        // rather than once per use.
         let pointsPerPixel = 1 / max(1, capture.scale)
-        let sizeOf: (OCRLine) -> CGFloat? = { line in
-            TextInk.fontSize(in: pixels, line: line.rect, text: line.text, pointsPerPixel: pointsPerPixel)
-        }
+        let inkStarted = CFAbsoluteTimeGetCurrent()
+        let readings = measure(wholeLines, pixels: pixels, pointsPerPixel: pointsPerPixel)
+        let inkSeconds = CFAbsoluteTimeGetCurrent() - inkStarted
+        let sizeOf: (OCRLine) -> CGFloat? = { readings[$0.rect]?.size }
+
+        let groupStarted = CFAbsoluteTimeGetCurrent()
         let blocks = OCRBlockBuilder.blocks(from: wholeLines, sizeOf: sizeOf)
+        let groupSeconds = CFAbsoluteTimeGetCurrent() - groupStarted
         let readSeconds = CFAbsoluteTimeGetCurrent() - started
-        AppLog.write(String(format: "overlay: read %d block(s) in %.3fs language=%@",
-                            blocks.count, readSeconds, language))
+        AppLog.write(String(format: "overlay: read %d line(s) → %d block(s) in %.3fs "
+                            + "(vision %.3f, ink %.3f, group %.3f) language=%@ %@",
+                            wholeLines.count, blocks.count, readSeconds, visionSeconds, inkSeconds,
+                            groupSeconds, language, TextInk.summary(readings.values.map(\.source))))
 
         guard !blocks.isEmpty else {
             model.phase = .empty
@@ -229,11 +234,10 @@ final class OverlayController {
         // when the weight is measured (`OverlayEmphasis`). It comes from the
         // picture's ink like the size itself, so the two are compared in the
         // same units and with the same precision (`TextInk`).
-        let measured = blocks.map {
-            measuredLineHeight(of: $0, pixels: pixels, pointsPerPixel: pointsPerPixel, fallback: $0.lineHeight)
-        }
-        let sortedHeights = measured.sorted()
+        let measured = blocks.map { measuredLineHeight(of: $0, readings: readings, fallback: $0.lineHeight) }
+        let sortedHeights = measured.map(\.pixels).sorted()
         let medianLineHeight = sortedHeights.isEmpty ? 0 : sortedHeights[sortedHeights.count / 2]
+        let buildStarted = CFAbsoluteTimeGetCurrent()
         model.blocks = blocks.enumerated().map { index, block in
             overlayBlock(
                 block,
@@ -242,10 +246,14 @@ final class OverlayController {
                 pixels: pixels,
                 windowOffset: windowOffset,
                 medianLineHeight: medianLineHeight,
-                lineHeightPixels: measured[index],
+                lineHeightPixels: measured[index].pixels,
+                lineHeightSource: measured[index].source,
                 origin: "whole"
             )
         }
+        let buildSeconds = CFAbsoluteTimeGetCurrent() - buildStarted
+        AppLog.write(String(format: "overlay: built %d block(s) in %.3fs (colours and weight)",
+                            blocks.count, buildSeconds))
         model.phase = .showing
         updateWidenLimits()
         updateHitRects()
@@ -259,6 +267,7 @@ final class OverlayController {
         // is already on the screen is not added: the block it would replace is
         // already being translated, and adding it would draw the same text
         // twice.
+        let tiledStarted = CFAbsoluteTimeGetCurrent()
         let recovered = try await ScreenOCR.recoveredLines(in: capture.image, language: language)
         guard !recovered.isEmpty else { return }
         let merged = OCRBlockBuilder.blocks(
@@ -272,6 +281,7 @@ final class OverlayController {
         guard !additions.isEmpty else { return }
         let firstNewIndex = model.blocks.count
         for (offset, block) in additions.enumerated() {
+            let reading = measuredLineHeight(of: block, readings: readings, fallback: block.lineHeight)
             model.blocks.append(overlayBlock(
                 block,
                 id: firstNewIndex + offset,
@@ -279,19 +289,16 @@ final class OverlayController {
                 pixels: pixels,
                 windowOffset: windowOffset,
                 medianLineHeight: medianLineHeight,
-                lineHeightPixels: measuredLineHeight(
-                    of: block,
-                    pixels: pixels,
-                    pointsPerPixel: pointsPerPixel,
-                    fallback: block.lineHeight
-                ),
+                lineHeightPixels: reading.pixels,
+                lineHeightSource: reading.source,
                 origin: "tiled"
             ))
         }
         updateWidenLimits()
         updateHitRects()
         translator.extend(blocks: additions, indexes: Array(firstNewIndex..<model.blocks.count))
-        AppLog.write("overlay: the tiled pass added \(additions.count) block(s)")
+        AppLog.write(String(format: "overlay: the tiled pass added %d block(s) in %.3fs",
+                            additions.count, CFAbsoluteTimeGetCurrent() - tiledStarted))
     }
 
     /// Where a recognised block lands in the overlay window's own coordinates.
@@ -318,6 +325,7 @@ final class OverlayController {
         windowOffset: CGPoint,
         medianLineHeight: CGFloat,
         lineHeightPixels: CGFloat,
+        lineHeightSource: TextInk.Reading.Source,
         origin: String
     ) -> OverlayBlock {
         let frame = windowFrame(for: block, capture: capture, windowOffset: windowOffset)
@@ -336,9 +344,12 @@ final class OverlayController {
         // The drawn size comes from the line height, so the reading that
         // produced it is recorded here: the whole-picture pass and a tile report
         // different boxes for the same line, which is what made equally sized
-        // labels come out at different sizes (M5.md 8.2).
-        AppLog.write(String(format: "overlay: block %d %@ frame=%.0fx%.0f lineHeight=%.1f (box %.1f) lines=%d bold=%@ %@",
+        // labels come out at different sizes (M5.md 8.2). `from` says whether
+        // the height was measured from the ink or came from Vision's box, which
+        // is not comparable with a measured one (M6.md 2.3).
+        AppLog.write(String(format: "overlay: block %d %@ frame=%.0fx%.0f lineHeight=%.1f (box %.1f, from %@) lines=%d bold=%@ %@",
                             id, origin, frame.width, frame.height, lineHeight, boxLineHeight,
+                            lineHeightSource.rawValue,
                             block.lines.count, isBold ? "yes" : "no", String(block.text.prefix(40))))
         return OverlayBlock(
             id: id,
@@ -382,26 +393,59 @@ final class OverlayController {
         }
     }
 
-    /// One original line's height in **image pixels**, measured from the
-    /// picture's ink (`TextInk`). `fallback` is Vision's box height, used when
-    /// the ink cannot be read (an empty block, or text too small to measure).
+    /// One size reading per recognised line, keyed by the line's box.
     ///
-    /// The width of the ink against the recognised text's width is preferred:
-    /// it reads every script the same, where the ink band follows the x-height
-    /// and so reads Japanese text far larger than English text of the same size
-    /// (`TextInk.fontSize(in:line:text:)`). The band is the fallback.
+    /// The size the overlay draws at and the size the split rule compares must
+    /// come from the same reading, or a line the ink cannot be measured from
+    /// would be split on Vision's box height in one place and drawn from it in
+    /// another (M6.md 2.3). The picture is scanned once per line here.
+    private func measure(
+        _ lines: [OCRLine],
+        pixels: PixelImage,
+        pointsPerPixel: CGFloat
+    ) -> [CGRect: TextInk.Reading] {
+        var readings: [CGRect: TextInk.Reading] = [:]
+        readings.reserveCapacity(lines.count)
+        for line in lines where readings[line.rect] == nil {
+            readings[line.rect] = TextInk.reading(
+                in: pixels, line: line.rect, text: line.text, pointsPerPixel: pointsPerPixel
+            )
+        }
+        return readings
+    }
+
+    /// A block's line height in image pixels, with the reading it came from.
+    private struct LineHeight {
+        let pixels: CGFloat
+        let source: TextInk.Reading.Source
+    }
+
+    /// One block's line height in **image pixels**, with the reading it came
+    /// from. `fallback` is Vision's own box height, used only when the ink
+    /// cannot be read at all.
+    ///
+    /// The width of the ink against the recognised text's width is preferred: it
+    /// reads every script the same, where the ink band follows the x-height and
+    /// so reads Japanese text far larger than English text of the same size
+    /// (`TextInk.fontSize(in:line:text:)`). The band is the fallback and
+    /// Vision's box the last resort — a box value is not comparable with a
+    /// measured one, which is why the source travels with it and is logged.
     private func measuredLineHeight(
         of block: OCRBlock,
-        pixels: PixelImage,
-        pointsPerPixel: CGFloat,
+        readings: [CGRect: TextInk.Reading],
         fallback: CGFloat
-    ) -> CGFloat {
-        let sizes = block.lines.compactMap { line in
-            TextInk.fontSize(in: pixels, line: line.rect, text: line.text, pointsPerPixel: pointsPerPixel)
-                ?? TextInk.fontSize(in: pixels, line: line.rect)
+    ) -> LineHeight {
+        let found = block.lines.compactMap { readings[$0.rect] }
+        // The upper median: taking the lower one would drag a block that holds
+        // both a title and its description down to the smaller of the two.
+        let ordered = found.sorted { first, second in
+            (first.size ?? -1) < (second.size ?? -1)
         }
-        guard let size = sizes.sorted().dropFirst(sizes.count / 2).first else { return fallback }
-        return OverlayTextFit.lineHeightToFontSize * size
+        let chosen = ordered.dropFirst(ordered.count / 2).first ?? ordered.last
+        guard let size = chosen?.size else {
+            return LineHeight(pixels: fallback, source: .box)
+        }
+        return LineHeight(pixels: OverlayTextFit.lineHeightToFontSize * size, source: chosen?.source ?? .box)
     }
 
     /// Sizes and stores one block's translation, which makes the view draw it.
