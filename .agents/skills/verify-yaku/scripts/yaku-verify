@@ -7,6 +7,7 @@
 #   yaku-verify begin <run-name>
 #   yaku-verify shot <name> [WAIT=<s>] [--appearance light|dark] <yaku args...>
 #   yaku-verify translate "<text>" [yaku args...]
+#   yaku-verify run <name> [WAIT=<s>] <yaku args...>   (no capture; works on a locked screen)
 #   yaku-verify cpu <name> <settle-s> <window-s> <yaku args...>
 #   yaku-verify wait-free [max-seconds]
 #   yaku-verify log [pattern]
@@ -230,6 +231,24 @@ cmd_translate() {
     echo "log: $out"
 }
 
+cmd_run() {
+    name=${1:?usage: yaku-verify run <name> [WAIT=<s>] <yaku args...>}; shift
+    wait_s=60
+    case "${1:-}" in WAIT=*) wait_s=${1#WAIT=}; shift ;; esac
+    require_fresh
+    dir=$(run_dir)
+    [ -n "$(lock_holder)" ] && die "a Yaku is already running"
+    mark=$(log_mark)
+    pid=$(start_instance "$@")
+    sleep 1
+    [ "$(lock_holder)" = "$pid" ] || { stop_instance "$pid"; die "our instance (pid=$pid) does not hold the lock; another Yaku started first"; }
+    i=0
+    while kill -0 "$pid" 2>/dev/null && [ $i -lt $((wait_s * 5)) ]; do sleep 0.2; i=$((i+1)); done
+    stop_instance "$pid"
+    tail -n +$((mark + 1)) "$APP_LOG" > "$dir/$name.log" 2>/dev/null || true
+    echo "log: $dir/$name.log"
+}
+
 cmd_cpu() {
     name=${1:?usage: yaku-verify cpu <name> <settle-s> <window-s> <yaku args...>}
     settle=${2:?settle seconds}; window=${3:?window seconds}; shift 3
@@ -293,9 +312,10 @@ case "${1:-}" in
     begin) shift; cmd_begin "$@" ;;
     shot) shift; cmd_shot "$@" ;;
     translate) shift; cmd_translate "$@" ;;
+    run) shift; cmd_run "$@" ;;
     cpu) shift; cmd_cpu "$@" ;;
     wait-free) shift; cmd_wait_free "$@" ;;
     log) shift; cmd_log "$@" ;;
     end) shift; cmd_end "$@" ;;
-    *) sed -n '2,15p' "$0"; exit 2 ;;
+    *) sed -n '2,16p' "$0"; exit 2 ;;
 esac
