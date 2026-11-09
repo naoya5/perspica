@@ -1,88 +1,188 @@
 # Perspica
 
-メニューバーに常駐する、Mac の中だけで動く翻訳アプリ。選んだ文・入力した文・PDF・画面の文字を訳す。
-PLaMo 3 Translate（GGUF）を llama-server の子プロセスとして動かし、ネットワークには出ない。
+Perspica is a menu-bar translator for macOS that runs entirely on your Mac. Select text anywhere and
+press a key, type into a panel, drop a PDF, or point it at text on the screen. Translation runs
+locally with [PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF), and
+the text never leaves the Mac.
 
-2026-11-09 までの名前は Yaku。変えたのは見える名前（`Perspica.app`、表示名、画面の文言、アイコン）だけで、バンドル ID `dev.naoya.yaku`、データとログの場所、Swift のモジュール名（`Yaku` / `YakuCore`）、中の実行ファイル名、署名の名前は Yaku のまま。許可とデータはそのまま引き継がれる。
+[日本語の README](README.ja.md) · Built with PLaMo
 
-仕様は [SPEC.md](SPEC.md)。各段階の確認の記録は [docs/checks/](docs/checks/) にある。
+> The app's interface is in Japanese. It translates between 53 languages, with Japanese and English
+> as the main pair.
 
-## 入れる
+## Contents
+
+- [Requirements](#requirements)
+- [Install](#install)
+- [Use](#use)
+- [Permissions](#permissions)
+- [Models](#models)
+- [Privacy](#privacy)
+- [Where data lives](#where-data-lives)
+- [Troubleshooting](#troubleshooting)
+- [Uninstall](#uninstall)
+- [Build from source](#build-from-source)
+- [Contributing](#contributing)
+- [License and credits](#license-and-credits)
+
+## Requirements
+
+| | |
+|---|---|
+| macOS | 26 or later |
+| Mac | Apple silicon. The engine runs on Metal. |
+| Xcode | 26 or later (Swift 6), to build the app |
+| [Homebrew](https://brew.sh) `llama.cpp` | Provides `llama-server`, the translation engine |
+| `uv` | Only for PDF translation; the app uses it to install the PDF worker |
+
+There are no prebuilt downloads. You build the app from this repository, which takes a few minutes.
+
+## Install
 
 ```sh
-cd app
-./make-app.sh install     # ビルド・署名して ~/Applications/Perspica.app に置く
+brew install llama.cpp uv
+git clone https://github.com/naoya5/perspica.git
+cd perspica/app
+tools/make-signing-identity.sh   # once; keeps permissions across rebuilds
+./make-app.sh install            # builds, signs and copies ~/Applications/Perspica.app
 open ~/Applications/Perspica.app
 ```
 
-macOS 26 以降。署名は自己署名の「Yaku Signing」で、開発用のキーチェーン `yaku-dev.keychain-db` を使う（`make-app.sh` が開く）。
-配布用の Developer ID と公証は作っていない。
+`make-signing-identity.sh` creates a self-signed code-signing identity in a keychain of its own.
+You can skip it; the app is then signed ad hoc, and macOS asks for its permissions again after every
+rebuild. The app is not notarized, so build it yourself rather than passing a copy to someone else.
 
-初回は次の 2 つが要る。
+On first launch a short onboarding walks you through downloading a model (see [Models](#models)).
 
-1. **モデル**: メニューバーのアイコン →「管理画面」→「モデル」から 0.8B（0.57GB）を取得する。PLaMo Community License に同意する。開発中は `~/Library/Application Support/Yaku/` の外にある GGUF を「既存のファイルを使う」で選べる
-2. **PDF を訳す場合**: 初めて PDF を落としたときに「PDF の翻訳には追加の部品が必要です」と聞くので、`uv` で入れる（`~/Library/Application Support/Yaku/pdf-worker/`）
+## Use
 
-## 使い方
+Perspica lives in the menu bar.
 
-| どこで | キー | 動き |
+| Where | Key | What it does |
 |---|---|---|
-| どこでも | ⌃⌥J | 選んだ文を訳す（選択範囲の下に HUD） |
-| どこでも | ⌃⌥K | パネルを開く / 閉じる |
-| どこでも | ⌃⌥O | 画面の文字を読み取り、訳を元の位置に重ねる |
-| パネル | ⌘↩ | 訳す |
-| パネル | ⌘⇧C | 訳文をコピー |
-| パネル | ⌘D | 言語を入れ替える |
-| パネル | ⌘O | PDF を開く… |
-| パネル | ⌘P | ピン（開いたままにする） |
-| パネル | ⌘N | 管理画面を開く |
-| パネル / HUD | Esc | 閉じる |
-| HUD | ⌘C / ⌘↩ / Tab / ⌥（押している間）/ ⌘O | コピー / 置き換え / 文体 / 原文 / パネルで開く |
-| 重ね表示 | Esc / ⌥（押している間）/ ⌘C | 閉じる / 原文 / すべてコピー |
-| 管理画面 | ⌘1〜⌘5 | サイドバーの項目 |
+| Anywhere | ⌃⌥J | Translate the selected text in a small window under the selection |
+| Anywhere | ⌃⌥K | Open or close the panel |
+| Anywhere | ⌃⌥O | Read the text on the screen and lay the translation over it |
+| Panel | ⌘↩ | Translate |
+| Panel | ⌘⇧C | Copy the translation |
+| Panel | ⌘D | Swap the languages |
+| Panel | ⌘O | Open a PDF |
+| Panel | ⌘P | Pin the panel open |
+| Panel | ⌘N | Open the manager window (history, glossary, models, PDF jobs) |
+| Panel, selection window | Esc | Close |
 
-⌃⌥J・⌃⌥K・⌃⌥O は設定の「ショートカット」で変えられる。
-PDF はメニューバーのアイコン・パネル・管理画面・ノッチ・Finder の「このアプリで開く」のどこに落としてもよい。
+The three global keys can be changed in **Settings > ショートカット**. Drop a PDF on the menu bar
+icon, the panel, the manager window or the notch, or use Finder's **Open With**. The translated PDF
+keeps the original layout and is saved next to the original (or in `~/Downloads` if that folder is
+not writable).
 
-## 権限
+## Permissions
 
-使う直前に聞く。断られたら、その機能の場所に理由と「システム設定を開く」を出す。
+Perspica asks for a permission right before the feature that needs it. If you decline, that feature
+shows why and a button that opens System Settings.
 
-| 機能 | 権限 |
+| Feature | Permission |
 |---|---|
-| ⌃⌥J（選んだ文を読む・置き換える） | アクセシビリティ |
-| ⌃⌥O（画面の撮影） | 画面収録 |
-| PDF の完了の通知 | 通知 |
-| ログイン時に起動 | なし（システム設定の「ログイン項目」に出る） |
-| ホットキー・ドロップ・文字の読み取り | なし |
+| ⌃⌥J (read and replace the selection) | Accessibility |
+| ⌃⌥O (capture the screen) | Screen Recording |
+| PDF finished notification | Notifications |
 
-## データの置き場所
+## Models
 
-| 中身 | 場所 |
+Download a model in the manager window (**モデル**). Each download is checked against a SHA-256 hash
+before it is used.
+
+| Model | Download | Memory | Notes |
+|---|---|---|---|
+| PLaMo 3 Translate 0.8B (Q4_K_M) | 0.57 GB | about 1.1 GB | The default. Fast. |
+| PLaMo 3 Translate 2B (Q4_K_M) | 1.81 GB | about 2.3 GB | |
+| PLaMo 3 Translate 8B (Q4_K_M) | 5.28 GB | about 5.8 GB | Best quality. On a 16 GB Mac, close other apps first. |
+
+The models are released by Preferred Networks under the
+[PLaMo Community License](https://plamo.preferredai.jp/info/plamo-community-license-en). The app
+shows a summary and asks you to agree before the first download. You can also point the app at a
+GGUF you already have (**モデル > 既存のファイルを使う**).
+
+The engine starts when you first translate and stops after 10 idle minutes (configurable), so the
+model does not stay in memory while you are not using it.
+
+## Privacy
+
+- Translation runs on your Mac. Source and translated text are not sent anywhere.
+- The app uses the network only to download a model from Hugging Face and, the first time you
+  translate a PDF, to install the PDF worker with `uv` (from PyPI) along with the fonts and layout
+  model it needs.
+- The engine listens only on `127.0.0.1` and requires a random key that changes every launch.
+- History and the translation cache stay on your Mac. Turn history off or erase both in
+  **Settings > プライバシー**.
+- Logs record what the app did and how long it took, not what you translated.
+
+## Where data lives
+
+| What | Where |
 |---|---|
-| モデル・PDF ワーカー・履歴とキャッシュ | `~/Library/Application Support/Yaku/` |
-| ログ | `~/Library/Logs/Yaku/app.log` |
-| 出力した PDF | 元の PDF の隣（書けなければ `~/Downloads`） |
+| Models, the PDF worker, history and cache | `~/Library/Application Support/Yaku/` |
+| Logs | `~/Library/Logs/Yaku/` (`app.log`, `engine.log`, `pdf.log`) |
+| Settings | `defaults read dev.naoya.yaku` |
+| Translated PDFs | Next to the original |
 
-履歴とキャッシュは設定の「プライバシー」で消せる。
+## Troubleshooting
 
-## 作り直す
+| Problem | Try |
+|---|---|
+| The engine cannot be found | `brew install llama.cpp`. The app looks for `llama-server` in `/opt/homebrew/bin`, `/usr/local/bin` and `~/.local/bin`. |
+| PDF setup fails with 「uv が見つかりません」 | `brew install uv`, then drop the PDF again. |
+| ⌃⌥J does nothing | Check **System Settings > Privacy & Security > Accessibility**. After an ad hoc rebuild, remove Perspica there and add it again. |
+| A global key clashes with another app | Change it in **Settings > ショートカット**. |
+| Anything else | Read `~/Library/Logs/Yaku/app.log`, then open an issue. |
+
+## Uninstall
+
+1. Quit Perspica from the menu bar menu.
+2. Delete `~/Applications/Perspica.app`.
+3. To remove models, history, logs and settings as well:
+
+   ```sh
+   rm -rf ~/Library/Application\ Support/Yaku ~/Library/Logs/Yaku
+   defaults delete dev.naoya.yaku
+   ```
+
+4. If you granted Accessibility or Screen Recording, remove Perspica from
+   **System Settings > Privacy & Security**.
+
+## Build from source
 
 ```sh
 cd app
-swift build              # YakuCore + Yaku
-swift test               # 221 テスト
-./make-app.sh            # build/Perspica.app を作って署名
-./make-app.sh install    # ~/Applications/Perspica.app を置き換える
+swift build          # debug build, 0 warnings expected
+swift test           # unit tests
+./make-app.sh        # build/Perspica.app without installing
 ```
 
-開発用の起動オプション（`--demo-*`）と計測・撮影の道具は `app/tools/` にある。
-画面を出して確かめるときは `--data-dir "$TMPDIR/yaku-demo-data"` を付けて、本物のデータを触らないようにする。
+[AGENTS.md](AGENTS.md) describes the code layout and the rules every change keeps.
+[SPEC.md](SPEC.md) is the full design specification (in Japanese). For development runs that must
+not touch your real data, start the binary with `--data-dir`, and give it a model with
+`YAKU_DEV_MODEL`:
 
 ```sh
-app/build/Perspica.app/Contents/MacOS/Yaku --data-dir "$TMPDIR/yaku-demo-data" \
-    --demo-surface panel --demo-state translating --demo-pin
+YAKU_DEV_MODEL=/path/to/model.gguf \
+  app/build/Perspica.app/Contents/MacOS/Yaku --data-dir "$TMPDIR/perspica-demo" --demo-surface panel
 ```
 
-アイコンは `app/Resources/Perspica.icon`（Icon Composer の文書）で、`make-app.sh` が `xcrun actool` で `Assets.car` と `Perspica.icns` にコンパイルする。
-層は SVG（`Assets/`）で、`design/app-icon/make-candidates.swift` が描く。描き直すときはそれを実行し、できた `design/app-icon/Perspica-Final.icon` の中身を `app/Resources/Perspica.icon` に写す（使う書体と取得元はスクリプトの先頭）。
+## Contributing
+
+Bug reports and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Report security
+problems privately as described in [SECURITY.md](SECURITY.md).
+
+## License and credits
+
+Perspica is released under the [MIT License](LICENSE).
+
+- Translation model: PLaMo 3 Translate by Preferred Networks, under the PLaMo Community License.
+  Built with PLaMo.
+- Engine: [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), installed separately with
+  Homebrew.
+- PDF translation: [pdf2zh-next](https://github.com/PDFMathTranslate/PDFMathTranslate-next) and
+  [BabelDOC](https://github.com/funstory-ai/BabelDOC), with PyMuPDF; all three are AGPL-3.0. They
+  are not part of this repository. The app installs them on your Mac the first time you translate a
+  PDF and runs them in a separate process.

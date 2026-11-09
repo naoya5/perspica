@@ -160,8 +160,8 @@ struct OnboardingView: View {
         panel.allowedContentTypes = [.data]
         panel.allowsMultipleSelection = false
         panel.message = "GGUF のファイルを選ぶ"
-        panel.directoryURL = URL(fileURLWithPath: ModelStore.developmentModelPath)
-            .deletingLastPathComponent()
+        panel.directoryURL = ModelStore.developmentModelPath
+            .map { URL(fileURLWithPath: $0).deletingLastPathComponent() }
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.useExistingFile(url)
     }

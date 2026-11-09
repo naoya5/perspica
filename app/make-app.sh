@@ -1,10 +1,11 @@
 #!/bin/sh
 # Build the Swift package, wrap the executable in Perspica.app, and sign it.
 #
-# Signing uses a dedicated development keychain rather than the login
-# keychain. The login keychain's certificate hangs codesign on an
-# authorization prompt that never appears, so it is deliberately not used
-# (SPEC 16; the parent thread owns the SPEC wording).
+# Signing uses the self-signed "Yaku Signing" identity from a dedicated
+# keychain (tools/make-signing-identity.sh creates both). A key in the login
+# keychain hangs codesign on an authorization prompt that never appears. When
+# the identity is missing the app is signed ad hoc, which works but makes macOS
+# ask for its permissions again after every rebuild.
 #
 #   ./make-app.sh            build and sign build/Perspica.app
 #   ./make-app.sh install    also replace ~/Applications/Perspica.app
@@ -76,19 +77,23 @@ if [ "${YAKU_BUNDLE_LLAMA:-0}" = "1" ] && [ -x /opt/homebrew/bin/llama-server ];
     echo "bundled llama-server"
 fi
 
-if [ ! -f "$KEYCHAIN_PASSWORD_FILE" ]; then
-    echo "error: signing password file not found: $KEYCHAIN_PASSWORD_FILE" >&2
-    exit 1
+if [ -f "$KEYCHAIN" ] && [ -f "$KEYCHAIN_PASSWORD_FILE" ]; then
+    security unlock-keychain -p "$(cat "$KEYCHAIN_PASSWORD_FILE")" "$KEYCHAIN"
+    # A hang here means the key is waiting on an authorization prompt; fail
+    # instead of blocking the build forever.
+    # `timeout` comes from Homebrew's coreutils; without it codesign runs unguarded.
+    guard=""
+    command -v timeout >/dev/null 2>&1 && guard="timeout $SIGN_TIMEOUT"
+    if ! $guard codesign --force --sign "$IDENTITY" --keychain "$KEYCHAIN" "$APP"; then
+        echo "error: codesign failed or timed out after ${SIGN_TIMEOUT}s" >&2
+        exit 1
+    fi
+else
+    echo "warning: no \"$IDENTITY\" identity ($KEYCHAIN); signing ad hoc." >&2
+    echo "  macOS will ask for Accessibility and Screen Recording again after every rebuild." >&2
+    echo "  Run tools/make-signing-identity.sh once to keep the grants." >&2
+    codesign --force --sign - "$APP"
 fi
-security unlock-keychain -p "$(cat "$KEYCHAIN_PASSWORD_FILE")" "$KEYCHAIN"
-
-# A hang here means the key is waiting on an authorization prompt; fail
-# instead of blocking the build forever.
-if ! timeout "$SIGN_TIMEOUT" codesign --force --sign "$IDENTITY" --keychain "$KEYCHAIN" "$APP"; then
-    echo "error: codesign failed or timed out after ${SIGN_TIMEOUT}s" >&2
-    exit 1
-fi
-
 codesign --verify --verbose=2 "$APP" 2>&1 | sed 's/^/  /'
 echo "built: $(pwd)/$APP"
 codesign -dvv "$APP" 2>&1 | grep -E '^Authority|^Identifier' | sed 's/^/  /'

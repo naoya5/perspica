@@ -1,0 +1,84 @@
+name: Bug report
+description: Something does not work as described.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. English or Japanese is fine.
+        Do not paste text, documents or screen pictures that you do not want to make public.
+        For a security problem, use the private form in SECURITY.md instead.
+
+  - type: input
+    id: commit
+    attributes:
+      label: Perspica commit
+      description: "`git rev-parse --short HEAD` in the checkout you built from."
+      placeholder: "abe2504"
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "macOS 26.1"
+    validations:
+      required: true
+
+  - type: input
+    id: mac
+    attributes:
+      label: Mac
+      placeholder: "MacBook Air, M2, 16 GB"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Selected text (⌃⌥J, HUD)
+        - Panel or manager window
+        - Screen translation (⌃⌥O)
+        - PDF translation
+        - Models (download, loading, engine)
+        - Settings, permissions or onboarding
+        - Building from source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: Manager window > モデル.
+      placeholder: "PLaMo 3 Translate 0.8B"
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        The relevant lines from ~/Library/Logs/Yaku/app.log (and engine.log or pdf.log for engine or PDF problems).
+        Read them first and remove anything private.
+      render: text

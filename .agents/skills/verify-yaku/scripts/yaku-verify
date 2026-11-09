@@ -32,6 +32,17 @@ OPAQUE=${OPAQUE:-/tmp/opaque}
 
 die() { echo "error: $*" >&2; exit 1; }
 
+# The GGUF a verification run loads. The scratch --data-dir has neither the
+# user's settings nor their downloads, so the app is told through
+# YAKU_DEV_MODEL: the variable if set, else the file picked in the installed
+# app's settings, else the first downloaded model.
+model_path() {
+    if [ -n "${YAKU_DEV_MODEL:-}" ] && [ -f "$YAKU_DEV_MODEL" ]; then echo "$YAKU_DEV_MODEL"; return; fi
+    picked=$(defaults read dev.naoya.yaku modelPath 2>/dev/null || true)
+    if [ -n "$picked" ] && [ -f "$picked" ]; then echo "$picked"; return; fi
+    find "$HOME/Library/Application Support/Yaku/models" -name '*.gguf' -type f 2>/dev/null | head -1
+}
+
 lock_holder() {
     [ -f "$LOCK" ] || return 0
     pid=$(head -1 "$LOCK" 2>/dev/null | tr -dc 0-9)
@@ -88,12 +99,9 @@ cmd_doctor() {
         || echo "ok     screen is unlocked"
     command -v llama-server >/dev/null && echo "ok     llama-server: $(command -v llama-server)" \
         || { echo "MISSING llama-server on PATH (brew install llama.cpp)"; ok=0; }
-    model=$(sed -n '/developmentModelPath =/,+1p' "$APP_DIR/Sources/Yaku/Models/ModelStore.swift" \
-        | grep -o '"[^"]*"' | tr -d '"\n')
-    dl="$HOME/Library/Application Support/Yaku/models"
-    if ls "$dl"/*.gguf >/dev/null 2>&1 || ls "$dl"/*/*.gguf >/dev/null 2>&1; then echo "ok     downloaded model in $dl"
-    elif [ -n "$model" ] && [ -f "$model" ]; then echo "ok     development model: $model"
-    else echo "MISSING no model: translation cannot run"; ok=0; fi
+    model=$(model_path)
+    if [ -n "$model" ]; then echo "ok     model for verification runs (YAKU_DEV_MODEL): $model"
+    else echo "MISSING no model: set YAKU_DEV_MODEL, pick a file in the app, or download one"; ok=0; fi
     [ -x "$WINID" ] && [ -x "$OPAQUE" ] && echo "ok     capture helpers $WINID $OPAQUE" \
         || echo "note   capture helpers missing; 'build' compiles them"
     if [ -f "$STATE_DIR/run_dir" ]; then echo "note   run in progress: $(cat "$STATE_DIR/run_dir")"; fi
@@ -153,7 +161,7 @@ require_fresh() {
 
 # Start our own instance, wait, and leave it running; returns its pid.
 start_instance() {
-    "$BIN" --data-dir "$STATE_DIR/data" "$@" >/dev/null 2>&1 &
+    YAKU_DEV_MODEL=$(model_path) "$BIN" --data-dir "$STATE_DIR/data" "$@" >/dev/null 2>&1 &
     pid=$!
     echo "$pid" >> "$STATE_DIR/pids"
     echo "$pid"

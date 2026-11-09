@@ -45,8 +45,8 @@ final class PDFWorkerInstaller {
         message = "Python 3.12 の環境を作っています…"
         AppLog.write("pdf-worker: install started")
 
-        guard PDFWorkerPaths.uvIsAvailable else {
-            fail("uv が見つかりません（\(PDFWorkerPaths.uvPath)）")
+        guard let uvPath = PDFWorkerPaths.uvPath else {
+            fail("uv が見つかりません（\(ExecutableLocator.searchDirectories.joined(separator: "、")) を探しました）。`brew install uv` で入れてください")
             return
         }
         guard let requirements = PDFWorkerPaths.requirementsFile else {
@@ -57,7 +57,7 @@ final class PDFWorkerInstaller {
         let environment = PDFWorkerPaths.environmentDirectory
         try? FileManager.default.createDirectory(at: environment, withIntermediateDirectories: true)
 
-        let uv = URL(fileURLWithPath: PDFWorkerPaths.uvPath)
+        let uv = URL(fileURLWithPath: uvPath)
         let venvStatus = await run(uv, [
             "venv", "--python", "3.12", "--allow-existing", environment.path,
         ])

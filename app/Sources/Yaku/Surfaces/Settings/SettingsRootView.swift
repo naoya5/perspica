@@ -212,7 +212,7 @@ private struct EngineSettingsTab: View {
             } header: {
                 Text("モデル")
             } footer: {
-                Text("変えるとエンジンを起動し直します。ファイルは「モデル」の画面で取得できます。")
+                Text("変えるとエンジンを起動し直します。ファイルは「モデル」の画面で取得できます。Built with PLaMo（PLaMo 3 Translate、Preferred Networks）。")
             }
 
             Section {
@@ -492,7 +492,7 @@ private struct PrivacySettingsTab: View {
             } header: {
                 Text("消去")
             } footer: {
-                Text("訳した文はこの Mac の外に出ません。ネットワークを使うのはモデルの取得だけです。")
+                Text("訳した文はこの Mac の外に出ません。ネットワークを使うのは、モデルの取得と、PDF 用の部品の取得（初めて PDF を訳すとき）だけです。")
             }
         }
         .formStyle(.grouped)

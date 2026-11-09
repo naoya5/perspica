@@ -497,11 +497,7 @@ final class EngineManager {
         if FileManager.default.isExecutableFile(atPath: bundled.path) {
             return bundled.path
         }
-        let homebrew = "/opt/homebrew/bin/llama-server"
-        if FileManager.default.isExecutableFile(atPath: homebrew) {
-            return homebrew
-        }
-        return nil
+        return ExecutableLocator.find("llama-server")
     }
 
     /// Opens a socket on port 0 and lets the OS pick a free port for us.

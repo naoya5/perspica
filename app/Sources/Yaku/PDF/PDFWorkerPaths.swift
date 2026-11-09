@@ -10,12 +10,19 @@ import Foundation
 @MainActor
 enum PDFWorkerPaths {
     /// `uv` is the only way the environment is created (SPEC 8.2).
-    static let uvPath = "/opt/homebrew/bin/uv"
+    static var uvPath: String? { ExecutableLocator.find("uv") }
 
-    /// The checked-in fallback used while developing, mirroring
-    /// `ModelStore.developmentModelPath`.
-    static let developmentScriptsDirectory =
-        "/Users/naoya/projects/production/Yaku/pdf-worker"
+    /// The repository's copy, used when the app runs from a build folder
+    /// rather than a bundle. Derived from this source file's location at
+    /// compile time, so it points at whichever checkout built the app.
+    static let developmentScriptsDirectory = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()  // PDF
+        .deletingLastPathComponent()  // Yaku
+        .deletingLastPathComponent()  // Sources
+        .deletingLastPathComponent()  // app
+        .deletingLastPathComponent()  // repository
+        .appendingPathComponent("pdf-worker")
+        .path
 
     static var scriptsDirectory: URL? {
         let bundled = Bundle.main.bundleURL
@@ -71,7 +78,7 @@ enum PDFWorkerPaths {
     }
 
     static var uvIsAvailable: Bool {
-        FileManager.default.isExecutableFile(atPath: uvPath)
+        uvPath != nil
     }
 
     /// The size of the installed environment, which goes into the wording

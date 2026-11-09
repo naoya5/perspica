@@ -6,3 +6,8 @@ docs/checks/shots/
 # Python caches from the PDF worker and its tests.
 __pycache__/
 .pytest_cache/
+# Local working notes: agent briefs, per-milestone check records and the
+# decision log. They stay in history but are not part of the public tree.
+.briefs/
+docs/checks/
+context.md

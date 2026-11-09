@@ -1,32 +1,65 @@
 # AGENTS.md
 
-Perspica（旧称 Yaku）のコーディングエージェント（Claude Code、Codex など）向けの作業ガイド。`CLAUDE.md` がこのファイルを読み込むので、どのツールも同じルールを読む。
+The working guide for coding agents (Claude Code, Codex and others) and for human contributors.
+`CLAUDE.md` imports this file, so every tool reads the same rules.
 
-## Perspica とは
+## What Perspica is
 
-メニューバーに常駐する、Mac の中だけで動く翻訳アプリ。選んだ文・入力した文・PDF・画面の文字を訳す。PLaMo 3 Translate（GGUF）を `llama-server` の子プロセスとして動かし、ネットワークには出ない。SwiftUI + AppKit、Swift 6、外部ライブラリなし、macOS 26 以降。 2026-11-09 に Yaku から改名した。見える名前（`Perspica.app`、表示名、画面の文言、アイコン）だけが Perspica で、バンドル ID・データとログの場所・Swift のモジュール名・実行ファイル名・署名・検証スキル `verify-yaku` は Yaku のまま。
+Perspica is a menu-bar translator for macOS that runs entirely on the Mac. It translates selected
+text, typed text, PDFs and text on the screen with PLaMo 3 Translate (GGUF), which runs in a
+`llama-server` child process bound to `127.0.0.1`. Translated text never leaves the Mac.
 
-## まず読むもの
+Stack: Swift 6, SwiftUI + AppKit, no third-party Swift packages, macOS 26 or later. PDF translation
+uses a Python worker (`pdf-worker/`, pdf2zh-next) that the app installs with `uv` on first use.
 
-| ファイル | 何 |
+The app was called Yaku until 2026-11-09. Only the names people see changed (`Perspica.app`, the
+display name, UI text, the icon). The bundle identifier `dev.naoya.yaku`, the data and log folders,
+the Swift modules (`Yaku`, `YakuCore`), the executable, the signing identity and the
+`verify-yaku` skill keep the old name, so permissions and data carry over.
+
+## Repository map
+
+| Path | What |
 |---|---|
-| `SPEC.md` | 仕様の正本。17 章がコードの構成 |
-| `context.md` | 決めたこと・進み具合 |
-| `docs/checks/M*.md` | 各段階の確認と計測の記録 |
-| `.agents/skills/verify-yaku/` | 実物のアプリを動かして確かめる手順（`.claude/skills` はここへのリンク） |
+| `app/Sources/YakuCore` | Logic with no UI: the PFML3 prompt, the engine client and SSE parsing, chunking, glossary, language detection, OCR grouping. Unit-tested. |
+| `app/Sources/Yaku` | The app: engine lifecycle and watchdog, selection capture, screen OCR overlay, model downloads, PDF queue, every window and surface. |
+| `app/Tests/YakuCoreTests` | Swift Testing tests for `YakuCore`. |
+| `app/make-app.sh` | Builds, bundles and signs `Perspica.app`; `install` copies it to `~/Applications`. |
+| `app/tools/` | Signing setup, capture and measurement scripts used during development. |
+| `pdf-worker/` | The Python worker and its tests. |
+| `SPEC.md` | The design specification (Japanese). |
+| `docs/perf-review-2026-11-09.md` | Measured performance, the fixes and the hypotheses that were rejected (Japanese). |
+| `.agents/skills/verify-yaku/` | How to drive the real app to prove a change. `.claude/skills` links here. |
 
-## コマンド
+## Commands
 
 ```sh
 cd app
-swift build              # 警告 0 を保つ
-swift test               # 221 テスト
-./make-app.sh install    # ~/Applications/Perspica.app を置き換える
+swift build                       # keep it at 0 warnings
+swift test                        # Swift Testing
+./make-app.sh install             # build, sign and replace ~/Applications/Perspica.app
+tools/make-signing-identity.sh    # once per machine, so permissions survive rebuilds
+
+cd ../pdf-worker/tests
+<worker python> -m unittest       # the installed worker: ~/Library/Application Support/Yaku/pdf-worker/bin/python
 ```
 
-## 終わったと言う前に
+## Before you call a change done
 
-- 動きや見た目を変えたら `verify-yaku` スキルで実物を動かし、証拠（画像・ログ・数値）を残す。テストが通っただけでは終わりではない。
-- アプリは同時に 1 つしか起動しない（`Yaku.lock`）。利用者のアプリ、ほかのワークツリーのエージェントと共有している。ロックを持つプロセスを名前で殺さない。
-- 本物の履歴・キャッシュ・設定を触らない。デモは必ず `--data-dir` を付ける（ヘルパーが付ける）。
-- Claude Code のサンドボックスの中では SwiftPM・`screencapture`・`open` が失敗する。外で走らせる。
+- Drive the real app with the `verify-yaku` skill and keep the evidence (screenshots, log lines,
+  numbers). Passing tests alone is not done.
+- Only one instance runs at a time (`Yaku.lock`), shared with the user's installed app and with
+  other worktrees. Never kill a process by name.
+- Never touch real history, caches or settings. Demo runs always pass `--data-dir` (the helper
+  does this).
+- Inside the Claude Code sandbox, SwiftPM, `screencapture` and `open` fail. Run them outside it.
+
+## Rules every change keeps
+
+- Translated and source text never leave the Mac. The only network code is the model downloader
+  (Hugging Face) and the PDF worker install (`uv`, PyPI) with its first-run assets.
+- No translated or source text in logs.
+- No paths from your own machine in code or docs. Development-only inputs come from the
+  environment (`YAKU_DEV_MODEL`) or from the source location (`#filePath`).
+- UI text is Japanese. Code, comments and these docs are English, except `SPEC.md` and the
+  performance review.

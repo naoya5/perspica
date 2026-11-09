@@ -49,9 +49,15 @@ enum ModelStore {
         return ModelCatalog.model(id: settings.selectedModelID)?.id ?? ModelCatalog.defaultModelID
     }
 
-    /// M0's development file, used when nothing has been downloaded yet.
-    static let developmentModelPath = "/Users/naoya/docs/agentic-os/lab/plamo-pdf-translate/models/"
-        + "plamo-3-translate-0.8b-GGUF/plamo-3-translate-0.8b-Q4_K_M.gguf"
+    /// A GGUF to fall back on when nothing is picked or downloaded, from the
+    /// `YAKU_DEV_MODEL` environment variable. Development and verification runs
+    /// set it; an app opened from Finder never has it.
+    static var developmentModelPath: String? {
+        guard let value = ProcessInfo.processInfo.environment["YAKU_DEV_MODEL"], !value.isEmpty else {
+            return nil
+        }
+        return (value as NSString).expandingTildeInPath
+    }
 
     struct Resolution {
         let path: String
@@ -60,20 +66,19 @@ enum ModelStore {
         let model: TranslationModel?
     }
 
-    /// True when `resolve()` is falling back to M0's development file, which
-    /// happens on this Mac because the 0.8B file has never been downloaded
-    /// (SPEC 15, M5: the model page has to say so instead of 「未取得」).
+    /// True when `resolve()` is falling back to the development file, so the
+    /// model page can say so instead of 「未取得」.
     static var isUsingDevelopmentFile: Bool {
         let settings = AppSettings.shared
         let custom = settings.customModelPath
         if !custom.isEmpty, FileManager.default.fileExists(atPath: custom) { return false }
         let selected = ModelCatalog.model(id: settings.selectedModelID) ?? ModelCatalog.models[0]
-        guard !isInstalled(selected) else { return false }
-        return FileManager.default.fileExists(atPath: developmentModelPath)
+        guard !isInstalled(selected), let development = developmentModelPath else { return false }
+        return FileManager.default.fileExists(atPath: development)
     }
 
     /// The model the engine should load:
-    /// a file the user picked → the selected model's download → M0's file.
+    /// a file the user picked → the selected model's download → `YAKU_DEV_MODEL`.
     static func resolve() -> Resolution? {
         let settings = AppSettings.shared
 
@@ -87,9 +92,9 @@ enum ModelStore {
             return Resolution(path: installedURL(for: selected).path, label: selected.displayName, model: selected)
         }
 
-        if FileManager.default.fileExists(atPath: developmentModelPath) {
+        if let development = developmentModelPath, FileManager.default.fileExists(atPath: development) {
             return Resolution(
-                path: developmentModelPath,
+                path: development,
                 label: ModelCatalog.models[0].displayName + "（開発用のファイル）",
                 model: ModelCatalog.models[0]
             )
