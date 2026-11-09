@@ -430,25 +430,26 @@ PFN の PLaMo 3 Translate を Mac の中だけで動かし、文・PDF・画面�
   - `--demo-state empty|translating|done|drop|error|activity|pdf-done`
   - `--demo-text "<文>"`、`--demo-pdf <path>`、`--demo-image <png>`（重ね表示を画像で試す）、`--demo-quit-after <秒>`
 - **撮影**: `screencapture -x -l <windowID>`（窓ごと）。ガラスは画面の合成で描かれるので、`ImageRenderer` の書き出しでは確かめられない。**画面のロックを解いた状態で撮る**。明るい壁紙と暗い壁紙、ライトとダークの 4 通り
-- 各段階の終わりに、実画面の写真と、14 章の数字を `docs/checks/M<n>.md` に残す
+- 実物での確認は `.agents/skills/verify-yaku/`（起動・撮影・CPU の計測・後片付けを 1 つのヘルパーで行う）
 
 ## 16. ビルド・署名・配布
 
 - Xcode のプロジェクトファイルは使わない。SwiftPM + `make-app.sh`（試作と同じ）
   - `swift build -c release` → `Perspica.app` に包む（`Info.plist`、`Resources/`、`Helpers/llama-server`）→ 署名
   - `Info.plist`: `LSUIElement = YES`、`LSMinimumSystemVersion = 26.0`、`CFBundleDocumentTypes`（PDF）、権限の説明文
-- 署名: 開発専用のキーチェーン `~/Library/Keychains/yaku-dev.keychain-db` の自己署名の「Yaku Signing」証明書（2026-11-06 作成済み）で毎回署名する。`security unlock-keychain -p "$(cat ~/Library/Application\ Support/Yaku/dev-signing/pass)"` で開けてから `codesign -f -s "Yaku Signing" --keychain <そのキーチェーン>`。ログインキーチェーンに置くと、codesign が鍵の承認待ちで止まるため分けた。アドホック署名だと、作り直すたびにアクセシビリティと画面収録の許可が外れるため
+- 署名: `app/tools/make-signing-identity.sh` が、専用のキーチェーン `~/Library/Keychains/yaku-dev.keychain-db` に自己署名の「Yaku Signing」証明書を作る。`make-app.sh` はそれがあれば毎回それで署名し、なければアドホック署名に切り替えて警告を出す。アドホック署名だと、作り直すたびにアクセシビリティと画面収録の許可が外れる。ログインキーチェーンに置くと、codesign が鍵の承認待ちで止まるため分けた
 - 入れる場所: `make-app.sh install` で `~/Applications/Perspica.app` に置く（ログイン時の起動と権限の登録はこの場所のアプリに対して行う）
 - Swift 6 の言語モード。UI は `@MainActor`、コアは `Sendable`
 - 外部のライブラリは使わない（必要になったら理由をここに書いてから足す）
-- 配布はしない（自分だけで使う）
+- 配布物は作らない。利用者はこのリポジトリからビルドする（Developer ID と公証はない）
 
 ## 17. コードの構成
 
 ```
 Yaku/
 ├── SPEC.md                 このファイル
-├── context.md              決めたこと・進み具合
+├── README.md / README.ja.md
+├── AGENTS.md               エージェントと開発者のための作業ガイド
 ├── app/
 │   ├── Package.swift
 │   ├── Sources/
@@ -462,15 +463,18 @@ Yaku/
 │   │       ├── Data/        SwiftData のモデル
 │   │       └── Demo/        起動オプション
 │   ├── Tests/YakuCoreTests/
-│   ├── Resources/           Info.plist・アイコン
+│   ├── Resources/           Info.plist・アイコン（Perspica.icon）・PLaMo のライセンス
+│   ├── tools/               署名の準備、撮影と計測の道具
 │   └── make-app.sh
-├── pdf-worker/             translate_pdf.py・段落の翻訳・requirements
-└── docs/checks/            各段階の確認の記録
+├── pdf-worker/             translate_pdf.py・段落の翻訳・requirements・テスト
+├── design/app-icon/        アイコンの描画スクリプトと候補
+├── docs/                   性能レビューの記録
+└── .agents/skills/         実物での確認の手順（verify-yaku）
 ```
 
 ## 18. 段階と完了の条件
 
-各段階は実装を子スレッド（DeepSeek V4.1 Flash）に任せ、設計・レビュー・実画面での確認は親が持つ。段階ごとに `docs/checks/M<n>.md` を書いてから次へ進む。
+開発はこの段階の順で進めた（本文やコードのコメントに出てくる M0〜M7 はこの段階を指す）。M6 は PDF と画面翻訳の品質、M7 は設定と管理画面の見た目の改善。
 
 | 段階 | 中身 | 完了の条件 |
 |---|---|---|
