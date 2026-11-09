@@ -493,10 +493,12 @@ private struct PrivacySettingsTab: View {
                         model.store.deleteAllHistory()
                         model.store.deleteAllCache()
                         URLCacheLeftovers.remove()
+                        PDFWorkerPaths.clearTranslationCache()
+                        AppLog.clearAll()
                         model.reloadHistory()
                         model.selectedHistory = nil
                         cleared = true
-                        AppLog.write("privacy: history and cache cleared")
+                        AppLog.write("privacy: history, caches and logs cleared")
                     }
                     if cleared {
                         Text("消しました")
@@ -507,7 +509,7 @@ private struct PrivacySettingsTab: View {
             } header: {
                 Text("消去")
             } footer: {
-                Text("訳した文はこの Mac の外に出ません。ネットワークを使うのは、モデルの取得と、PDF 用の部品の取得（初めて PDF を訳すとき）だけです。")
+                Text("履歴、訳のキャッシュ、PDF の訳のキャッシュ、ログを消します。訳した文はこの Mac の外に出ません。ネットワークを使うのは、モデルの取得と、PDF 用の部品の取得（初めて PDF を訳すとき）だけです。")
             }
         }
         .formStyle(.grouped)
