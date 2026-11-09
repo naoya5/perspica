@@ -19,6 +19,8 @@ enum EngineWatchdog {
     # stdin is a pipe whose only writer is the app, so it reads end-of-file the
     # moment the app is gone, however it went (kill -9 included). Nothing here
     # polls: the shell blocks in `wait` and the reader blocks in `read`.
+    # When llama-server exits on its own the shell exits with the same status,
+    # so the app's log says how it died (for example 137 for SIGKILL).
     pid_file="$2"
     shift 2
 
@@ -45,8 +47,9 @@ enum EngineWatchdog {
     exec 3<&-
 
     wait "$server_pid"
+    status=$?
     kill "$reader_pid" 2>/dev/null
-    exit 0
+    exit "$status"
 
     """
 
