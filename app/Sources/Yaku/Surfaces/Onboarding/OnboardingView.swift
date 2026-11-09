@@ -260,7 +260,7 @@ struct OnboardingView: View {
         message: String,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        // M5 (SPEC 15): the pages were top-aligned, so a short page left a big
+        // SPEC 15: the pages were top-aligned, so a short page left a big
         // empty band under it. Centre the content in the page instead, and
         // still let a taller page scroll.
         GeometryReader { proxy in

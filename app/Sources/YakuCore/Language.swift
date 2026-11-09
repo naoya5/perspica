@@ -101,7 +101,7 @@ public enum LanguageCatalog {
         return byCode[code]?.japaneseName ?? code
     }
 
-    /// The two-letter code a row or a badge shows for a language (M7 5, 6):
+    /// The two-letter code a row or a badge shows for a language:
     /// `en` → `EN`, `zh-hans` → `ZH`. `nil` (or empty) is 「自動」, the same word
     /// the source slot uses.
     public static func shortCode(for code: String?) -> String {

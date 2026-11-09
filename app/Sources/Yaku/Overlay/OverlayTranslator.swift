@@ -6,7 +6,7 @@ import YakuCore
 /// The specification's order: at most three requests in flight, started in
 /// reading order (top to bottom). Each block is translated on its own, with the
 /// other blocks of the same screen as context, and carries the glossary and the
-/// cache from M1/M2.
+/// cache of the panel and HUD.
 ///
 /// Priority (SPEC 7.3): the dialogue surfaces come first, so this translator is
 /// cancelled as soon as a new panel or HUD request starts. It never cancels a
@@ -91,7 +91,7 @@ final class OverlayTranslator {
     }
 
     /// Adds blocks to the run in progress: the tiled reading pass finds small
-    /// text after the first blocks are already on the screen (M5.md 3.4). The
+    /// text after the first blocks are already on the screen. The
     /// language, form and model of the run are kept, and `onFinished` waits for
     /// these blocks too.
     func extend(blocks: [OCRBlock], indexes: [Int]) {

@@ -20,7 +20,7 @@ struct ManagerTranslateView: View {
         // Two equal panes. Not HSplitView: inside NavigationSplitView it
         // ignored the floating sidebar's inset, squeezed the sidebar and pushed
         // the translation pane about 15 pt past the window's right edge
-        // (M7 review).
+        //.
         HStack(spacing: 0) {
             sourcePane
             Divider()
@@ -51,13 +51,13 @@ struct ManagerTranslateView: View {
                         .monospacedDigit()
                 }
             }
-            // M7 5: the input is a card of its own, so 原文 and 訳文 read as two
+            // the input is a card of its own, so 原文 and 訳文 read as two
             // faces of the same tool rather than one white sheet.
             //
             // A vertical TextField, the same control the panel's source field
-            // uses (M1): TextEditor keeps an empty scrollbar track down its
-            // right edge even with .scrollIndicators(.hidden) (M0/M2, still
-            // visible in the M7 shots); the field does not.
+            // uses: TextEditor keeps an empty scrollbar track down its
+            // right edge even with .scrollIndicators(.hidden) (seen in the
+            // screenshots); the field does not.
             TextField("訳したい文を入力", text: $coordinator.manager.sourceText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
@@ -85,7 +85,7 @@ struct ManagerTranslateView: View {
             HStack(spacing: Design.Space.s) {
                 ManagerSectionLabel(text: "訳文")
                 // The direction of the pair, in the header where it is read
-                // first (M7 5).
+                // first.
                 DesignLanguageDirection(
                     source: coordinator.manager.sourceLanguage,
                     target: coordinator.manager.targetLanguage
@@ -99,7 +99,7 @@ struct ManagerTranslateView: View {
 
             // Under the card, opposite the source pane's "⌘↩ で訳す": in the
             // header it pushed the copy button off the edge and wrapped onto
-            // two lines at the default width (M7 review).
+            // two lines at the default width.
             Text(elapsedSummary)
                 .font(.system(size: Design.Font.caption))
                 .foregroundStyle(.tertiary)
@@ -173,7 +173,7 @@ struct ManagerTranslateView: View {
     }
 
     private var copyButton: some View {
-        // M7 5: 訳す is the one prominent action; the copy is a quiet, labelled
+        // 訳す is the one prominent action; the copy is a quiet, labelled
         // secondary button, so the two are never mistaken for each other.
         Button {
             coordinator.copyTranslation(on: .manager)

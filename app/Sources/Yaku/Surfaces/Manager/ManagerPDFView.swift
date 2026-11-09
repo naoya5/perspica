@@ -12,7 +12,7 @@ struct ManagerPDFView: View {
 
     @State private var dropHover = false
     @State private var thumbnails: [UUID: NSImage] = [:]
-    /// Which job's full error message is open in the 詳細 popover (M7 9).
+    /// Which job's full error message is open in the 詳細 popover.
     @State private var errorJobID: UUID?
     @State private var errorJobMessage = ""
 
@@ -35,7 +35,7 @@ struct ManagerPDFView: View {
         ZStack {
             RoundedRectangle(cornerRadius: Design.Radius.well, style: .continuous)
                 .fill(dropHover ? AnyShapeStyle(Color.accentColor.opacity(0.12)) : AnyShapeStyle(.quaternary))
-            // M7 9: a dashed edge that becomes a solid accent edge while a file
+            // a dashed edge that becomes a solid accent edge while a file
             // is over it, so the drop target is unmistakable.
             RoundedRectangle(cornerRadius: Design.Radius.well, style: .continuous)
                 .strokeBorder(
@@ -78,7 +78,7 @@ struct ManagerPDFView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// The full failure text, one line in the row and everything here (M7 9).
+    /// The full failure text, one line in the row and everything here.
     private var errorDetail: some View {
         VStack(alignment: .leading, spacing: Design.Space.s) {
             Text("失敗の詳細")
@@ -140,7 +140,7 @@ struct ManagerPDFView: View {
                         .frame(maxWidth: 260)
                 }
                 if job.jobState == .failed, !job.errorMessage.isEmpty {
-                    // M7 9: one line in the row; the whole message is in 詳細.
+                    // one line in the row; the whole message is in 詳細.
                     HStack(spacing: Design.Space.s) {
                         Text(job.errorMessage)
                             .font(.system(size: Design.Font.caption))

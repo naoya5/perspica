@@ -191,7 +191,7 @@ final class OverlayController {
     private func read(capture: ScreenCapturer.Capture, started: CFAbsoluteTime) async throws {
         let language = AppSettings.shared.overlayLanguage
         // The whole-picture pass first, so the first blocks go up and start
-        // translating while the tiled pass is still reading (M5.md 3.4).
+        // translating while the tiled pass is still reading.
         let visionStarted = CFAbsoluteTimeGetCurrent()
         let wholeLines = try await ScreenOCR.wholeLines(in: capture.image, language: language)
         let visionSeconds = CFAbsoluteTimeGetCurrent() - visionStarted
@@ -347,9 +347,9 @@ final class OverlayController {
         // The drawn size comes from the line height, so the reading that
         // produced it is recorded here: the whole-picture pass and a tile report
         // different boxes for the same line, which is what made equally sized
-        // labels come out at different sizes (M5.md 8.2). `from` says whether
+        // labels come out at different sizes. `from` says whether
         // the height was measured from the ink or came from Vision's box, which
-        // is not comparable with a measured one (M6.md 2.3).
+        // is not comparable with a measured one.
         AppLog.write(String(format: "overlay: block %d %@ frame=%.0fx%.0f lineHeight=%.1f (box %.1f, from %@) lines=%d bold=%@ chars=%d",
                             id, origin, frame.width, frame.height, lineHeight, boxLineHeight,
                             lineHeightSource.rawValue,
@@ -402,7 +402,7 @@ final class OverlayController {
     /// The size the overlay draws at and the size the split rule compares must
     /// come from the same reading, or a line the ink cannot be measured from
     /// would be split on Vision's box height in one place and drawn from it in
-    /// another (M6.md 2.3). The picture is scanned once per line here.
+    /// another. The picture is scanned once per line here.
     private func measure(
         _ lines: [OCRLine],
         pixels: PixelImage,
@@ -556,7 +556,7 @@ final class OverlayController {
         isActive = true
     }
 
-    /// `--demo-surface overlay --demo-state permission` (SPEC 15, M4).
+    /// `--demo-surface overlay --demo-state permission` (SPEC 15).
     func showPermissionDemo() {
         showPermissionNotice()
     }

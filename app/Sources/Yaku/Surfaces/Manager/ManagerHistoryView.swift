@@ -11,7 +11,7 @@ struct ManagerHistoryView: View {
     var body: some View {
         // Not HSplitView: inside NavigationSplitView it ignored the floating
         // sidebar's inset, squeezed the sidebar and pushed the detail about
-        // 15 pt past the window's right edge (M7 review).
+        // 15 pt past the window's right edge.
         HStack(spacing: 0) {
             list
             Divider()
@@ -87,7 +87,7 @@ struct ManagerHistoryView: View {
                 Image(systemName: originSymbol(item.origin))
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
-                // M7 6: the direction of the pair, then how long ago.
+                // the direction of the pair, then how long ago.
                 DesignLanguageDirection(source: item.sourceLanguage, target: item.targetLanguage)
                 Spacer(minLength: Design.Space.xs)
                 Text(RelativeTime.text(for: item.date))

@@ -4,8 +4,8 @@ import Foundation
 ///
 /// The panel asks for the source text's height on every redraw and the reveal
 /// animation redraws at 30Hz, so the same string was measured dozens of times a
-/// second. M5's profile showed that work as CoreText shaping on the main thread,
-/// and removing it took the translating CPU from 18.5% to 12.3% (M5.md 4.2).
+/// second. A profile showed that work as CoreText shaping on the main thread,
+/// and removing it took the translating CPU from 18.5% to 12.3%.
 ///
 /// The whole table is dropped once it reaches `limit`, rather than evicting one
 /// entry at a time: the callers here have a handful of live keys (the panel's

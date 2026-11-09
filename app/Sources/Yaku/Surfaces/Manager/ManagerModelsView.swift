@@ -38,8 +38,8 @@ struct ManagerModelsView: View {
         let downloading = model.downloader.state.modelID == entry.id && model.downloader.state.isActive
         let selected = AppSettings.shared.selectedModelID == entry.id
             && AppSettings.shared.customModelPath.isEmpty
-        // The engine is running M0's development file for this entry, so say
-        // that instead of 「未取得」 (SPEC 15, M5).
+        // The engine is running the development file for this entry, so say
+        // that instead of 「未取得」 (SPEC 15).
         let development = !installed && !downloading
             && ModelCatalog.models.first?.id == entry.id
             && ModelStore.isUsingDevelopmentFile
@@ -52,7 +52,7 @@ struct ManagerModelsView: View {
                     DesignBadge(text: "使用中", systemImage: "checkmark.circle.fill", tone: .accent)
                 }
                 Spacer(minLength: Design.Space.s)
-                // M7 8: one badge shape for every state, so 使用中 / 未取得 /
+                // One badge shape for every state, so 使用中 / 未取得 /
                 // 取得中 read as the same kind of thing.
                 stateBadge(entry, installed: installed, downloading: downloading,
                            development: development)
@@ -93,7 +93,7 @@ struct ManagerModelsView: View {
             }
 
             if development {
-                Text("この Mac では M0 で用意した開発用のファイルを使っています。"
+                Text("この Mac では開発用のファイル（YAKU_DEV_MODEL）を使っています。"
                      + "「取得する」で正規のファイルを取得すると、そちらに差し替わります。")
                     .font(.system(size: Design.Font.caption))
                     .foregroundStyle(.secondary)
@@ -130,8 +130,8 @@ struct ManagerModelsView: View {
         }
     }
 
-    /// The one badge every state goes through (M7 8). The wording is the same
-    /// as before; 取得中 gains the percentage the brief asks for.
+    /// The one badge every state goes through The wording is plain; 取得中
+    /// carries the percentage.
     private func stateBadge(_ entry: TranslationModel, installed: Bool, downloading: Bool,
                             development: Bool = false) -> DesignBadge {
         if downloading {

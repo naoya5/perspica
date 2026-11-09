@@ -29,7 +29,7 @@ final class HotKeyManager {
     static let selectionID: UInt32 = 1
     /// ⌃⌥K — open or close the panel.
     static let panelID: UInt32 = 2
-    /// ⌃⌥O — translate the screen (M4).
+    /// ⌃⌥O — translate the screen.
     static let screenID: UInt32 = 3
 
     nonisolated(unsafe) private var eventHandler: EventHandlerRef?

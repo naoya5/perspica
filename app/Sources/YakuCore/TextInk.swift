@@ -11,7 +11,7 @@ import Foundation
 /// back 14.7 pixels tall from the whole-picture pass and 12.0 from a tile, and
 /// the four 14-point sidebar labels came back in 12.0- to 14.3-pixel boxes. The
 /// overlay drew those four at 8.3 to 11.7 points, one of them at the 0.70
-/// floor, where the picture has one size (M5.md 8.2).
+/// floor, where the picture has one size.
 ///
 /// The ink band does not have that problem, because it is read from the pixels:
 /// the pass that found the line cannot change it. The band is the run of rows
@@ -19,7 +19,7 @@ import Foundation
 /// text is its x-height plus the antialiased edges, so the size follows from it
 /// as `size = (band - bandOffset) / xHeightRatio`. Both constants were fitted
 /// to the three samples' 38 lines, drawn at 1× and again at 2× (eight sizes
-/// from 12 to 40 points, M5.md 8.2): the fit lands within 3% of the true size
+/// from 12 to 40 points): the fit lands within 3% of the true size
 /// at 2× and 9% at 1×, and, which is what the overlay needs, lines of the same
 /// size come out within 0.2–2.1% of each other where Vision's box spread them
 /// over 19%.
@@ -55,10 +55,10 @@ public enum TextInk {
     /// middle of the range: a tightly cropped box that is more than half ink,
     /// or a line on a mid-grey band, put the guess on the wrong side and the
     /// box came back with **no ink at all**. `fontSize(in:line:text:)` then
-    /// returned nil, the overlay fell back to Vision's box height, and the M5.2
-    /// size rule compared that box value against a measured one — which is what
+    /// returned nil, the overlay fell back to Vision's box height, and the size
+    /// rule compared that box value against a measured one — which is what
     /// split `• Keeps you informed …` from its own second line on the user's
-    /// screen (`M6.md` 2.3).
+    /// screen.
     ///
     /// Testing both sides is the same test wherever the old guess was right, so
     /// the fitted band constants still hold, and finds the ink where it was
@@ -156,13 +156,13 @@ public enum TextInk {
     /// The ink band above is fine for a crop-invariant reading of Latin text,
     /// but it follows the x-height, and Japanese text has none: the band read a
     /// sample that mixes the two at one size 35–46% larger on its Japanese
-    /// lines (34 points read as 49.6, 17 as 22.9 — M5.md 9.2), which drew every
+    /// lines (34 points read as 49.6, 17 as 22.9), which drew every
     /// translation from a Japanese screen far too large. The ink's width is the
     /// same measure for every script.
     ///
     /// Measured against the four samples, whose true sizes are known: exact to
     /// within 0.3% for Latin text at 13–19 points and for Japanese text at 17
-    /// (M5.md 9.2). It assumes the text was drawn in the system font, so a
+    ///. It assumes the text was drawn in the system font, so a
     /// screen using another face or extra letter spacing reads a little off;
     /// for comparing two lines that cancels, because both are read the same way.
     public static func fontSize(
@@ -251,7 +251,7 @@ public enum TextInk {
     /// ink's width and the ink band are measured from the picture and can be
     /// compared between two lines, while `box` is Vision's own box height, which
     /// moves with the pass that found the line and with the ascenders and
-    /// descenders the line happens to have (M6.md 2.3). The split rule
+    /// descenders the line happens to have. The split rule
     /// (`OCRBlockBuilder.sizeTolerance`) may only use a measured size, so it
     /// takes `size` and skips the line when it is nil.
     public struct Reading: Sendable, Equatable {
@@ -294,7 +294,7 @@ public enum TextInk {
 
     /// How a set of readings was arrived at, for the log: a line that fell back
     /// to `box` is a line whose size could not be measured, and the number is
-    /// worth seeing rather than guessing at (M6.md 2.3).
+    /// worth seeing rather than guessing at.
     public static func summary(_ sources: [Reading.Source]) -> String {
         let width = sources.filter { $0 == .width }.count
         let band = sources.filter { $0 == .band }.count

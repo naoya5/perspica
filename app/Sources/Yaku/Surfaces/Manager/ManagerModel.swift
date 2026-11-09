@@ -218,7 +218,7 @@ final class ManagerModel {
         Task { await engine.restart() }
     }
 
-    /// 「既存のファイルを使う」: keeps M0's way of pointing at a local GGUF.
+    /// 「既存のファイルを使う」: keeps the original way of pointing at a local GGUF.
     func useExistingFile(_ url: URL) {
         AppSettings.shared.customModelPath = url.path
         modelNote = "\(url.lastPathComponent) を使います"

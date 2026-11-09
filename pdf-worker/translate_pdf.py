@@ -14,12 +14,12 @@ app does and posts it to the engine the app started.
 
 The font family for the translated text comes from the source document's own
 fonts (`pdf_font_family.py`), so a serif paper stays serif and a sans guide comes
-back sans (M6.md 3.1). `--primary-font-family` overrides it.
+back sans. `--primary-font-family` overrides it.
 
 The rate limit (`--qps`) is the translation speed: pdf2zh-next sleeps between
 paragraphs to hold that rate (`base_translator.py`), and it also decides the
 worker pool when `--pool-max-workers` is unset. The default is measured against
-a 17-page document in M6.md 3.4.
+a 17-page document in testing.
 
 pdf2zh-next and BabelDOC log to file descriptor 1, so the real stdout is kept
 aside for the JSON lines and fd 1 is pointed at stderr.
@@ -105,8 +105,8 @@ def chosen_font_family(pdf: Path) -> str | None:
     """The font family for the translation, from the source's own fonts.
 
     Read from the document rather than fixed, so a serif paper stays serif and a
-    sans screen guide comes back sans (M6.md 3.1). When the document gives no
-    evidence the answer is sans-serif, which is what the guide measured for M6
+    sans screen guide comes back sans. When the document gives no
+    evidence the answer is sans-serif, which is what the sample screen guide
     needs: its body is a Type 3 font with no descriptor to read, and the
     library's own fallback put the translation in a serif face.
     """

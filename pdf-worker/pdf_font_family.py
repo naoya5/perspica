@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Choose the font family for a translated PDF from the source document's own
-fonts (SPEC 8.2, M6.md 3.1).
+fonts.
 
 `pdf2zh-next` takes `--primary-font-family serif|sans-serif|script`. Left unset
 it picks per character from the original font's `is_serif` flag, which is the
@@ -8,7 +8,7 @@ right idea and the wrong evidence here: the guide this was measured on draws its
 body text with a **Type 3** font, and a Type 3 font has no font descriptor, so
 `pymupdf.Font.is_serif` cannot read a flag and the library falls back to a
 serif face. The guide is a geometric sans, and the translation came back in a
-serif (M6.md 3.1).
+serif.
 
 So the family is decided here, from two pieces of evidence, in order:
 
@@ -70,8 +70,8 @@ def _font_flags(document, xref: int, basefont: str, font_type: str) -> tuple[boo
 
     A **Type 3** font gives None even though `pymupdf` will answer: its glyphs
     are drawing programs, there is no font descriptor, and the flag it reports is
-    the enum's default rather than anything read from the document. The guide
-    measured for M6.md 3.1 draws its whole body in a Type 3 font that reports
+    the enum's default rather than anything read from the document. The sample
+    screen guide draws its whole body in a Type 3 font that reports
     `is_serif=True` while being a geometric sans, so trusting that answer is what
     put the translation in a serif face. A font whose bytes cannot be read also
     gives None.

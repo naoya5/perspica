@@ -226,7 +226,7 @@ final class AppSettings {
         set { store(Key.selectedModelID, newValue) }
     }
 
-    /// A file the user picked by hand (M0's `modelPath`).
+    /// A file the user picked by hand (the `modelPath` setting).
     var customModelPath: String {
         get { string(Key.modelPath) ?? "" }
         set { store(Key.modelPath, newValue) }
@@ -262,7 +262,7 @@ final class AppSettings {
         set { store(Key.pdfPythonPath, newValue) }
     }
 
-    // MARK: 画面翻訳（M4 の項目。表示だけ）
+    // MARK: 画面翻訳（表示だけの項目）
 
     var overlayLanguage: String {
         get { string(Key.overlayLanguage) ?? "auto" }

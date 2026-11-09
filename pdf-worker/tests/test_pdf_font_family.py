@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the PDF font-family choice (SPEC 8.2, M6.md 3.1).
+"""Tests for the PDF font-family choice.
 
     pdf-worker/.venv/bin/python -m unittest discover -s pdf-worker/tests
 

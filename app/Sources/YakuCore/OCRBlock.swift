@@ -86,12 +86,12 @@ public enum OCRBlockBuilder {
     public static let gapRatio: CGFloat = 0.8
     /// The height rule: within 25%.
     ///
-    /// M5 tried tightening this to 15% to keep a UI row's title and its
+    /// Tightening this to 15% was tried to keep a UI row's title and its
     /// description apart (they differ by 12–14%, so they merge). It cannot work:
     /// the lines of a real paragraph differ by up to 21% — Vision's line box
     /// grows with ascenders and descenders — so any tolerance that splits the
-    /// title/description pair also splits paragraphs. See `M5.md` for the
-    /// measurements; the rule is left at the specification's 25%.
+    /// title/description pair also splits paragraphs. The rule is left at the
+    /// specification's 25%.
     public static let heightTolerance: CGFloat = 0.25
     /// The overlap rule: at least half of the narrower line.
     public static let overlapRatio: CGFloat = 0.5
@@ -108,13 +108,13 @@ public enum OCRBlockBuilder {
     ///
     /// Measured over every pair the three rules above would join, in the
     /// whole-picture and the tiled pass of the article, two-column and UI
-    /// samples (M5.md 8.1): a wrapped line's line above is 0.92–5.02 × its
+    /// samples: a wrapped line's line above is 0.92–5.02 × its
     /// width, and the two title/description pairs are at 0.45 and 0.56. 0.7
     /// sits in the gap, 0.22 from either side.
     ///
     /// The third UI row, `Show in Lock Screen` over `Keep recent items
     /// visible`, is at 1.01 and no width rule can split it; the size rule below
-    /// is what keeps them apart (M5.md 8.1, 9.2).
+    /// is what keeps them apart.
     ///
     /// A paragraph's last line is short but has no line below it, so it is
     /// unaffected; that is what keeps a paragraph in one block (measured: the
@@ -136,7 +136,7 @@ public enum OCRBlockBuilder {
     /// than its English ones at one size). `TextInk.fontSize(in:line:text:)` —
     /// the ink's width against the recognised text's width — is, and the
     /// numbers below are its readings over the whole-picture pass, as a share
-    /// of the larger of the two (M5.md 9.2):
+    /// of the larger of the two:
     ///
     /// | lines | difference |
     /// |---|---|
@@ -183,7 +183,7 @@ public enum OCRBlockBuilder {
     /// with no ascender and no descender — `the work.`, `one outcome.` — comes
     /// back from Vision in a box about a third shorter than the line above it,
     /// which is more than `heightTolerance` allows, so the fragment was cut off
-    /// and translated alone (M6.md 2.2). Japanese is unaffected: its characters
+    /// and translated alone. Japanese is unaffected: its characters
     /// have no case, so the rule never fires and the height rule, which works
     /// well for CJK, decides.
     public static func continuesSentence(_ line: OCRLine, _ last: OCRLine) -> Bool {
@@ -287,7 +287,7 @@ public enum OCRBlockBuilder {
     /// box is. The size rule is waived with them, so a continuation is never
     /// cut off by a size that was misread; the cost is that a UI row whose
     /// description happens to begin in lower case would join its title, which
-    /// none of the samples does (M6.md 2.4).
+    /// none of the samples does.
     public static func follows(
         _ line: OCRLine,
         _ last: OCRLine,

@@ -275,14 +275,14 @@ struct PanelRootView: View {
             return PanelLayout.minimumTranslationHeight
         case .failed:
             // Just the message and its buttons; the error state must not leave
-            // a wide empty face below them (M1 review).
+            // a wide empty face below them.
             return 62
         case .translating:
             // The panel keeps one height while the translation streams and
             // fits the finished text when it lands. Growing it as text arrived
             // re-laid out the whole panel (glass, shadow and all) for every
             // step: measured 48% CPU growing in 44pt steps against 30% with a
-            // fixed height (SPEC 14, M5). The height comes from the source
+            // fixed height (SPEC 14). The height comes from the source
             // text, which does not change while the translation arrives.
             let wanted = max(sourceFieldHeight * 2.2, PanelLayout.workingTranslationHeight)
             return min(max(wanted, PanelLayout.minimumTranslationHeight),
@@ -302,7 +302,7 @@ struct PanelRootView: View {
     /// panel (and the text), which reported a new height. Measured while a
     /// translation streamed, that loop cost 27 points of CPU (58% with it, 30%
     /// with the report removed); measuring the string costs one text
-    /// measurement per evaluation and breaks the loop (SPEC 14, M5).
+    /// measurement per evaluation and breaks the loop (SPEC 14).
     private var translationContentHeight: CGFloat {
         TextMetrics.height(
             coordinator.panel.translation,
@@ -584,8 +584,8 @@ struct PanelRootView: View {
             HStack(spacing: 8) {
                 statusText
                 Spacer(minLength: 4)
-                // Nothing to copy or open until there is a translation; the M1
-                // review asked for these to disappear in the empty and error
+                // Nothing to copy or open until there is a translation; these
+                // disappear in the empty and error
                 // states rather than sit there greyed out.
                 if hasTranslation {
                     copyButton
