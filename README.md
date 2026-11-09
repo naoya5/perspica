@@ -83,4 +83,4 @@ app/build/Yaku.app/Contents/MacOS/Yaku --data-dir "$TMPDIR/yaku-demo-data" \
 ```
 
 アイコンは `app/Resources/Yaku.icon`（Icon Composer の文書）で、`make-app.sh` が `xcrun actool` で `Assets.car` と `Yaku.icns` にコンパイルする。
-絵を描き直すときは `swiftc -O app/tools/make-icon.swift -o /tmp/make-icon && /tmp/make-icon app/Resources/Yaku.icon/Assets`。
+層は SVG（`Assets/`）で、`design/app-icon/make-candidates.swift` が描く。描き直すときはそれを実行し、できた `design/app-icon/Perspica-Final.icon` の中身を `app/Resources/Yaku.icon` に写す（使う書体と取得元はスクリプトの先頭）。
