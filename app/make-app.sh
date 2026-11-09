@@ -84,7 +84,14 @@ if [ -f "$KEYCHAIN" ] && [ -f "$KEYCHAIN_PASSWORD_FILE" ]; then
     # `timeout` comes from Homebrew's coreutils; without it codesign runs unguarded.
     guard=""
     command -v timeout >/dev/null 2>&1 && guard="timeout $SIGN_TIMEOUT"
-    if ! $guard codesign --force --sign "$IDENTITY" --keychain "$KEYCHAIN" "$APP"; then
+    # The hardened runtime (`--options runtime`) stops DYLD_INSERT_LIBRARIES
+    # and unsigned code from being loaded into a process that holds the
+    # Accessibility and Screen Recording grants. Resources/Yaku.entitlements
+    # is empty on purpose: nothing the app does needs one. `--timestamp=none`
+    # keeps a self-signed identity from calling Apple's timestamp server.
+    if ! $guard codesign --force --options runtime --timestamp=none \
+        --entitlements Resources/Yaku.entitlements \
+        --sign "$IDENTITY" --keychain "$KEYCHAIN" "$APP"; then
         echo "error: codesign failed or timed out after ${SIGN_TIMEOUT}s" >&2
         exit 1
     fi
@@ -92,7 +99,9 @@ else
     echo "warning: no \"$IDENTITY\" identity ($KEYCHAIN); signing ad hoc." >&2
     echo "  macOS will ask for Accessibility and Screen Recording again after every rebuild." >&2
     echo "  Run tools/make-signing-identity.sh once to keep the grants." >&2
-    codesign --force --sign - "$APP"
+    codesign --force --options runtime --timestamp=none \
+        --entitlements Resources/Yaku.entitlements \
+        --sign - "$APP"
 fi
 codesign --verify --verbose=2 "$APP" 2>&1 | sed 's/^/  /'
 echo "built: $(pwd)/$APP"
