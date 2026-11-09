@@ -15,9 +15,9 @@
 
 ## Driving it with yaku-verify
 
-- **Samples.** Build the sample pages once with `swift app/tools/make-samples.swift /tmp/yaku-m4`. They are `article`, `columns`, `ui`, a mixed-language page and a bulleted doc page.
-- **Overlay.** Run `$V shot overlay-article WAIT=12 --demo-image /tmp/yaku-m4/article.png --demo-quit-after 40`. The picture is drawn in a window and the translation is laid over it through the real OCR and overlay path.
-- **Blocks only.** The JSON goes to stdout, which the helper discards, so run the binary directly inside a `$V begin` / `$V end` pair: `app/.build/arm64-apple-macosx/release/Yaku --data-dir /tmp/yaku-verify-state/data --demo-image /tmp/yaku-m4/article.png --demo-dump-blocks > "$(cat /tmp/yaku-verify-state/run_dir)/blocks.json"`. It exits on its own. This checks the grouping without judging pixels.
+- **Samples.** Build the sample pages once with `swift app/tools/make-samples.swift $TMPDIR/yaku-samples`. They are `article`, `columns`, `ui`, a mixed-language page and a bulleted doc page.
+- **Overlay.** Run `$V shot overlay-article WAIT=12 --demo-image $TMPDIR/yaku-samples/article.png --demo-quit-after 40`. The picture is drawn in a window and the translation is laid over it through the real OCR and overlay path.
+- **Blocks only.** The JSON goes to stdout, which the helper discards, so run the binary directly inside a `$V begin` / `$V end` pair: `app/.build/arm64-apple-macosx/release/Yaku --data-dir <state>/data --demo-image $TMPDIR/yaku-samples/article.png --demo-dump-blocks > "<evidence folder>/blocks.json"`. It exits on its own. This checks the grouping without judging pixels.
 - **Picker.** Run `$V shot overlay-picker WAIT=6 --demo-surface overlay-picker --demo-quit-after 40`.
 - **Timing.** The log has the first-block and all-blocks times. Baseline: first block 0.36-0.61 s, Vision alone 0.32-0.56 s (M5, M6).
 

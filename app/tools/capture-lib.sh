@@ -9,7 +9,7 @@
 #
 # Needs: WINID (tools/winid.swift), OPAQUE (tools/opaque.swift), SHOTS.
 
-OPAQUE=${OPAQUE:-/tmp/opaque}
+OPAQUE=${OPAQUE:-${TMPDIR:-/tmp}/yaku-verify-tools-$(id -u)/opaque}
 [ -x "$OPAQUE" ] || {
     echo "error: $OPAQUE not found; run: swiftc -O tools/opaque.swift -o $OPAQUE" >&2
     exit 1

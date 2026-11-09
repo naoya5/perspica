@@ -25,12 +25,25 @@ INSTALLED="$HOME/Applications/Perspica.app"
 LEGACY_INSTALLED="$HOME/Applications/Yaku.app"
 LOCK="$HOME/Library/Application Support/Yaku/Yaku.lock"
 APP_LOG="$HOME/Library/Logs/Yaku/app.log"
-STATE_DIR="${YAKU_VERIFY_STATE:-/tmp/yaku-verify-state}"
+# Per-user and private: $TMPDIR is the user's own 0700 folder on macOS. A fixed
+# name in the shared /tmp would let another account plant files the app or
+# this script then runs.
+WORK_ROOT="${TMPDIR:-/tmp}"
+STATE_DIR="${YAKU_VERIFY_STATE:-$WORK_ROOT/yaku-verify-state-$(id -u)}"
+TOOLS_DIR="$WORK_ROOT/yaku-verify-tools-$(id -u)"
 EVIDENCE_ROOT="$REPO/docs/checks/shots/verify"
-WINID=${WINID:-/tmp/winid}
-OPAQUE=${OPAQUE:-/tmp/opaque}
+WINID=${WINID:-$TOOLS_DIR/winid}
+OPAQUE=${OPAQUE:-$TOOLS_DIR/opaque}
 
 die() { echo "error: $*" >&2; exit 1; }
+
+# Creates a folder only this user can use, and refuses one that someone else
+# made first.
+private_dir() {
+    mkdir -p "$1"
+    [ "$(stat -f %u "$1")" = "$(id -u)" ] || die "$1 is not owned by $(id -un)"
+    chmod 700 "$1"
+}
 
 # The GGUF a verification run loads. The scratch --data-dir has neither the
 # user's settings nor their downloads, so the app is told through
@@ -113,6 +126,7 @@ cmd_build() {
     swift build -c release > "${TMPDIR:-/tmp}/yaku-verify-build.log" 2>&1 \
         || { grep -E 'error:' "${TMPDIR:-/tmp}/yaku-verify-build.log" | head -20; die "build failed"; }
     grep -E 'warning:' "${TMPDIR:-/tmp}/yaku-verify-build.log" | grep -v 'org.swift.swiftpm' | head -20 || true
+    private_dir "$TOOLS_DIR"
     [ -x "$WINID" ] || swiftc -O tools/winid.swift -o "$WINID"
     [ -x "$OPAQUE" ] || swiftc -O tools/opaque.swift -o "$OPAQUE"
     echo "built: $BIN"
@@ -121,6 +135,7 @@ cmd_build() {
 cmd_begin() {
     name=${1:?usage: yaku-verify begin <run-name>}
     [ -f "$STATE_DIR/run_dir" ] && die "a run is in progress ($(cat "$STATE_DIR/run_dir")); finish it with: yaku-verify end"
+    private_dir "$STATE_DIR"
     holder=$(lock_holder)
     if [ -n "$holder" ]; then
         command=$(ps -o command= -p "$holder")
@@ -149,6 +164,7 @@ cmd_begin() {
         esac
     fi
     echo "evidence: $dir"
+    echo "scratch data: $STATE_DIR/data"
 }
 
 # A failed build leaves the previous binary in place, and measuring it reports

@@ -16,7 +16,7 @@ V=.agents/skills/verify-yaku/scripts/yaku-verify   # from the repo root
 ## Facts that shape every run
 
 - **One Yaku at a time.** A `flock` on `~/Library/Application Support/Yaku/Yaku.lock` refuses a second instance, even under `--data-dir`. `begin` stops the user's installed app (`~/Applications/Perspica.app`, or `Yaku.app` from before the 2026-11-09 rename until it is reinstalled) and `end` reopens it. If the lock is held by anything else, `begin` refuses. Do not work around that. Other agents work on this repo in git worktrees (`git worktree list`, for example `~/.herdr/worktrees/Yaku/ui-audit`), and every worktree shares the same lock. When `doctor` reports `BUSY`, run `$V wait-free` (returns once no other agent's Yaku has held the lock for 20 s, gives up after 900 s; the user's installed app does not count, `begin` stops it) and then retry. Never kill another agent's instance. Do not wait with `pgrep -f 'release/Yaku'`: the waiting shell's own command line matches it, so it never sees the lock free. `shot` and `cpu` also check that their own pid holds the lock before they capture, so a race with another agent fails loudly instead of capturing its window.
-- **Never touch real data.** The helper always passes `--data-dir /tmp/yaku-verify-state/data`. History, cache, settings and PDF jobs land there.
+- **Never touch real data.** The helper always passes `--data-dir <state>/data`, where `<state>` is a private per-user folder under `$TMPDIR` (`begin` prints it). History, cache, settings and PDF jobs land there.
 - **The log is shared.** `~/Library/Logs/Yaku/app.log` is the same file for every instance. The helper slices it from the line count at launch, so each `*.log` in the evidence folder holds only your run.
 - **The screen must be unlocked.** While it is locked nothing is drawn, `screencapture -l` fails, and CPU reads 0.00%. `doctor` checks this.
 - **A failed build leaves the old binary.** `shot`, `cpu` and `translate` refuse a release binary older than any source file. Always rebuild with `$V build`, which exits non-zero on a compile error.
@@ -25,7 +25,7 @@ V=.agents/skills/verify-yaku/scripts/yaku-verify   # from the repo root
 
 ```sh
 $V doctor                  # read-only: binary fresh? lock holder? screen? llama-server? model?
-$V build                   # swift build -c release (+ /tmp/winid, /tmp/opaque capture helpers)
+$V build                   # swift build -c release (+ the winid/opaque capture helpers, built into a private folder under $TMPDIR)
 $V begin <run-name>        # evidence folder + stop the installed app if it runs
 ```
 
@@ -60,7 +60,7 @@ A proof:
 
 - Goes through the user's path. `--demo-surface` opens the same window a click opens. `--demo-pdf` takes the same path a drop takes. Do not call internal setters or add test-only endpoints.
 - Shows the action and the result. Capture before and after for a visual change. Compare with the earlier milestone picture of the same composition in `docs/checks/shots/` (for example `M7-manager-translate-done-light.png`).
-- Checks side effects too. Translation lands in `/tmp/yaku-verify-state/data/Yaku.store` (history, cache). A PDF writes `<name>-ja.pdf` next to the source. The log names every step (`engine ready`, `translate first piece … in Xs`, `pdf: done … in Xs`).
+- Checks side effects too. Translation lands in `<state>/data/Yaku.store` (history, cache). A PDF writes `<name>-ja.pdf` next to the source. The log names every step (`engine ready`, `translate first piece … in Xs`, `pdf: done … in Xs`).
 - States what was not verified. For example, VoiceOver on a real screen, or a hotkey a human must press.
 
 Numbers: run `cpu` at least 3 times and report the range. The translating figure moves by a point between runs. Before you act on a number, change one thing and rebuild (the helper rejects stale binaries), then revert with `git checkout` and rebuild again. Baselines (2026-11-09): idle 0.00% / 34 MB, translating panel 12.6-13.5% / 35 MB, headless translate cold `engineStartup=2.59-3.59s first=0.039-0.040s`.
@@ -75,7 +75,7 @@ Run `end` after every attempt, including failed ones. It never kills by process 
 
 ## Profiling
 
-- Time Profiler: start the instance by hand inside a `begin` / `end` pair (`app/.build/arm64-apple-macosx/release/Yaku --data-dir /tmp/yaku-verify-state/data <args> &`), then `xcrun xctrace record --template 'Time Profiler' --attach <pid> --time-limit 10s --output <file>.trace`. Export with `xcrun xctrace export --input <file>.trace --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]'` and aggregate the XML (rows carry `thread`, `weight` and a `backtrace` of `frame name=` elements, with `id`/`ref` reuse).
+- Time Profiler: start the instance by hand inside a `begin` / `end` pair (`app/.build/arm64-apple-macosx/release/Yaku --data-dir <state>/data <args> &`), then `xcrun xctrace record --template 'Time Profiler' --attach <pid> --time-limit 10s --output <file>.trace`. Export with `xcrun xctrace export --input <file>.trace --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]'` and aggregate the XML (rows carry `thread`, `weight` and a `backtrace` of `frame name=` elements, with `id`/`ref` reuse).
 - Never point `xctrace record --launch` at the release binary or `build/Yaku.app`: LaunchServices resolves the identifier `dev.naoya.yaku` and starts the user's `~/Applications/Yaku.app`, which can hang suspended after the recording. To launch under a template (the run loop and display-update tables need it), copy `build/Yaku.app` (from `app/make-app.sh`) to `/tmp`, set `CFBundleIdentifier` to `dev.naoya.yaku.profile` with PlistBuddy, re-sign ad hoc with a `com.apple.security.get-task-allow` entitlement, and launch that copy inside a `begin` / `end` pair. `end` stops the copy if it lingers.
 - The SwiftUI template's own tables (`swiftui-updates`, `swiftui-causes`) stay empty for Yaku in both modes. `runloop-events` (main-thread wake-ups per second) and `hitches-updates` are recorded.
 
