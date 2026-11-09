@@ -62,9 +62,63 @@ enum AppPaths {
 
 /// Timestamped, append-only record of what the app did. Used to check
 /// behaviour that cannot be observed on screen.
+///
+/// The log records what the app did and how long it took, never what the user
+/// translated: lines that would carry source text, a translation, a glossary
+/// pair or a demo sentence go through `content(_:)`, which writes nothing
+/// unless content logging is on.
 enum AppLog {
     private static let lock = NSLock()
     nonisolated(unsafe) private static let formatter = ISO8601DateFormatter()
+
+    /// `app.log` is renamed to `app.log.1` at launch once it is this large.
+    static let rotateAbove: UInt64 = 5 * 1024 * 1024
+
+    /// Whether `content(_:)` writes. `YAKU_LOG_CONTENT=1` or `=0` decides when
+    /// it is set; otherwise a `--data-dir` run (a demo or verification run
+    /// that never touches real data) turns it on and a normal launch leaves it
+    /// off. The verify helper reads `demo-translate result=` from the log, so
+    /// its runs need it on.
+    static let logsContent: Bool = {
+        if let value = ProcessInfo.processInfo.environment["YAKU_LOG_CONTENT"] {
+            return value == "1"
+        }
+        return LaunchArguments.dataDirectory != nil
+    }()
+
+    /// A line that carries user text. Dropped unless `logsContent` is true.
+    static func content(_ line: @autoclosure () -> String) {
+        guard logsContent else { return }
+        write(line())
+    }
+
+    /// Keeps `app.log` from growing forever: above `rotateAbove` it becomes
+    /// `app.log.1` (replacing the previous one) and a fresh file starts.
+    /// Called once at launch.
+    static func rotateIfNeeded() {
+        lock.lock()
+        defer { lock.unlock() }
+        let url = AppPaths.appLog
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? UInt64, size > rotateAbove else { return }
+        let rotated = url.deletingPathExtension().appendingPathExtension("log.1")
+        try? FileManager.default.removeItem(at: rotated)
+        try? FileManager.default.moveItem(at: url, to: rotated)
+    }
+
+    /// Empties every log the app writes (`app.log`, `engine.log`, `pdf.log`),
+    /// for the privacy controls. The files stay so open handles keep working.
+    static func clearAll() {
+        lock.lock()
+        defer { lock.unlock() }
+        for url in [AppPaths.appLog, AppPaths.engineLog, AppPaths.pdfLog] {
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            if let handle = try? FileHandle(forWritingTo: url) {
+                try? handle.truncate(atOffset: 0)
+                try? handle.close()
+            }
+        }
+    }
 
     static func write(_ line: String) {
         lock.lock()

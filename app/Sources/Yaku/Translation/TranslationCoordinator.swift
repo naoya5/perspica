@@ -284,7 +284,8 @@ final class TranslationCoordinator {
         let trimmedTarget = target.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSource.isEmpty, !trimmedTarget.isEmpty else { return }
         _ = store.addGlossaryEntry(source: trimmedSource, target: trimmedTarget)
-        AppLog.write("glossary: added \(trimmedSource) → \(trimmedTarget) from history")
+        AppLog.write("glossary: added an entry from history (\(trimmedSource.count)→\(trimmedTarget.count) chars)")
+        AppLog.content("glossary: added \(trimmedSource) → \(trimmedTarget)")
     }
 
     // MARK: preferences

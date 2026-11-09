@@ -31,8 +31,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: launch
 
+    /// The flags whose value is a sentence the user (or the demo) wants
+    /// translated or searched for. Their values stay out of the log unless
+    /// content logging is on.
+    private static let textCarryingFlags: Set<String> = ["--demo-text", "--demo-translate", "--demo-search"]
+
+    /// The launch arguments as the log may show them.
+    static func loggableLaunchArguments() -> [String] {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        guard !AppLog.logsContent else { return arguments }
+        var result: [String] = []
+        var redactNext = false
+        for argument in arguments {
+            if redactNext, !argument.hasPrefix("--") {
+                result.append("<\(argument.count) chars>")
+                redactNext = false
+                continue
+            }
+            redactNext = textCarryingFlags.contains(argument)
+            result.append(argument)
+        }
+        return result
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        AppLog.write("launch args=[\(CommandLine.arguments.dropFirst().joined(separator: " "))]")
+        AppLog.rotateIfNeeded()
+        AppLog.write("launch args=[\(Self.loggableLaunchArguments().joined(separator: " "))]")
 
         // SPEC 7.1: only one Yaku runs at a time. A second one exits at once,
         // before anything is set up, so it can never touch the engine record or
@@ -1003,7 +1027,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if let search = demo.search {
                 managerModel.historySearch = search
-                AppLog.write("demo: history search=\(search)")
+                AppLog.write("demo: history search (\(search.count) chars)")
+                AppLog.content("demo: history search=\(search)")
             }
             if demo.state == "done" || demo.state == "translating" {
                 coordinator.manager.sourceText = text
@@ -1284,7 +1309,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ),
                 source: text
             )
-            AppLog.write("demo-translate glossary=\(glossary.count) text=\(text)")
+            AppLog.write("demo-translate glossary=\(glossary.count) chars=\(text.count)")
+            AppLog.content("demo-translate text=\(text)")
 
             let translateStart = CFAbsoluteTimeGetCurrent()
             var firstPiece: Double?
@@ -1309,8 +1335,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             print("用語集: \(glossary.map { "\($0.source)→\($0.target)" }.joined(separator: ", "))")
             print("訳文: \(translation)")
             print(String(format: "最初の文字: %.3f 秒 / 全体: %.3f 秒", first, total))
-            AppLog.write(String(format: "demo-translate engineStartup=%.2fs first=%.3fs total=%.3fs source=%@", engineReady, first, total, text))
-            AppLog.write("demo-translate result=\(translation)")
+            AppLog.write(String(format: "demo-translate engineStartup=%.2fs first=%.3fs total=%.3fs chars=%d", engineReady, first, total, text.count))
+            AppLog.content("demo-translate source=\(text)")
+            AppLog.content("demo-translate result=\(translation)")
 
             await engine.stop()
             AppLog.write("demo-translate done")
