@@ -14,11 +14,12 @@ import YakuCore
 @Observable
 final class PDFWorkerInstaller {
     /// The size shown in the wording before anything is installed (SPEC 13:
-    /// 「約 ___MB」). Measured on this Mac: a fresh 3.12 environment synced to
-    /// the current requirements.txt (pdf2zh-next 2.10.2, BabelDOC 0.7.1).
-    static let estimatedSizeText = "950MB"
+    /// 「約 ___MB」). Measured 2026-11-10: a 3.12 environment synced to the
+    /// current requirements.txt (pdf2zh-next 2.10.2, BabelDOC 0.7.1) is
+    /// 924 MB on disk.
+    static let estimatedSizeText = "920MB"
     /// The same figure in bytes, for the demo's 導入済み size.
-    static let estimatedBytes: Int64 = 957 * 1000 * 1000
+    static let estimatedBytes: Int64 = 924 * 1000 * 1000
 
     enum Phase: Equatable {
         case idle
