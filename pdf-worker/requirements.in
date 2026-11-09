@@ -1,0 +1,20 @@
+# The PDF worker's Python environment (SPEC 8.2): the direct requirements.
+#
+# `requirements.txt` is compiled from this file and is what the installer
+# syncs, with every package pinned and hashed:
+#
+#     cd pdf-worker
+#     uv pip compile requirements.in --universal --python-version 3.12 \
+#         --generate-hashes -o requirements.txt
+#
+# After a change, the app sees a new hash of requirements.txt and re-syncs
+# every existing environment before the next PDF runs.
+#
+# pdf2zh-next is pinned because translate_pdf.py replaces a method of its
+# CLITranslatorTranslator in process; a different version has to be re-checked
+# against that patch (2.10.2 was: same `args` list, same `do_translate`).
+pdf2zh-next==2.10.2
+# BabelDOC below 0.6.3 deserialized a pickle named by the PDF
+# (CVE-2026-54071). 0.7.x no longer ships that parser at all; the floor keeps
+# a downgrade from slipping back in.
+babeldoc>=0.7.1,<0.8.0
