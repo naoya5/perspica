@@ -26,4 +26,4 @@ Yaku translates text through PLaMo 3 Translate, which runs as a `llama-server` c
 
 - `--demo-translate` exits on its own. Do not add a long `--demo-quit-after`. The helper waits for the process.
 - A missing model makes `engine failed` appear in the log. `doctor` checks the model first.
-- The engine's URLSession is `.shared`. Every streamed response is also written to `~/Library/Caches/Yaku/Cache.db` (perf review 2026-11-09). Do not read that file as proof of anything. It is a known defect.
+- The engine client uses a session with no URL cache (2026-11-09). To prove nothing reaches disk, count rows in `~/Library/Caches/Yaku/Cache.db` (the bare binary) before and after a run; they must not change. The installed app removes those leftovers at launch.

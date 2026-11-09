@@ -23,5 +23,5 @@ The manager is a normal window with a sidebar: 翻訳, PDF, 履歴, 用語集, �
 ## Gotchas
 
 - History in a fresh scratch folder is empty. Translate first (translate.md), or the page shows the empty-state placeholder.
-- History search fetches the newest 1000 rows and filters them in memory, while up to 5000 are kept. A search can miss older matches (perf review 2026-11-09).
+- History search runs in the store and reaches all kept rows (up to 5000). `--demo-search "<語>"` types into the search field, and the log says `history: search matched N row(s)`. To prove it reaches old rows, seed more than 1000 rows into the scratch `Yaku.store` (table `ZHISTORYITEM`, `Z_ENT` from `Z_PRIMARYKEY`, then raise `Z_MAX`) and search for a word only the oldest row has.
 - `--demo-download` without `--demo-download-gate` really downloads a multi-GB model. Do not use it for verification.

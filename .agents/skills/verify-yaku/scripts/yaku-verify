@@ -36,6 +36,16 @@ lock_holder() {
     return 0
 }
 
+# The lock holder when it is not the user's installed app: another agent's run.
+foreign_holder() {
+    holder=$(lock_holder)
+    [ -n "$holder" ] || return 0
+    case "$(ps -o command= -p "$holder")" in
+        "$INSTALLED"/*) ;;
+        *) echo "$holder" ;;
+    esac
+}
+
 screen_locked() {
     printf 'import CoreGraphics\nprint((CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Int ?? 0)\n' \
         | swift - 2>/dev/null | tail -1
@@ -214,11 +224,11 @@ cmd_cpu() {
 cmd_wait_free() {
     max=${1:-900}; free=0; waited=0
     while [ "$free" -lt 10 ]; do
-        [ "$waited" -ge "$max" ] && die "the lock was still busy after ${max}s (holder pid=$(lock_holder))"
-        if [ -n "$(lock_holder)" ]; then free=0; else free=$((free + 1)); fi
+        [ "$waited" -ge "$max" ] && die "another Yaku still held the lock after ${max}s (pid=$(foreign_holder))"
+        if [ -n "$(foreign_holder)" ]; then free=0; else free=$((free + 1)); fi
         sleep 2; waited=$((waited + 2))
     done
-    echo "lock free for 20s (waited ${waited}s)"
+    echo "no other agent's Yaku for 20s (waited ${waited}s); the installed app, if running, is left to 'begin'"
 }
 
 cmd_log() {
@@ -235,6 +245,13 @@ cmd_end() {
         sleep 1
     fi
     dir=$(cat "$STATE_DIR/run_dir" 2>/dev/null || true)
+    # An instance started outside start_instance (a profiler's --launch, a hand
+    # run) still points at our scratch folder; stop it, or `open` below only
+    # brings that instance forward instead of the user's own app.
+    for pid in $(ps -Ao pid=,command= | grep -F -- "--data-dir $STATE_DIR/data" | grep -v grep | awk '{print $1}'); do
+        kill -TERM "$pid" 2>/dev/null && echo "stopped a stray instance on the scratch data pid=$pid"
+    done
+    sleep 1
     if [ -f "$STATE_DIR/reopen" ]; then
         open "$(cat "$STATE_DIR/reopen")" && echo "reopened the installed Yaku" \
             || echo "warning: could not reopen; run: open '$(cat "$STATE_DIR/reopen")'"
