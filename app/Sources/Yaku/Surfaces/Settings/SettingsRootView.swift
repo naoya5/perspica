@@ -477,6 +477,7 @@ private struct PrivacySettingsTab: View {
                     Button("履歴とキャッシュを消す", role: .destructive) {
                         model.store.deleteAllHistory()
                         model.store.deleteAllCache()
+                        URLCacheLeftovers.remove()
                         model.reloadHistory()
                         model.selectedHistory = nil
                         cleared = true

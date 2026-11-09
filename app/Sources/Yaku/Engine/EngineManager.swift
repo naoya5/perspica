@@ -243,6 +243,11 @@ final class EngineManager {
             "--log-disable",
         ]
 
+        // The watchdog's lifeline (see EngineWatchdog): the Process keeps the
+        // pipe's write end open for as long as it is held, and the kernel
+        // closes it when this app exits.
+        process.standardInput = Pipe()
+
         FileManager.default.createFile(atPath: AppPaths.engineLog.path, contents: nil)
         if let handle = try? FileHandle(forWritingTo: AppPaths.engineLog) {
             _ = try? handle.seekToEnd()

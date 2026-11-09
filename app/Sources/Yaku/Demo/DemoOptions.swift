@@ -29,6 +29,8 @@ struct DemoOptions {
     /// `--demo-page translate|pdf|history|glossary|models` for the manager, or
     /// `1`〜`4` for the onboarding.
     var page: String?
+    /// `--demo-search "<語>"`: type this into the history page's search field.
+    var search: String?
     /// `--demo-tab 一般|ショートカット|エンジン|PDF|画面翻訳|プライバシー`
     var tab: String?
     /// `--data-dir <フォルダ>`: use this folder instead of Application Support.
@@ -111,6 +113,7 @@ struct DemoOptions {
             case "--engine-idle-seconds": engineIdleSeconds = next().flatMap(Double.init)
             case "--demo-page": page = next()
             case "--demo-tab": tab = next()
+            case "--demo-search": search = next()
             case "--data-dir": dataDir = next()
             case "--demo-glossary":
                 let value = next()

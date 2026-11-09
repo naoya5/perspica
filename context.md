@@ -31,6 +31,7 @@ M0・M1 完了（`docs/checks/M0.md`・`M1.md`）。M1 の ⌃⌥J の実地確�
 - 2026-11-06 - v1 は F1〜F4（選択文・入力・PDF・画面）すべてを入れる（ユーザーの指示）
 - 2026-11-06 - `MenuBarExtra` ではなく `NSStatusItem` + `NSPanel`。ホットキーから開く API がなく、アイコンへのドロップと開閉の動きを作れないため
 - 2026-11-06 - 置き場所は `projects/translate-app/`（ユーザーの指示。`proj-NNN-` の命名より優先）
+- 2026-11-09 - 性能レビューの 6 件を直した（[docs/perf-review-2026-11-09.md](docs/perf-review-2026-11-09.md) の「対応の結果」）。訳文が URL キャッシュに残る件、見張りのポーリング、ドラッグごとのペーストボード、履歴検索、PDF の段落ごとの Python 起動。翻訳中の CPU は約 10% の持ち主が SwiftUI と AppKit の更新で、まだ下げられていない
 - 2026-11-09 - 置き場所を `~/projects/production/Yaku/` の独立したリポジトリに移した（ユーザーの指示: Murmur と同じ production に置いて開発を続ける）。agentic-os の 8 コミットを `git subtree split` で履歴ごと持ってきた。実物での確認は `.agents/skills/verify-yaku/` に集めた
 - 2026-11-06 - 自分だけで使う。配布・Developer ID・公証はしない。署名は自己署名の「Yaku Signing」。開発専用のキーチェーン `yaku-dev.keychain-db` に置く（ログインキーチェーンに置いた「Yaku Dev」は codesign が承認待ちで止まったので使わない）
 - 2026-11-06 - 実装は DeepSeek V4.1 Flash の子スレッドに段階ごとに任せ、設計・レビュー・実画面の確認は親が持つ

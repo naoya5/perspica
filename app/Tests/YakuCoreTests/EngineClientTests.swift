@@ -133,6 +133,13 @@ struct EngineClientTests {
         }
     }
 
+    @Test("the default session keeps no response on disk or in memory")
+    func defaultSessionHasNoCache() {
+        let configuration = EngineClient.privateSession.configuration
+        #expect(configuration.urlCache == nil)
+        #expect(configuration.requestCachePolicy == .reloadIgnoringLocalCacheData)
+    }
+
     @Test("health is true only for 200")
     func health() async {
         StubURLProtocol.reset(status: 200, chunks: [Data("{}".utf8)])

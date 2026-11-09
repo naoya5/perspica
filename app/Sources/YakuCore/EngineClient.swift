@@ -13,11 +13,21 @@ public struct EngineClient: Sendable {
     public let model: String
     private let session: URLSession
 
+    /// `URLSession.shared` writes every response, the streamed translation
+    /// included, to `~/Library/Caches/<app>/Cache.db`, where 「履歴とキャッシュを
+    /// 消す」 never reaches it.
+    public static let privateSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
+    }()
+
     public init(
         baseURL: URL,
         apiKey: String,
         model: String = "plamo-3-translate",
-        session: URLSession = .shared
+        session: URLSession = EngineClient.privateSession
     ) {
         self.baseURL = baseURL
         self.apiKey = apiKey

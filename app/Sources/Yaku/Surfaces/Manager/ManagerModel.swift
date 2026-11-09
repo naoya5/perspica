@@ -19,9 +19,18 @@ final class ManagerModel {
 
     var history: [HistoryItem] = []
     var glossary: [GlossaryEntry] = []
+    /// Searched 200 ms after the last keystroke, not on every one.
     var historySearch = "" {
-        didSet { reloadHistory() }
+        didSet {
+            searchTask?.cancel()
+            searchTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                guard !Task.isCancelled else { return }
+                self?.reloadHistory()
+            }
+        }
     }
+    @ObservationIgnored private var searchTask: Task<Void, Never>?
     var selectedHistory: HistoryItem?
     var selectedGlossary: Set<PersistentIdentifier> = []
 
@@ -49,6 +58,9 @@ final class ManagerModel {
 
     func reloadHistory() {
         history = store.history(search: historySearch)
+        if !historySearch.isEmpty {
+            AppLog.write("history: search matched \(history.count) row(s)")
+        }
     }
 
     func deleteHistory(_ items: [HistoryItem]) {

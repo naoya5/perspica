@@ -69,6 +69,38 @@ def clitranslator_command(args: argparse.Namespace) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
 
+def use_in_process_translator() -> None:
+    """Translates each paragraph in this process instead of one Python each.
+
+    pdf2zh-next's clitranslator starts `clitranslator_command` once per
+    paragraph, about 50 ms of interpreter start and a fresh HTTP connection
+    every time (perf review 2026-11-09). The command still names
+    paragraph_translator.py with every option, so pdf2zh-next's settings, its
+    translation cache key and its rate limiter are unchanged: only the call is
+    replaced, and the replacement reads its options from that same command.
+    """
+    from pdf2zh_next.translator.translator_impl.clitranslator import CLITranslatorTranslator
+    import paragraph_translator
+
+    if getattr(CLITranslatorTranslator, "yaku_in_process", False):
+        return
+
+    def do_translate(self, text, rate_limit_params: dict = None) -> str:
+        translator = self.__dict__.get("yaku_translator")
+        if translator is None:
+            options = paragraph_translator.parse_args(self.args[1:])
+            translator = paragraph_translator.ParagraphTranslator.from_args(
+                options, os.environ.get(paragraph_translator.API_KEY_ENV)
+            )
+            self.yaku_translator = translator
+        # The CLI path returned stdout stripped; keep the same text.
+        return paragraph_translator.with_retries(lambda: translator(text)).strip()
+
+    CLITranslatorTranslator.do_translate = do_translate
+    CLITranslatorTranslator.yaku_in_process = True
+    print("Yaku: paragraphs are translated in process", file=sys.stderr, flush=True)
+
+
 def chosen_font_family(pdf: Path) -> str | None:
     """The font family for the translation, from the source's own fonts.
 
@@ -129,6 +161,7 @@ async def run(args: argparse.Namespace) -> int:
 
     sys.argv = argv
     settings = ConfigManager().initialize_config()
+    use_in_process_translator()
 
     emit(type="progress", progress=0.0, stage="Preparing")
     # Fetches BabelDOC's layout model and fonts on the first run (network).
@@ -188,6 +221,11 @@ def main() -> int:
         emit(type="error", message=f"{type(error).__name__}: {error}")
         return 1
 
+
+# pdf2zh-next translates in a child process started with `spawn`, which imports
+# this file again under the name `__mp_main__` before it runs the translation.
+if __name__ == "__mp_main__":
+    use_in_process_translator()
 
 if __name__ == "__main__":
     # Put the worker and the per-paragraph processes it starts into their own

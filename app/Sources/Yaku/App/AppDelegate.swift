@@ -86,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settings.keepHistory {
             store.pruneHistory(olderThanDays: settings.historyRetentionDays)
         }
+        URLCacheLeftovers.remove()
         AppLog.write("store ready inMemory=\(store.isInMemory) history=\(store.historyCount) "
             + "cache=\(store.cacheCount) glossary=\(store.glossaryCount) "
             + "dataDir=\(AppPaths.isUsingDataDirectory)")
@@ -552,10 +553,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// drop state, which is then the drop target.
     private func handleIconDrag() {
         guard !model.isDropTarget else { return }
-        let types = NSPasteboard(name: .drag).types ?? []
-        guard types.contains(.fileURL) else { return }
+        // Every drag anywhere on the Mac lands here, so the cheap position
+        // test goes first: reading the drag pasteboard is a round trip to the
+        // pasteboard server, about 1 ms (perf review 2026-11-09).
         guard let frame = menuBar?.buttonFrame, frame.height > 0 else { return }
         guard frame.insetBy(dx: -14, dy: -8).contains(NSEvent.mouseLocation) else { return }
+        let types = NSPasteboard(name: .drag).types ?? []
+        guard types.contains(.fileURL) else { return }
 
         AppLog.write("panel: file dragged over the status item")
         model.dropMessage = "PDF をドロップして日本語に"
@@ -936,6 +940,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if demo.page == "pdf" {
                 applyManagerPDFDemo()
+            }
+            if let search = demo.search {
+                managerModel.historySearch = search
+                AppLog.write("demo: history search=\(search)")
             }
             if demo.state == "done" || demo.state == "translating" {
                 coordinator.manager.sourceText = text

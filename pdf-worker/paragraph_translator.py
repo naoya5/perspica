@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
-"""Translate one paragraph through the running Yaku engine (SPEC 7.2 / 8.2).
+"""Translate paragraphs through the running Yaku engine (SPEC 7.2 / 8.2).
 
-BabelDOC (through pdf2zh-next's `--clitranslator`) runs this once per paragraph:
-the source arrives on stdin and the translation is read from stdout. The prompt
-is the same PFML3 the app builds for the panel and the HUD, so a PDF paragraph
-and a sentence typed into the panel go through exactly the same model path.
+`translate_pdf.py` calls `ParagraphTranslator` inside pdf2zh-next's translation
+process, one call per paragraph, over one kept-alive connection per thread. Run
+as a script, it translates stdin to stdout, which is what pdf2zh-next's
+`--clitranslator-command` names. The prompt is the same PFML3 the app builds for
+the panel and the HUD, so a PDF paragraph and a sentence typed into the panel go
+through exactly the same model path.
 
 The engine URL comes on the command line; the API key comes from the
 environment (`YAKU_ENGINE_API_KEY`), never from the command line, so it cannot
-be read out of a process listing.
-
-Only the standard library is used: one process is started per paragraph, so the
-imports have to stay light.
+be read out of a process listing. Only the standard library is used.
 """
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import sys
-import urllib.error
-import urllib.request
+import threading
+import time
+import urllib.parse
 
 # --- PFML3 (kept identical to YakuCore/PFML3.swift) -------------------------
 
@@ -118,7 +119,11 @@ def cleanup(text: str) -> str:
 # --- engine call ------------------------------------------------------------
 
 
-def translate(prompt: str, source: str, engine_url: str, api_key: str | None) -> str:
+class EngineError(Exception):
+    pass
+
+
+def request_body(prompt: str, source: str) -> bytes:
     body = {
         "model": "plamo-3-translate",
         "prompt": prompt,
@@ -128,18 +133,97 @@ def translate(prompt: str, source: str, engine_url: str, api_key: str | None) ->
         "stream": False,
         "cache_prompt": True,
     }
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = "Bearer " + api_key
-    request = urllib.request.Request(
-        engine_url.rstrip("/") + "/v1/completions",
-        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=120) as response:
-        payload = json.load(response)
-    return cleanup(payload["choices"][0]["text"])
+    return json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+
+class ParagraphTranslator:
+    """Translates one paragraph per call; safe to call from several threads."""
+
+    def __init__(
+        self,
+        engine_url: str,
+        api_key: str | None,
+        target_language: str,
+        source_language: str | None = None,
+        form: str | None = None,
+        context: str | None = None,
+        glossary: list[dict] | None = None,
+        timeout: float = 120,
+    ):
+        url = urllib.parse.urlsplit(engine_url)
+        self.host = url.hostname or "127.0.0.1"
+        self.port = url.port or 80
+        self.path = url.path.rstrip("/") + "/v1/completions"
+        self.headers = {"Content-Type": "application/json"}
+        if api_key:
+            self.headers["Authorization"] = "Bearer " + api_key
+        self.target_language = target_language
+        self.source_language = source_language
+        self.form = form
+        self.context = context
+        self.glossary = glossary or []
+        self.timeout = timeout
+        self._local = threading.local()
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace, api_key: str | None) -> "ParagraphTranslator":
+        return cls(
+            engine_url=args.engine_url,
+            api_key=api_key,
+            target_language=args.to,
+            source_language=args.src,
+            form=args.form,
+            context=args.context,
+            glossary=load_glossary(args.glossary),
+        )
+
+    def __call__(self, text: str) -> str:
+        if not text.strip():
+            return text
+        prompt = build_prompt(
+            source=text,
+            source_language=self.source_language,
+            target_language=self.target_language,
+            form=self.form,
+            context=self.context,
+            glossary=relevant_glossary(self.glossary, text),
+        )
+        return cleanup(self._complete(request_body(prompt, text)))
+
+    def close(self) -> None:
+        """Closes the calling thread's connection."""
+        connection = getattr(self._local, "connection", None)
+        if connection is not None:
+            connection.close()
+            self._local.connection = None
+
+    def _complete(self, body: bytes) -> str:
+        connection = getattr(self._local, "connection", None)
+        if connection is None:
+            connection = http.client.HTTPConnection(self.host, self.port, timeout=self.timeout)
+            self._local.connection = connection
+        try:
+            connection.request("POST", self.path, body=body, headers=self.headers)
+            response = connection.getresponse()
+            data = response.read()
+            if response.status != 200:
+                raise EngineError(f"HTTP {response.status}")
+            return json.loads(data)["choices"][0]["text"]
+        except Exception:
+            connection.close()
+            self._local.connection = None
+            raise
+
+
+def with_retries(call, attempts: int = 3):
+    """Three tries with 2 s and 4 s between, as pdf2zh-next retried the CLI."""
+    for attempt in range(attempts):
+        try:
+            return call()
+        except Exception:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2 * (2 ** attempt))
 
 
 # --- entry point ------------------------------------------------------------
@@ -173,28 +257,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     text = sys.stdin.read()
-    if not text.strip():
-        sys.stdout.write(text)
-        return 0
-
-    glossary = relevant_glossary(load_glossary(args.glossary), text)
-    prompt = build_prompt(
-        source=text,
-        source_language=args.src,
-        target_language=args.to,
-        form=args.form,
-        context=args.context,
-        glossary=glossary,
-    )
+    translator = ParagraphTranslator.from_args(args, os.environ.get(API_KEY_ENV))
     try:
-        translation = translate(prompt, text, args.engine_url, os.environ.get(API_KEY_ENV))
-    except urllib.error.URLError as error:
+        translation = translator(text)
+    except (OSError, http.client.HTTPException, EngineError) as error:
         sys.stderr.write(f"Yaku engine request failed: {error}\n")
         return 1
     except (KeyError, IndexError, ValueError) as error:
         sys.stderr.write(f"Yaku engine returned an unexpected body: {error}\n")
         return 1
-
     sys.stdout.write(translation)
     return 0
 

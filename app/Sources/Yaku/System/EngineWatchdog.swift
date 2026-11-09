@@ -4,47 +4,48 @@ import Foundation
 ///
 /// The engine is started through `/bin/sh`, not directly, because a process
 /// cannot clean up after itself when it is killed with `kill -9`. The shell
-/// watches the app's pid and stops llama-server as soon as the app is gone,
+/// stops llama-server as soon as the app is gone,
 /// whether it exited normally or was force quit.
 ///
-/// The shell also stops the server when it is itself asked to terminate, so a
-/// normal quit does not wait for the polling loop.
+/// The shell learns that the app is gone from a pipe, not by polling its pid:
+/// the earlier `kill -0` loop started `sleep` twice a second for as long as the
+/// engine ran, about 1% of a core while idle (perf review 2026-11-09).
 enum EngineWatchdog {
     static let script = """
     #!/bin/sh
-    # Started by Yaku. $1 is the app's pid, $2 is where the llama-server pid is
-    # written, and the rest is the llama-server command.
+    # Started by Yaku. $1 is the app's pid (kept for the log), $2 is where the
+    # llama-server pid is written, and the rest is the llama-server command.
     #
-    # The server is stopped when either side goes away: the app disappears
-    # (including kill -9), or this shell is asked to terminate.
-    app_pid="$1"
+    # stdin is a pipe whose only writer is the app, so it reads end-of-file the
+    # moment the app is gone, however it went (kill -9 included). Nothing here
+    # polls: the shell blocks in `wait` and the reader blocks in `read`.
     pid_file="$2"
     shift 2
 
-    "$@" &
+    exec 3<&0 0</dev/null
+    "$@" 3<&- &
     server_pid=$!
     printf '%s\\n' "$server_pid" > "$pid_file"
 
-    stop_server() {
+    shutdown() {
         kill -TERM "$server_pid" 2>/dev/null
+        waited=0
+        while kill -0 "$server_pid" 2>/dev/null && [ "$waited" -lt 20 ]; do
+            sleep 0.25
+            waited=$((waited + 1))
+        done
+        kill -KILL "$server_pid" 2>/dev/null
+        kill "$reader_pid" 2>/dev/null
+        exit 0
     }
+    trap shutdown TERM INT HUP
 
-    trap 'stop_server; exit 0' TERM INT HUP
+    { while read -r _; do :; done <&3; kill -TERM $$ 2>/dev/null; } &
+    reader_pid=$!
+    exec 3<&-
 
-    while kill -0 "$app_pid" 2>/dev/null; do
-        if ! kill -0 "$server_pid" 2>/dev/null; then
-            exit 0
-        fi
-        sleep 0.5
-    done
-
-    stop_server
-    waited=0
-    while kill -0 "$server_pid" 2>/dev/null && [ "$waited" -lt 20 ]; do
-        sleep 0.25
-        waited=$((waited + 1))
-    done
-    kill -KILL "$server_pid" 2>/dev/null
+    wait "$server_pid"
+    kill "$reader_pid" 2>/dev/null
     exit 0
 
     """

@@ -110,17 +110,18 @@ public enum LanguageCatalog {
         return base.uppercased()
     }
 
-    public static var frequent: [Language] {
-        frequentCodes.compactMap { byCode[$0] }
-    }
+    public static let frequent: [Language] = frequentCodes.compactMap { byCode[$0] }
 
-    /// Everything not in `frequent`, ordered by Japanese name.
-    public static var others: [Language] {
+    /// Everything not in `frequent`, ordered by Japanese name. Built once: the
+    /// panel's language menu reads it on every redraw, and sorting 45 names
+    /// with `localizedStandardCompare` each time was 2% of the main thread
+    /// while translating (perf review 2026-11-09).
+    public static let others: [Language] = {
         let frequentSet = Set(frequentCodes)
         return all
             .filter { !frequentSet.contains($0.code) }
             .sorted { $0.japaneseName.localizedStandardCompare($1.japaneseName) == .orderedAscending }
-    }
+    }()
 
     /// Maps a BCP-47 identifier from `NLLanguageRecognizer` onto a PLaMo code.
     /// Returns nil for languages the model does not support.

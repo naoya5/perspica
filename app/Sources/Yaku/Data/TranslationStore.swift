@@ -56,18 +56,19 @@ final class TranslationStore {
     }
 
     /// Newest first, optionally filtered by a substring of the source or the
-    /// translation (SPEC 4.4: 検索できる一覧).
+    /// translation (SPEC 4.4: 検索できる一覧). The filter runs in the store, so
+    /// it reaches every kept row (up to `maximumHistory`), not only the newest
+    /// `limit` of them.
     func history(search: String = "", limit: Int = 1000) -> [HistoryItem] {
+        let needle = search.trimmingCharacters(in: .whitespacesAndNewlines)
         var descriptor = FetchDescriptor<HistoryItem>(
+            predicate: needle.isEmpty ? nil : #Predicate {
+                $0.source.localizedStandardContains(needle) || $0.target.localizedStandardContains(needle)
+            },
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
         descriptor.fetchLimit = limit
-        let items = (try? context.fetch(descriptor)) ?? []
-        let needle = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !needle.isEmpty else { return items }
-        return items.filter {
-            $0.source.lowercased().contains(needle) || $0.target.lowercased().contains(needle)
-        }
+        return (try? context.fetch(descriptor)) ?? []
     }
 
     func deleteHistory(_ items: [HistoryItem]) {
