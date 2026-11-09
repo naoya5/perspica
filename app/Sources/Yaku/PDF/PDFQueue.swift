@@ -7,16 +7,22 @@ import YakuCore
 ///
 /// Everything the surfaces show about PDFs comes from here: the panel's
 /// 「作業中の PDF」 row, the menu bar icon's progress ring, the island, and the
-/// manager's list. The engine is held open for the whole job (SPEC 7.1) and the
-/// worker is limited to three parallel paragraphs so a panel translation still
-/// has a slot (SPEC 7.3).
+/// manager's list. The engine is held open for the whole job (SPEC 7.1). The
+/// worker translates up to four paragraphs at a time (`--pool-max-workers` in
+/// translate_pdf.py), which is the figure SPEC 7.3 measured against.
 @MainActor
 @Observable
 final class PDFQueue {
     enum EnqueueResult {
         case accepted(PDFJob)
         /// No worker yet: the caller should ask before installing (SPEC 8.2).
+        /// The file waits in `pendingIntakes` for the answer.
         case needsWorker
+        /// The worker exists but its packages are behind the shipped
+        /// requirements; the file waits for the sync.
+        case needsWorkerUpdate
+        /// An install is already running; the file runs when it finishes.
+        case waitingForWorker
         case rejected(String)
     }
 
@@ -31,6 +37,11 @@ final class PDFQueue {
     var onFinished: ((PDFJob) -> Void)?
     /// Called with the message when a file is turned away (SPEC 8.1).
     var onRejected: ((String) -> Void)?
+    /// Picks the target language for a detected source language. The app
+    /// delegate wires this to the same rule the panel uses; without it the
+    /// SPEC 5.1 default applies (Japanese to English, everything else to
+    /// Japanese).
+    var resolveTarget: ((String) -> String)?
 
     let installer = PDFWorkerInstaller()
 
@@ -43,10 +54,9 @@ final class PDFQueue {
     private var didFinish = false
     private var lastError = ""
     private var cancelledJobID: UUID?
-    private var pendingIntake: PDFIntake.Accepted?
-    /// The `--pages` range that arrived with `pendingIntake`, so it is not lost
-    /// while the worker is being installed.
-    private var pendingPages: String?
+    /// Files that arrived before the worker was installed (or while it was
+    /// being installed), with their `--pages` ranges, in arrival order.
+    private var pendingIntakes: [(accepted: PDFIntake.Accepted, pages: String?)] = []
     private var lastDeliveredProgress = -1.0
     private var lastDeliveredStage = ""
 
@@ -55,6 +65,7 @@ final class PDFQueue {
         self.engine = engine
         reload()
         closeJobsLeftByLastSession()
+        installer.onInstalled = { [weak self] in self?.runPendingIntakes() }
     }
 
     /// A job still marked running or queued at launch belongs to a session that
@@ -97,37 +108,59 @@ final class PDFQueue {
 
     // MARK: intake
 
+    /// Validates the file off the main actor, then queues it (or parks it
+    /// until the worker is installed).
     @discardableResult
-    func enqueue(url: URL, pages: String? = nil) -> EnqueueResult {
-        switch PDFIntake.validate(url) {
+    func enqueue(url: URL, pages: String? = nil) async -> EnqueueResult {
+        switch await PDFIntake.validateInBackground(url) {
         case .rejected(let message):
             AppLog.write("pdf: rejected \(url.lastPathComponent): \(message)")
             onRejected?(message)
             return .rejected(message)
 
         case .accepted(let accepted):
-            guard PDFWorkerPaths.pythonExecutable != nil else {
+            switch PDFWorkerPaths.readiness {
+            case .ready:
+                let job = makeJob(from: accepted, pages: pages)
+                AppLog.write("pdf: queued \(job.fileName) pages=\(job.pageCount)")
+                startNextIfIdle()
+                return .accepted(job)
+
+            case .needsInstall, .needsUpdate:
+                // The same file dropped again after a failed install replaces
+                // its earlier entry, so one install does not run it twice.
+                pendingIntakes.removeAll { $0.accepted.url == accepted.url }
+                pendingIntakes.append((accepted, pages))
+                if installer.phase == .running {
+                    AppLog.write("pdf: worker install running; \(url.lastPathComponent) waits")
+                    return .waitingForWorker
+                }
+                if PDFWorkerPaths.readiness == .needsUpdate {
+                    AppLog.write("pdf: worker needs a sync; asking")
+                    return .needsWorkerUpdate
+                }
                 AppLog.write("pdf: worker not installed; asking")
-                pendingIntake = accepted
-                pendingPages = pages
                 return .needsWorker
             }
-            let job = makeJob(from: accepted, pages: pages)
-            AppLog.write("pdf: queued \(job.fileName) pages=\(job.pageCount)")
-            startNextIfIdle()
-            return .accepted(job)
         }
     }
 
-    /// Called after the installer finishes successfully, to run the file that
-    /// started the whole thing (SPEC 8.2).
-    func runPendingIntake() {
-        guard let accepted = pendingIntake else { return }
-        pendingIntake = nil
-        let pages = pendingPages
-        pendingPages = nil
-        let job = makeJob(from: accepted, pages: pages)
-        AppLog.write("pdf: queued after install \(job.fileName)")
+    /// The user declined the install: the files that waited for it are let go.
+    func discardPendingIntakes() {
+        guard !pendingIntakes.isEmpty else { return }
+        AppLog.write("pdf: dropped \(pendingIntakes.count) file(s) waiting for the worker")
+        pendingIntakes.removeAll()
+    }
+
+    /// Called after the installer finishes successfully, to run every file
+    /// that was waiting for it, in the order they arrived (SPEC 8.2).
+    private func runPendingIntakes() {
+        let waiting = pendingIntakes
+        pendingIntakes.removeAll()
+        for (accepted, pages) in waiting {
+            let job = makeJob(from: accepted, pages: pages)
+            AppLog.write("pdf: queued after install \(job.fileName)")
+        }
         startNextIfIdle()
     }
 
@@ -148,14 +181,20 @@ final class PDFQueue {
 
     // MARK: running
 
+    /// Claims the slot before anything is awaited: two files enqueued in the
+    /// same run-loop turn must not both start the same job.
     private func startNextIfIdle() {
         guard runningID == nil else { return }
         // `jobs` is newest first, so the oldest queued job is the last match.
         guard let next = jobs.reversed().first(where: { $0.jobState == .queued }) else { return }
+        runningID = next.id
+        cancelledJobID = nil
+        next.jobState = .running
         Task { await start(next) }
     }
 
     private func start(_ job: PDFJob) async {
+        guard runningID == job.id else { return }
         guard let python = PDFWorkerPaths.pythonExecutable,
               let script = PDFWorkerPaths.translateScript
         else {
@@ -163,8 +202,6 @@ final class PDFQueue {
             return
         }
 
-        runningID = job.id
-        cancelledJobID = nil
         didFinish = false
         lastError = ""
         lastDeliveredProgress = -1
@@ -177,44 +214,63 @@ final class PDFQueue {
         onProgress?(job)
 
         // SPEC 7.1: the engine is started when a PDF arrives, and is not
-        // stopped for idle time while the job runs.
+        // stopped for idle time while the job runs. `finish` balances this.
         engine.beginPDFWork()
         let running = await engine.ensureRunning()
-        guard let port = engine.port, let key = engine.apiKey, running else {
+        guard runningID == job.id else {
             engine.endPDFWork()
+            return
+        }
+        // 取り消し pressed while the engine was starting: there was no worker
+        // to signal, so the answer is read here.
+        if cancelledJobID == job.id {
+            finish(job, state: .cancelled, message: "")
+            return
+        }
+        guard let port = engine.port, let key = engine.apiKey, running else {
             finish(job, state: .failed, message: "翻訳エンジンを起動できませんでした")
+            return
+        }
+
+        guard let input = PDFIntake.resolve(job.inputBookmark),
+              case .accepted(let accepted) = await PDFIntake.validateInBackground(input)
+        else {
+            finish(job, state: .failed, message: "PDF を読めませんでした")
             return
         }
         guard runningID == job.id else {
             engine.endPDFWork()
             return
         }
-
-        guard let input = PDFIntake.resolve(job.inputBookmark),
-              case .accepted(let accepted) = PDFIntake.validate(input)
-        else {
-            engine.endPDFWork()
-            finish(job, state: .failed, message: "PDF を読めませんでした")
+        if cancelledJobID == job.id {
+            finish(job, state: .cancelled, message: "")
             return
         }
 
         let settings = AppSettings.shared
-        let temporary = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Yaku-PDF-\(job.id.uuidString)", isDirectory: true)
+        let temporary = temporaryDirectory(for: job)
         try? FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
         tempDirectory = temporary
+        let home = PDFWorkerPaths.privateHomeDirectory
+        try? FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
 
         let glossaryPath = writeGlossary(store.enabledGlossaryPairs(), into: temporary)
+
+        // A scan has no text to read the language from; English is the most
+        // common case and what the worker assumed before detection existed.
+        let source = accepted.sourceLanguage ?? "en"
+        let target = resolveTarget?(source) ?? LanguageDetector.defaultTarget(forSource: source)
+        AppLog.write("pdf: \(job.fileName) \(source) -> \(target)\(accepted.sourceLanguage == nil ? " (no text to detect; assumed)" : "")")
 
         var arguments = [
             script.path,
             input.path,
             "--engine-url", "http://127.0.0.1:\(port)",
             "--output", temporary.path,
-            "--lang-in", "en",
-            "--lang-out", settings.defaultTargetLanguage,
+            "--lang-in", source,
+            "--lang-out", target,
         ]
-        if settings.defaultTargetLanguage == "ja" {
+        if target == "ja" {
             arguments += ["--form", settings.defaultForm.rawValue]
         }
         arguments += ["--context", accepted.title]
@@ -227,15 +283,24 @@ final class PDFQueue {
         worker = process
 
         do {
+            // pdf2zh and BabelDOC write under `$HOME/.cache`; the private home
+            // keeps that inside the app's data (see PDFWorkerPaths).
             try process.start(
                 executable: python,
                 arguments: arguments,
-                environment: ["YAKU_ENGINE_API_KEY": key]
+                environment: ["YAKU_ENGINE_API_KEY": key, "HOME": home.path]
             )
         } catch {
-            engine.endPDFWork()
+            worker = nil
             finish(job, state: .failed, message: "PDF ワーカーを起動できませんでした")
         }
+    }
+
+    /// One folder per job, so a retry writes where the first run did and a
+    /// kept output can be found again.
+    private func temporaryDirectory(for job: PDFJob) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("Yaku-PDF-\(job.id.uuidString)", isDirectory: true)
     }
 
     private func writeGlossary(_ pairs: [GlossaryPair], into directory: URL) -> String? {
@@ -270,9 +335,23 @@ final class PDFQueue {
                 input: inputURL(for: job) ?? URL(fileURLWithPath: job.fileName),
                 makeDual: AppSettings.shared.pdfMakeDual
             )
-            job.outputMonoPath = placed.mono?.path ?? ""
-            job.outputDualPath = placed.dual?.path ?? ""
             job.seconds = seconds
+            guard let monoURL = placed.mono else {
+                // No folder took the file. The translation stays in the
+                // worker's folder, named in the message, until the job is
+                // retried or deleted.
+                let tried = placed.tried.map { $0.path }.joined(separator: "、")
+                let kept = tempDirectory?.path ?? ""
+                tempDirectory = nil
+                finish(
+                    job,
+                    state: .failed,
+                    message: "訳した PDF を保存できませんでした（試した場所: \(tried)）。訳文は \(kept) に残っています"
+                )
+                return
+            }
+            job.outputMonoPath = monoURL.path
+            job.outputDualPath = placed.dual?.path ?? ""
             finish(job, state: .done, message: "")
 
         case .error(let message):
@@ -298,6 +377,9 @@ final class PDFQueue {
         PDFIntake.resolve(job.inputBookmark)
     }
 
+    /// Ends the running job (or a queued one that was cancelled) and starts
+    /// the next. Every path that began the job's engine work ends here, so
+    /// `endPDFWork` is balanced in this one place.
     private func finish(_ job: PDFJob, state: PDFJobState, message: String) {
         job.jobState = state
         job.errorMessage = message
@@ -306,9 +388,11 @@ final class PDFQueue {
             job.stage = PDFStage.writing
         }
         store.saveNow()
-        runningID = nil
-        engine.endPDFWork()
-        cleanUpTemporary()
+        if runningID == job.id {
+            runningID = nil
+            engine.endPDFWork()
+            cleanUpTemporary()
+        }
         reload()
 
         switch state {
@@ -337,7 +421,9 @@ final class PDFQueue {
 
     // MARK: actions
 
-    /// 取り消し: SIGTERM, then SIGKILL after three seconds (SPEC 8.2).
+    /// 取り消し: SIGTERM, then SIGKILL after three seconds (SPEC 8.2). While
+    /// the engine is still starting there is no worker yet; `start` reads
+    /// `cancelledJobID` after the engine answers.
     func cancel(_ job: PDFJob) {
         if job.id == runningID {
             cancelledJobID = job.id
@@ -366,6 +452,8 @@ final class PDFQueue {
         guard job.id != runningID else { return }
         store.deletePDFJob(job)
         pagesByJob[job.id] = nil
+        // An output kept after a failed placement goes with the job.
+        try? FileManager.default.removeItem(at: temporaryDirectory(for: job))
         reload()
     }
 
@@ -412,7 +500,7 @@ final class PDFQueue {
     func stopSynchronously() {
         worker?.terminateSynchronously()
         worker = nil
-        engine.endPDFWork()
+        if runningID != nil { engine.endPDFWork() }
         cleanUpTemporary()
     }
 

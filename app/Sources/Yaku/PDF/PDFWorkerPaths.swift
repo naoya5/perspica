@@ -1,12 +1,19 @@
 import Foundation
+import YakuCore
 
-/// Where the PDF worker's scripts and Python live (SPEC 8.2).
+/// Where the PDF worker's scripts, Python and private files live (SPEC 8.2).
 ///
 /// The scripts ship inside the app bundle (`Contents/Resources/pdf-worker`);
 /// during development the repository copy is used when the bundle has none.
 /// The Python environment is installed into Application Support the first time
 /// a PDF arrives, and a `--pdf-python` path (or the settings field) overrides it
-/// so the prototype's `lab/plamo-pdf-translate/.venv` can be used.
+/// with an interpreter of the developer's own.
+///
+/// The worker also gets a private home folder next to the environment. pdf2zh
+/// and BabelDOC keep their files under `$HOME/.cache` (the translation cache
+/// holds every paragraph and its translation, the assets are fonts and the
+/// layout model), so pointing `HOME` there keeps them inside the app's own
+/// data, where 「削除」 and the privacy controls reach them.
 @MainActor
 enum PDFWorkerPaths {
     /// `uv` is the only way the environment is created (SPEC 8.2).
@@ -41,6 +48,7 @@ enum PDFWorkerPaths {
         scriptsDirectory?.appendingPathComponent("translate_pdf.py")
     }
 
+    /// The compiled, hashed lock file the installer syncs the environment to.
     static var requirementsFile: URL? {
         scriptsDirectory?.appendingPathComponent("requirements.txt")
     }
@@ -50,31 +58,87 @@ enum PDFWorkerPaths {
         AppPaths.supportDirectory.appendingPathComponent("pdf-worker")
     }
 
+    /// The worker's `HOME`: `pdf-worker-home` next to the environment.
+    static var privateHomeDirectory: URL {
+        AppPaths.supportDirectory.appendingPathComponent("pdf-worker-home")
+    }
+
+    /// pdf2zh's translation cache (every paragraph and its translation) and
+    /// BabelDOC's, both SQLite files under the private home.
+    static var translationCacheLocations: [URL] {
+        let cache = privateHomeDirectory.appendingPathComponent(".cache")
+        return [
+            cache.appendingPathComponent("pdf2zh_next"),
+            cache.appendingPathComponent("babeldoc/cache.v1.db"),
+        ]
+    }
+
     static var installedPython: URL {
         environmentDirectory.appendingPathComponent("bin/python")
+    }
+
+    /// The hash of the requirements the environment was last synced to. A
+    /// missing or different stamp means the environment has to be synced
+    /// before the next PDF, which is how an existing installation picks up a
+    /// dependency fix.
+    static var requirementsStamp: URL {
+        environmentDirectory.appendingPathComponent("requirements.sha256")
+    }
+
+    static func requirementsHash() -> String? {
+        guard let requirementsFile else { return nil }
+        return try? FileHash.sha256(ofFileAt: requirementsFile)
+    }
+
+    static func writeRequirementsStamp() {
+        guard let hash = requirementsHash() else { return }
+        try? hash.write(to: requirementsStamp, atomically: true, encoding: .utf8)
+    }
+
+    /// True when the installed environment matches the shipped requirements.
+    static var installedEnvironmentIsCurrent: Bool {
+        guard let want = requirementsHash(),
+              let have = try? String(contentsOf: requirementsStamp, encoding: .utf8)
+        else { return false }
+        return have.trimmingCharacters(in: .whitespacesAndNewlines) == want
+    }
+
+    /// What has to happen before a PDF can run.
+    enum Readiness: Equatable {
+        /// This interpreter runs the worker.
+        case ready(URL)
+        /// Nothing is installed yet (SPEC 8.2: ask first).
+        case needsInstall
+        /// The environment exists but was synced to older requirements.
+        case needsUpdate
+    }
+
+    /// The setting's interpreter is the developer's own and is never synced;
+    /// the installed environment has to match the shipped requirements.
+    static var readiness: Readiness {
+        let custom = AppSettings.shared.pdfPythonPath
+        if !custom.isEmpty, FileManager.default.isExecutableFile(atPath: custom) {
+            return .ready(URL(fileURLWithPath: custom))
+        }
+        guard isInstalledEnvironmentPresent else { return .needsInstall }
+        return installedEnvironmentIsCurrent ? .ready(installedPython) : .needsUpdate
     }
 
     /// The interpreter the worker runs with: the setting, else the installed
     /// environment. `nil` means it has to be installed first.
     static var pythonExecutable: URL? {
-        let custom = AppSettings.shared.pdfPythonPath
-        if !custom.isEmpty, FileManager.default.isExecutableFile(atPath: custom) {
-            return URL(fileURLWithPath: custom)
-        }
-        if FileManager.default.isExecutableFile(atPath: installedPython.path) {
-            return installedPython
-        }
+        if case .ready(let python) = readiness { return python }
         return nil
     }
 
     /// Demo only (`--demo-pdf-worker installed`): report the environment as
     /// installed so the settings tab's 導入済み state can be photographed
-    /// without the ~950MB download, which needs the network (SPEC 15).
+    /// without the ~1GB download, which needs the network (SPEC 15).
     static var demoInstalled = false
 
     /// True when the environment exists, whatever interpreter it is using.
     static var isInstalled: Bool {
-        demoInstalled || FileManager.default.isExecutableFile(atPath: installedPython.path)
+        demoInstalled || isInstalledEnvironmentPresent
     }
 
     static var uvIsAvailable: Bool {
@@ -85,7 +149,7 @@ enum PDFWorkerPaths {
     /// (SPEC 13: 「約 ___MB」).
     static var installedBytes: Int64 {
         if demoInstalled, !isInstalledEnvironmentPresent {
-            // A plausible figure for the demo, from M3's measurement.
+            // A plausible figure for the demo, from the measured install.
             return PDFWorkerInstaller.estimatedBytes
         }
         guard isInstalled else { return 0 }
@@ -96,10 +160,23 @@ enum PDFWorkerPaths {
         FileManager.default.isExecutableFile(atPath: installedPython.path)
     }
 
+    /// 「削除」: the environment and the worker's private home, caches and all.
     static func removeInstallation() {
-        guard isInstalled else { return }
-        try? FileManager.default.removeItem(at: environmentDirectory)
-        AppLog.write("pdf-worker: removed the environment at \(environmentDirectory.path)")
+        for folder in [environmentDirectory, privateHomeDirectory]
+        where FileManager.default.fileExists(atPath: folder.path) {
+            try? FileManager.default.removeItem(at: folder)
+            AppLog.write("pdf-worker: removed \(folder.path)")
+        }
+    }
+
+    /// Deletes the paragraph-level translation caches and keeps the assets
+    /// (fonts, layout model), so the next PDF does not download them again.
+    static func clearTranslationCache() {
+        for location in translationCacheLocations
+        where FileManager.default.fileExists(atPath: location.path) {
+            try? FileManager.default.removeItem(at: location)
+            AppLog.write("pdf-worker: removed the translation cache at \(location.path)")
+        }
     }
 
     private static func directorySize(_ url: URL) -> Int64 {
