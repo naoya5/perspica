@@ -45,10 +45,10 @@ run_and_measure() {
 }
 
 echo "=== 1. the app bundle (SPEC 14 の 1 行目) ==="
-echo "  build/Yaku.app: $(du -sh build/Yaku.app | awk '{print $1}')"
-echo "  main binary:    $(du -sh build/Yaku.app/Contents/MacOS/Yaku | awk '{print $1}')"
-if [ -e build/Yaku.app/Contents/Resources/llama-server ]; then
-    echo "  llama-server is bundled: $(du -sh build/Yaku.app/Contents/Resources/llama-server | awk '{print $1}')"
+echo "  build/Perspica.app: $(du -sh build/Perspica.app | awk '{print $1}')"
+echo "  main binary:    $(du -sh build/Perspica.app/Contents/MacOS/Yaku | awk '{print $1}')"
+if [ -e build/Perspica.app/Contents/Resources/llama-server ]; then
+    echo "  llama-server is bundled: $(du -sh build/Perspica.app/Contents/Resources/llama-server | awk '{print $1}')"
 else
     echo "  llama-server is not bundled (the app uses the one on PATH)"
 fi

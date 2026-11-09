@@ -15,7 +15,7 @@ V=.agents/skills/verify-yaku/scripts/yaku-verify   # from the repo root
 
 ## Facts that shape every run
 
-- **One Yaku at a time.** A `flock` on `~/Library/Application Support/Yaku/Yaku.lock` refuses a second instance, even under `--data-dir`. `begin` stops the user's installed app (`~/Applications/Yaku.app`) and `end` reopens it. If the lock is held by anything else, `begin` refuses. Do not work around that. Other agents work on this repo in git worktrees (`git worktree list`, for example `~/.herdr/worktrees/Yaku/ui-audit`), and every worktree shares the same lock. When `doctor` reports `BUSY`, run `$V wait-free` (returns once the lock has been free for 20 s, gives up after 900 s) and then retry. Never kill another agent's instance. Do not wait with `pgrep -f 'release/Yaku'`: the waiting shell's own command line matches it, so it never sees the lock free. `shot` and `cpu` also check that their own pid holds the lock before they capture, so a race with another agent fails loudly instead of capturing its window.
+- **One Yaku at a time.** A `flock` on `~/Library/Application Support/Yaku/Yaku.lock` refuses a second instance, even under `--data-dir`. `begin` stops the user's installed app (`~/Applications/Perspica.app`, or `Yaku.app` from before the 2026-11-09 rename until it is reinstalled) and `end` reopens it. If the lock is held by anything else, `begin` refuses. Do not work around that. Other agents work on this repo in git worktrees (`git worktree list`, for example `~/.herdr/worktrees/Yaku/ui-audit`), and every worktree shares the same lock. When `doctor` reports `BUSY`, run `$V wait-free` (returns once the lock has been free for 20 s, gives up after 900 s) and then retry. Never kill another agent's instance. Do not wait with `pgrep -f 'release/Yaku'`: the waiting shell's own command line matches it, so it never sees the lock free. `shot` and `cpu` also check that their own pid holds the lock before they capture, so a race with another agent fails loudly instead of capturing its window.
 - **Never touch real data.** The helper always passes `--data-dir /tmp/yaku-verify-state/data`. History, cache, settings and PDF jobs land there.
 - **The log is shared.** `~/Library/Logs/Yaku/app.log` is the same file for every instance. The helper slices it from the line count at launch, so each `*.log` in the evidence folder holds only your run.
 - **The screen must be unlocked.** While it is locked nothing is drawn, `screencapture -l` fails, and CPU reads 0.00%. `doctor` checks this.
@@ -71,7 +71,7 @@ Numbers: run `cpu` at least 3 times and report the range. The translating figure
 $V end     # stops every instance this run started (by recorded pid), removes the scratch data, reopens the installed app, prints the evidence path
 ```
 
-Run `end` after every attempt, including failed ones. It never kills by process name and never deletes evidence. `open` needs the sandbox off. If it fails, tell the user to run `open ~/Applications/Yaku.app`.
+Run `end` after every attempt, including failed ones. It never kills by process name and never deletes evidence. `open` needs the sandbox off. If it fails, tell the user to run `open ~/Applications/Perspica.app`.
 
 ## Helpers
 

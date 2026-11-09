@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // before anything is set up, so it can never touch the engine record or
         // the store.
         guard SingleInstance.acquire() else {
-            print("Yaku はすでに動いています")
+            print("Perspica はすでに動いています")
             exit(0)
         }
 

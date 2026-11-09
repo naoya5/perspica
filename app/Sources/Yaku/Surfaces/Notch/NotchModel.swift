@@ -99,7 +99,7 @@ final class NotchModel {
     /// a percentage, so without this it reads as nothing at all (SPEC 18).
     var accessibilitySummary: String {
         switch state {
-        case .closed: return "Yaku の島"
+        case .closed: return "Perspica の島"
         case .drop: return dropMessage
         case .activity:
             return "PDF の仕事中、\(fileName)、\(stageJapanese)、\(progressText)"

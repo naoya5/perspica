@@ -44,7 +44,7 @@ struct YakuApp: App {
             }
         }
 
-        Window("Yaku へようこそ", id: WindowID.onboarding) {
+        Window("Perspica へようこそ", id: WindowID.onboarding) {
             OnboardingView(
                 model: delegate.managerModel,
                 coordinator: delegate.coordinator,

@@ -44,7 +44,7 @@ footprint_of() {
 }
 
 echo "=== 0. the app bundle and the worker ==="
-echo "  build/Yaku.app: $(du -sh build/Yaku.app | awk '{print $1}')"
+echo "  build/Perspica.app: $(du -sh build/Perspica.app | awk '{print $1}')"
 if [ -n "$PYTHON" ]; then
     echo "  worker interpreter: $PYTHON"
 fi

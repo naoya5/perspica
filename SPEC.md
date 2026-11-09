@@ -1,8 +1,9 @@
-# 仕様書: ローカル翻訳アプリ（仮称 Yaku）
+# 仕様書: ローカル翻訳アプリ Perspica（旧称 Yaku）
 
 - 版: 1.0（2026-11-06）。このファイルが正本。実装・レビューはここに合わせ、変えるときは先にここを直す
 - 対象: macOS 26 以降 / Apple silicon。SwiftUI + AppKit
 - 前提にした試作: `lab/plamo-pdf-translate/notch-app/`（`swiftui/` を土台にする。`SPEC.md` はノッチ部分の詳しい見た目の元）
+- 名前: 2026-11-09 に Yaku から Perspica に改名した。変えたのは見える名前（`Perspica.app`、表示名、画面の文言、アイコン）だけ。バンドル ID `dev.naoya.yaku`、データとログの場所（`Yaku/`）、`Yaku.store`・`Yaku.lock`、Swift のモジュール名、実行ファイル名、署名の名前は Yaku のまま（許可とデータを引き継ぐため）
 - 用語: 「パネル」= メニューバーから開く小さな窓。「HUD」= 選んだ文のそばに出る訳の窓。「管理画面」= 通常の窓。「島」= ノッチに重ねる黒い形。「エンジン」= llama-server。「PDF ワーカー」= PDF を処理する Python の子プロセス
 
 ---
@@ -45,7 +46,7 @@ PFN の PLaMo 3 Translate を Mac の中だけで動かし、文・PDF・画面�
 ## 3. 全体構成
 
 ```
-┌──────────────────────── Yaku.app（Swift） ────────────────────────┐
+┌────────────────────── Perspica.app（Swift） ──────────────────────┐
 │ 入口 (UI)   メニューバーのアイコン / パネル / HUD / 管理画面 / 設定 / 島 / 画面の重ね表示 │
 │ OS 連携     ホットキー / 選択文の取得 / ドロップの察知 / 画面の撮影 / OCR / ログイン時の起動 │
 │ コア        翻訳の受付と順番 / PFML3 / 言語の判定 / 文の分割 / 用語集 / キャッシュ / 履歴 │
@@ -247,14 +248,14 @@ PFN の PLaMo 3 Translate を Mac の中だけで動かし、文・PDF・画面�
 ## 7. エンジン
 
 ### 7.1 起動と停止
-- 実行ファイルの探し方: `Yaku.app/Contents/Helpers/llama-server`（llama.cpp の配布版を版を決めて同梱）→ なければ `/opt/homebrew/bin/llama-server`（開発中はこちら）
+- 実行ファイルの探し方: `Perspica.app/Contents/Helpers/llama-server`（llama.cpp の配布版を版を決めて同梱）→ なければ `/opt/homebrew/bin/llama-server`（開発中はこちら）
 - 起動の引数: `-m <gguf> -c 16384 --parallel 4 --host 127.0.0.1 --port <空き番号> --api-key <起動ごとの乱数> --alias plamo-3-translate --no-webui --log-disable`
   - 空き番号は、0 番で一度ソケットを開いて OS に選ばせる
 - `-c 16384 --parallel 4` なので、1 件の依頼（原文・文脈・用語集・訳文の合計）は 4,096 トークン以内。これを超える原文は 7.4 で分けてから送る
 - 起動は遅らせる: パネルを開いたとき、⌃⌥J・⌃⌥O を押したとき、PDF を受け取ったときに起動を始める（起動中の依頼は待たせる）
 - `GET /health` が 200 になったら使える（読み込み中は 503）。15 秒で 200 にならなければ失敗
 - 最後に使ってから設定の時間（既定 10 分）たったら止める。PDF の処理中は止めない
-- Yaku は同時に 1 つしか動かさない（2 つ目は起動してすぐ終わる。起動オプションで出した確認用も同じ）
+- アプリは同時に 1 つしか動かさない（2 つ目は起動してすぐ終わる。起動オプションで出した確認用も同じ）
 - アプリが強制終了されてもエンジンが残らないようにする: エンジンは見張り役の小さなシェルを通して起動し、見張り役はアプリの PID がなくなったらエンジンを止める。起動時の後片付け（記録ファイルを見て、自分の起動したものだけを止める）は念のために残す
 - アプリの終了時に止める。エンジンが勝手に終了したら、次の依頼のときに 1 回だけ起こし直す。また落ちたら失敗を出す
 - ログは `~/Library/Logs/Yaku/engine.log`
@@ -434,10 +435,10 @@ PFN の PLaMo 3 Translate を Mac の中だけで動かし、文・PDF・画面�
 ## 16. ビルド・署名・配布
 
 - Xcode のプロジェクトファイルは使わない。SwiftPM + `make-app.sh`（試作と同じ）
-  - `swift build -c release` → `Yaku.app` に包む（`Info.plist`、`Resources/`、`Helpers/llama-server`）→ 署名
+  - `swift build -c release` → `Perspica.app` に包む（`Info.plist`、`Resources/`、`Helpers/llama-server`）→ 署名
   - `Info.plist`: `LSUIElement = YES`、`LSMinimumSystemVersion = 26.0`、`CFBundleDocumentTypes`（PDF）、権限の説明文
 - 署名: 開発専用のキーチェーン `~/Library/Keychains/yaku-dev.keychain-db` の自己署名の「Yaku Signing」証明書（2026-11-06 作成済み）で毎回署名する。`security unlock-keychain -p "$(cat ~/Library/Application\ Support/Yaku/dev-signing/pass)"` で開けてから `codesign -f -s "Yaku Signing" --keychain <そのキーチェーン>`。ログインキーチェーンに置くと、codesign が鍵の承認待ちで止まるため分けた。アドホック署名だと、作り直すたびにアクセシビリティと画面収録の許可が外れるため
-- 入れる場所: `make-app.sh install` で `~/Applications/Yaku.app` に置く（ログイン時の起動と権限の登録はこの場所のアプリに対して行う）
+- 入れる場所: `make-app.sh install` で `~/Applications/Perspica.app` に置く（ログイン時の起動と権限の登録はこの場所のアプリに対して行う）
 - Swift 6 の言語モード。UI は `@MainActor`、コアは `Sendable`
 - 外部のライブラリは使わない（必要になったら理由をここに書いてから足す）
 - 配布はしない（自分だけで使う）
@@ -482,6 +483,5 @@ Yaku/
 
 ## 19. 決まっていないこと
 
-- アプリの名前（「Yaku」は仮。バンドル ID も仮で `dev.naoya.yaku`）
 - PDF ワーカーの実際の大きさと、`uv` をアプリに同梱するか取得するか
 - 画面収録の許可を、macOS が定期的に聞き直すかどうか（M4 で確かめる）
