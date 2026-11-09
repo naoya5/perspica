@@ -74,7 +74,7 @@ $V doctor
 $V build
 $V begin my-change
 $V shot manager-translate WAIT=20 --demo-surface manager --demo-page translate --demo-state done
-$V end                      # the evidence stays in docs/checks/shots/verify/
+$V end                      # the evidence stays in docs/checks/shots/verify/ (git-ignored)
 ```
 
 `.agents/skills/verify-yaku/features/` describes how to reach and check each feature. Run the helper
