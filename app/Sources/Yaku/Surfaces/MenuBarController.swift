@@ -35,14 +35,14 @@ final class MenuBarController: NSObject {
 
     private func configureButton() {
         guard let button = statusItem.button else { return }
-        let image = NSImage(systemSymbolName: "character.bubble", accessibilityDescription: "Yaku")
+        let image = NSImage(systemSymbolName: "character.bubble", accessibilityDescription: "Perspica")
         image?.isTemplate = true
         button.image = image
         button.imagePosition = .imageOnly
         button.target = self
         button.action = #selector(buttonClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        button.toolTip = "Yaku（⌃⌥K でパネル）"
+        button.toolTip = "Perspica（⌃⌥K でパネル）"
 
         let badge = MenuBarBadgeView(frame: button.bounds)
         badge.autoresizingMask = [.width, .height]

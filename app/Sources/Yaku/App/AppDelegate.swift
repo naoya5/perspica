@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // before anything is set up, so it can never touch the engine record or
         // the store.
         guard SingleInstance.acquire() else {
-            print("Yaku はすでに動いています")
+            print("Perspica はすでに動いています")
             exit(0)
         }
 
@@ -562,7 +562,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard types.contains(.fileURL) else { return }
 
         AppLog.write("panel: file dragged over the status item")
-        model.dropMessage = "PDF をドロップして日本語に"
+        model.dropMessage = PanelModel.dropPrompt
         model.dropHover = false
         model.isDropTarget = true
         openPanel(reason: "icon-drag")
@@ -590,7 +590,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case 8: // C
             if matches(event, modifiers: [.command, .shift]) {
-                coordinator.copyPanelTranslation()
+                coordinator.copyTranslation(on: .panel)
                 return true
             }
         case 2: // D
@@ -635,7 +635,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case 8: // C
             if matches(event, modifiers: [.command]) {
-                hud.copy()
+                coordinator.copyTranslation(on: .hud)
                 return true
             }
         case 31: // O
@@ -651,6 +651,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func matches(_ event: NSEvent, modifiers: NSEvent.ModifierFlags) -> Bool {
         event.modifierFlags.intersection(.deviceIndependentFlagsMask) == modifiers
+    }
+
+    /// `--demo-copy-at`: ⌘C when the HUD is the key window, ⌘⇧C otherwise,
+    /// posted to the app's own queue so `handleKey` sees it like a press.
+    private func postDemoCopyKey() {
+        let modifiers: NSEvent.ModifierFlags = hud.isKeyWindow ? [.command] : [.command, .shift]
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: NSApp.keyWindow?.windowNumber ?? 0,
+            context: nil,
+            characters: "c",
+            charactersIgnoringModifiers: "c",
+            isARepeat: false,
+            keyCode: 8
+        ) else { return }
+        AppLog.write("demo: copy key \(hud.isKeyWindow ? "⌘C (HUD)" : "⌘⇧C (panel)")")
+        NSApp.postEvent(event, atStart: false)
+    }
+
+    /// `--demo-click`: a mouse down and up at `point` (from the top left) of
+    /// the frontmost normal window, posted to the app's own queue.
+    private func postDemoClick(at point: CGPoint) {
+        guard let window = NSApp.orderedWindows.first(where: { $0.isVisible && $0.level == .normal }) else {
+            AppLog.write("demo: click with no window to click")
+            return
+        }
+        let location = CGPoint(x: point.x, y: window.frame.height - point.y)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            guard let event = NSEvent.mouseEvent(
+                with: type,
+                location: location,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: type == .leftMouseDown ? 1 : 0
+            ) else { continue }
+            NSApp.postEvent(event, atStart: false)
+        }
+        AppLog.write("demo: click at \(Int(point.x)),\(Int(point.y)) in window \(window.windowNumber)")
     }
 
     // MARK: PDF (SPEC 8)
@@ -724,30 +769,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func pdfRejected(_ message: String) {
         guard model.isOpen else { return }
-        shakePanel(message: message)
+        model.rejectDrop(message: message)
     }
 
     /// The panel's own drop refused a file: show the wording and shake once
     /// (SPEC 4.2).
     private func shakePanelForRejection() {
         model.isDropTarget = true
-        shakePanel(message: "PDF だけ対応しています")
-    }
-
-    private func shakePanel(message: String) {
-        model.dropMessage = message
-        model.dropHover = false
-        withAnimation(.easeInOut(duration: 0.30)) { model.dropShake = 1 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            self?.model.dropShake = 0
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
-            guard let self, self.model.isDropTarget,
-                  self.model.dropMessage != "PDF をドロップして日本語に"
-            else { return }
-            self.model.dropMessage = "PDF をドロップして日本語に"
-            self.model.isDropTarget = false
-        }
+        model.rejectDrop(message: "PDF だけ対応しています")
     }
 
     /// ⌘O and the panel's 「PDF を開く…」.
@@ -900,6 +929,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // `--demo-copy-at`: the copy shortcut, pressed at those times.
+        for time in demo.copyAt {
+            DispatchQueue.main.asyncAfter(deadline: .now() + time) { [weak self] in
+                self?.postDemoCopyKey()
+            }
+        }
+
+        // `--demo-reject-at`: a file that is not a PDF, dropped on the island.
+        for time in demo.rejectAt {
+            DispatchQueue.main.asyncAfter(deadline: .now() + time) { [weak self] in
+                AppLog.write("demo: a text file dropped on the island")
+                self?.notch?.demoDrop(URL(fileURLWithPath: "/tmp/notes.txt"))
+            }
+        }
+
+        // `--demo-snapshot-at`: the visible windows, drawn into PNGs.
+        for time in demo.snapshotAt {
+            DispatchQueue.main.asyncAfter(deadline: .now() + time) {
+                WindowSnapshot.writeAll(label: String(format: "t%05.2f", time))
+            }
+        }
+
+        // `--demo-click` / `--demo-click-at`: a click on that point.
+        if let point = demo.clickPoint {
+            for time in demo.clickAt {
+                DispatchQueue.main.asyncAfter(deadline: .now() + time) { [weak self] in
+                    self?.postDemoClick(at: point)
+                }
+            }
+        }
+
         // `--demo-image <png>`: read a file instead of the screen and lay the
         // translation over it, from the screen's top left (SPEC 15, M4).
         if let path = demo.demoImage {
@@ -1009,7 +1069,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "drop":
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                     guard let self else { return }
-                    self.model.dropMessage = "PDF をドロップして日本語に"
+                    self.model.dropMessage = PanelModel.dropPrompt
                     self.model.isDropTarget = true
                     self.openPanel(reason: "demo-surface")
                 }

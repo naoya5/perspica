@@ -1,0 +1,155 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.76078,0.95294,0.93333,1.00000",
+          "srgb:0.24706,0.66275,0.76471,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.05882,0.27451,0.33333,1.00000",
+          "srgb:0.01961,0.09412,0.12157,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:0.03922,0.29804,0.38824,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:0.94902,0.99216,1.00000,1.00000"
+              }
+            }
+          ],
+          "glass" : false,
+          "image-name" : "4 Clear Lines.svg",
+          "name" : "4 Clear Lines"
+        }
+      ],
+      "lighting" : "combined",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0
+      },
+      "specular" : false
+    },
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:0.55686,0.89020,0.91765,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:0.55686,0.89020,0.91765,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "image-name" : "3 Pane.svg",
+          "name" : "3 Pane",
+          "opacity" : 0.41999999999999998
+        }
+      ],
+      "lighting" : "combined",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.40000000000000002
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.59999999999999998
+      }
+    },
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:0.65490,0.77647,0.81569,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:0.43137,0.58431,0.63137,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "image-name" : "2 Faint Lines.svg",
+          "name" : "2 Faint Lines"
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:0.17255,0.34510,0.40000,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "image-name" : "1 Page.svg",
+          "name" : "1 Page"
+        }
+      ],
+      "lighting" : "combined",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.40000000000000002
+      },
+      "specular" : true
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

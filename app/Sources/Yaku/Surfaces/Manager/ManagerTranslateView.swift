@@ -34,6 +34,7 @@ struct ManagerTranslateView: View {
         .onAppear {
             reveal.finish(to: coordinator.manager.translation.count)
         }
+        .copiedMark(count: coordinator.manager.copyCount, copied: $copied)
     }
 
     // MARK: source
@@ -175,12 +176,7 @@ struct ManagerTranslateView: View {
         // M7 5: 訳す is the one prominent action; the copy is a quiet, labelled
         // secondary button, so the two are never mistaken for each other.
         Button {
-            model.copy(coordinator.manager.translation)
-            withAnimation(.snappy(duration: 0.25)) { copied = true }
-            Task {
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                withAnimation(.snappy(duration: 0.25)) { copied = false }
-            }
+            coordinator.copyTranslation(on: .manager)
         } label: {
             Label(copied ? "コピーしました" : "コピー",
                   systemImage: copied ? "checkmark" : "doc.on.doc")

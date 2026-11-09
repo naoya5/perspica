@@ -43,7 +43,7 @@ footprint_of() {
 }
 
 echo "=== 0. the app bundle ==="
-echo "  build/Yaku.app: $(du -sh build/Yaku.app | awk '{print $1}')"
+echo "  build/Perspica.app: $(du -sh build/Perspica.app | awk '{print $1}')"
 
 echo
 echo "=== 1. idle, no window, engine never started ==="

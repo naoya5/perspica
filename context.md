@@ -1,4 +1,4 @@
-# translate-app - ローカル翻訳アプリ（仮称 Yaku）
+# translate-app - ローカル翻訳アプリ Perspica（旧称 Yaku）
 
 **Created:** 2026-11-06
 **Status:** Prototype（M6 完了・レビュー合格。M7 = 設定・管理ウィンドウの UI 改善を実装（[docs/checks/M7.md](docs/checks/M7.md)、221 テスト）。親のレビュー合格（撮影 24 枚、翻訳と履歴の HSplitView のはみ出しを修正）。VoiceOver の実画面比較だけ未実施。残りは利用者の手の確認: manual.md の A2/A5/A7 やり直しと B。A2/A7 のホットキーは SkillHub などとの衝突の疑い）
@@ -21,6 +21,8 @@ M0・M1 完了（`docs/checks/M0.md`・`M1.md`）。M1 の ⌃⌥J の実地確�
 
 2026-11-08 深夜: M7 を親がレビューして合格にした（[docs/checks/M7.md](docs/checks/M7.md) 8 章）。画面ロックを解いて 24 枚を撮った。翻訳画面の訳文ヘッダーで「コピー」が窓の端で切れ、処理時間が 2 行に折れていたので、処理時間をカードの下へ移した。原文欄は TextEditor の空のスクロールバーの溝を消すため縦長の TextField にした。翻訳と履歴の HSplitView は NavigationSplitView の中で浮いたサイドバーの余白を幅に入れず、サイドバーを細くし右のペインを約 15 pt 窓の外へ押し出していた（M2 から）。HStack + Divider に替えた（ペイン幅のドラッグはなくなる）。221 テスト、警告 0。
 
+2026-11-09: `ui-audit` ブランチで UI を write-swift の観点で監査した。2 回続けた操作が 1 回目のタイマーで途中で切られる不具合（コピーの印、島の拒否表示、完了の自動クローズ、重ね表示のトースト）と、⌘⇧C / ⌘C でコピーの印が出ない件を直し、実物で前後を撮った（このターミナルに画面収録の許可がないため、アプリ内のスナップショット `--demo-snapshot-at` で撮った）。アプリのアイコンを Icon Composer の文書として作り直し（`design/app-icon/`、15 案から決定）、名前を Perspica に変えた（見える名前だけ）。
+
 次の手: (1) ユーザーが [docs/checks/manual.md](docs/checks/manual.md) の A2・A5・A7 をやり直し、B を行う（B の前に PDF ワーカーの導入が要る）。(2) F4 を自分の画面で試してもらう（M6 で直した件）。(3) ~~SPEC.md に M6.md 6.1 の差分を反映する~~ → 済（11-09）。
 
 ## Key Decisions
@@ -33,6 +35,8 @@ M0・M1 完了（`docs/checks/M0.md`・`M1.md`）。M1 の ⌃⌥J の実地確�
 - 2026-11-06 - 置き場所は `projects/translate-app/`（ユーザーの指示。`proj-NNN-` の命名より優先）
 - 2026-11-09 - 性能レビューの 6 件を直した（[docs/perf-review-2026-11-09.md](docs/perf-review-2026-11-09.md) の「対応の結果」）。訳文が URL キャッシュに残る件、見張りのポーリング、ドラッグごとのペーストボード、履歴検索、PDF の段落ごとの Python 起動。翻訳中の CPU は約 10% の持ち主が SwiftUI と AppKit の更新で、まだ下げられていない
 - 2026-11-09 - 置き場所を `~/projects/production/Yaku/` の独立したリポジトリに移した（ユーザーの指示: Murmur と同じ production に置いて開発を続ける）。agentic-os の 8 コミットを `git subtree split` で履歴ごと持ってきた。実物での確認は `.agents/skills/verify-yaku/` に集めた
+- 2026-11-09 - 名前は Perspica（ユーザーの指示。由来はラテン語の perspicere「通して見る」と perspicuus「透明ではっきりした」）。変えたのは見える名前だけ（`Perspica.app`、表示名、画面の文言、アイコン）。バンドル ID・データとログの場所・モジュール名・実行ファイル名・署名は Yaku のまま（許可とデータを引き継ぎ、main で作業中の別セッションとぶつからないため。ユーザーの選択）
+- 2026-11-09 - アプリのアイコンは丸メガネ（ユーザーの選択: 羽根ペンの斜体の A と筆の あ を、明るいガラスの地・紺のフレーム・青とピンクのレンズで）。層は SVG で `Perspica.icon` の中に持ち、`make-icon.swift` は消した
 - 2026-11-06 - 自分だけで使う。配布・Developer ID・公証はしない。署名は自己署名の「Yaku Signing」。開発専用のキーチェーン `yaku-dev.keychain-db` に置く（ログインキーチェーンに置いた「Yaku Dev」は codesign が承認待ちで止まったので使わない）
 - 2026-11-06 - 実装は DeepSeek V4.1 Flash の子スレッドに段階ごとに任せ、設計・レビュー・実画面の確認は親が持つ
 
@@ -46,4 +50,4 @@ M0・M1 完了（`docs/checks/M0.md`・`M1.md`）。M1 の ⌃⌥J の実地確�
 
 ## Open Questions
 
-- アプリの名前（Yaku は仮）
+- なし（アプリの名前は 2026-11-09 に Perspica に決めた）

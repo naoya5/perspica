@@ -72,11 +72,9 @@ final class ManagerModel {
         reloadHistory()
     }
 
+    /// The history rows' 「訳文をコピー」 and 「原文をコピー」.
     func copy(_ text: String) {
-        guard !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        guard Clipboard.copy(text) else { return }
         AppLog.write("manager: copied \(text.count) chars")
     }
 

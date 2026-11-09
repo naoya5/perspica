@@ -163,15 +163,6 @@ final class HUDController {
 
     // MARK: actions
 
-    func copy() {
-        let text = coordinator.hud.translation
-        guard !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        AppLog.write("hud copy \(text.count) chars")
-    }
-
     func replaceSelection() {
         guard let capture else { return }
         let text = coordinator.hud.translation

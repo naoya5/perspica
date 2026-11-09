@@ -32,7 +32,7 @@ struct PanelRootView: View {
                 .scaleEffect(scale, anchor: .top)
                 .opacity(model.isOpen ? 1 : 0)
                 .animation(model.isOpen ? openAnimation : closeAnimation, value: model.isOpen)
-                .modifier(PanelShakeEffect(shakes: model.dropShake))
+                .modifier(ShakeEffect(travel: 6, shakes: model.dropShake))
         }
         .frame(
             width: PanelLayout.windowWidth,
@@ -68,6 +68,9 @@ struct PanelRootView: View {
         .onChange(of: coordinator.panel.translation) { _, new in
             reveal.update(count: new.count)
         }
+        // On the root rather than on the button: the button leaves the tree
+        // while a new translation runs, and its wait must not leave with it.
+        .copiedMark(count: coordinator.panel.copyCount, copied: $copied)
     }
 
     // MARK: shape
@@ -617,16 +620,7 @@ struct PanelRootView: View {
 
     private var copyButton: some View {
         Button {
-            let text = coordinator.panel.translation
-            guard !text.isEmpty else { return }
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
-            withAnimation(.snappy(duration: 0.25)) { copied = true }
-            Task {
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                withAnimation(.snappy(duration: 0.25)) { copied = false }
-            }
+            coordinator.copyTranslation(on: .panel)
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .font(.system(size: 12))
@@ -702,20 +696,5 @@ struct ProgressThinBar: View {
             }
         }
         .frame(height: 3)
-    }
-}
-
-/// One small horizontal shake, used when a non-PDF file is dropped (SPEC 4.2).
-struct PanelShakeEffect: GeometryEffect {
-    var travel: CGFloat = 6
-    var shakes: CGFloat
-
-    var animatableData: CGFloat {
-        get { shakes }
-        set { shakes = newValue }
-    }
-
-    func effectValue(size: CGSize) -> ProjectionTransform {
-        ProjectionTransform(CGAffineTransform(translationX: travel * sin(shakes * .pi * 2), y: 0))
     }
 }

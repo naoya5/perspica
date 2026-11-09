@@ -1,0 +1,102 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.95686,0.96863,0.98824,1.00000",
+          "srgb:0.82353,0.85882,0.91765,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.10196,0.12549,0.31373,1.00000",
+          "srgb:0.02353,0.02745,0.10196,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:0.10980,0.13725,0.25098,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:0.94510,0.95294,0.98431,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "image-name" : "2 Frame.svg",
+          "name" : "2 Frame"
+        }
+      ],
+      "lighting" : "combined",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true
+    },
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "1 Lens Right.svg",
+          "name" : "1 Lens Right",
+          "opacity" : 0.80000000000000004
+        },
+        {
+          "glass" : true,
+          "image-name" : "1 Lens Left.svg",
+          "name" : "1 Lens Left",
+          "opacity" : 0.80000000000000004
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.25
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.40000000000000002
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

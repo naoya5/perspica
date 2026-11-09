@@ -87,14 +87,14 @@ private struct GeneralSettingsTab: View {
                         if launchAtLoginFailed { launchAtLogin = LoginItem.isEnabled }
                     }
                 if launchAtLoginFailed {
-                    Text("登録できませんでした。~/Applications に置いた Yaku.app で試してください。")
+                    Text("登録できませんでした。~/Applications に置いた Perspica.app で試してください。")
                         .font(.system(size: Design.Font.caption))
                         .foregroundStyle(.red)
                 }
             } header: {
                 Text("起動")
             } footer: {
-                Text("システム設定の「ログイン項目」に「Yaku」として出ます。いまの状態: \(LoginItem.statusText)")
+                Text("システム設定の「ログイン項目」に「Perspica」として出ます。いまの状態: \(LoginItem.statusText)")
             }
 
             Section {

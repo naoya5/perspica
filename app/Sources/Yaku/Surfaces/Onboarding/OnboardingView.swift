@@ -76,7 +76,7 @@ struct OnboardingView: View {
     private var welcomePage: some View {
         pageLayout(
             systemImage: "character.bubble",
-            title: "Yaku へようこそ",
+            title: "Perspica へようこそ",
             message: "選んだ文、入力した文、PDF、画面の文字を、この Mac の中だけで訳します。"
         ) {
             VStack(alignment: .leading, spacing: 10) {
@@ -185,7 +185,7 @@ struct OnboardingView: View {
                     Button("システム設定を開く") { AccessibilityPermission.openSettings() }
                         .disabled(AccessibilityPermission.isTrusted)
                 }
-                Text("「システム設定 > プライバシーとセキュリティ > アクセシビリティ」で Yaku を入れます。画面収録の許可は、初めて ⌃⌥O を押したときに聞きます。")
+                Text("「システム設定 > プライバシーとセキュリティ > アクセシビリティ」で Perspica を入れます。画面収録の許可は、初めて ⌃⌥O を押したときに聞きます。")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -198,7 +198,7 @@ struct OnboardingView: View {
         pageLayout(
             systemImage: "menubar.rectangle",
             title: "メニューバーから使う",
-            message: "画面の右上のアイコンが Yaku です。クリックでパネルが開きます。"
+            message: "画面の右上のアイコンが Perspica です。クリックでパネルが開きます。"
         ) {
             VStack(alignment: .leading, spacing: 16) {
                 menuBarIllustration

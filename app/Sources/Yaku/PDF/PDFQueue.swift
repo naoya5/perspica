@@ -65,7 +65,7 @@ final class PDFQueue {
         guard !stale.isEmpty else { return }
         for job in stale {
             job.jobState = .failed
-            job.errorMessage = "Yaku が終了したため中断しました"
+            job.errorMessage = "Perspica が終了したため中断しました"
         }
         store.saveNow()
         reload()

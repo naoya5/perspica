@@ -68,6 +68,7 @@ struct HUDView: View {
         .onChange(of: coordinator.hud.translation) { _, new in
             reveal.update(count: new.count)
         }
+        .copiedMark(count: coordinator.hud.copyCount, copied: $copied)
     }
 
     private var reduceMotion: Bool {
@@ -229,7 +230,7 @@ struct HUDView: View {
                 }
             }
             footerButton(copied ? "checkmark" : "doc.on.doc", help: "訳文をコピー（⌘C）", label: "コピー") {
-                copyTranslation()
+                coordinator.copyTranslation(on: .hud)
             }
             footerButton("macwindow", help: "パネルで開く（⌘O）", label: "パネルで開く") {
                 actions.openInPanel()
@@ -256,20 +257,5 @@ struct HUDView: View {
         .buttonStyle(.plain)
         .help(help)
         .accessibilityLabel(label)
-    }
-
-    // MARK: actions
-
-    func copyTranslation() {
-        let text = coordinator.hud.translation
-        guard !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        withAnimation(.snappy(duration: 0.25)) { copied = true }
-        Task {
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            withAnimation(.snappy(duration: 0.25)) { copied = false }
-        }
     }
 }

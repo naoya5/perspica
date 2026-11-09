@@ -19,7 +19,10 @@ set -eu
 REPO=$(cd "$(dirname "$0")/../../../.." && pwd)
 APP_DIR="$REPO/app"
 BIN="$APP_DIR/.build/arm64-apple-macosx/release/Yaku"
-INSTALLED="$HOME/Applications/Yaku.app"
+INSTALLED="$HOME/Applications/Perspica.app"
+# Before 2026-11-09 the app was installed as Yaku.app; `make-app.sh install`
+# removes that copy, but until then it is still the user's app, not a stray run.
+LEGACY_INSTALLED="$HOME/Applications/Yaku.app"
 LOCK="$HOME/Library/Application Support/Yaku/Yaku.lock"
 APP_LOG="$HOME/Library/Logs/Yaku/app.log"
 STATE_DIR="${YAKU_VERIFY_STATE:-/tmp/yaku-verify-state}"
@@ -41,7 +44,7 @@ foreign_holder() {
     holder=$(lock_holder)
     [ -n "$holder" ] || return 0
     case "$(ps -o command= -p "$holder")" in
-        "$INSTALLED"/*) ;;
+        "$INSTALLED"/*|"$LEGACY_INSTALLED"/*) ;;
         *) echo "$holder" ;;
     esac
 }
@@ -71,7 +74,7 @@ cmd_doctor() {
     if [ -n "$holder" ]; then
         command=$(ps -o command= -p "$holder")
         case "$command" in
-            "$INSTALLED"/*)
+            "$INSTALLED"/*|"$LEGACY_INSTALLED"/*)
                 echo "note   the installed Yaku (pid=$holder) is running; 'begin' stops it and 'end' reopens it" ;;
             *)
                 echo "BUSY   another Yaku (pid=$holder) holds the lock: $(echo "$command" | cut -c1-160)"
@@ -114,7 +117,7 @@ cmd_begin() {
     if [ -n "$holder" ]; then
         command=$(ps -o command= -p "$holder")
         case "$command" in
-            "$INSTALLED"/*) ;;
+            "$INSTALLED"/*|"$LEGACY_INSTALLED"/*) ;;
             *) die "another Yaku (pid=$holder, not the installed app) holds the lock; run: yaku-verify wait-free. $command" ;;
         esac
     fi
@@ -128,8 +131,8 @@ cmd_begin() {
     if [ -n "$holder" ]; then
         command=$(ps -o command= -p "$holder")
         case "$command" in
-            "$INSTALLED"/*)
-                echo "$INSTALLED" > "$STATE_DIR/reopen"
+            "$INSTALLED"/*|"$LEGACY_INSTALLED"/*)
+                echo "${command%%/Contents/*}" > "$STATE_DIR/reopen"
                 kill -TERM "$holder"
                 i=0; while kill -0 "$holder" 2>/dev/null && [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done
                 kill -0 "$holder" 2>/dev/null && die "installed Yaku pid=$holder did not quit"

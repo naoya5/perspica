@@ -51,7 +51,7 @@ struct NotchRootView: View {
         .frame(width: size.width, height: size.height, alignment: .top)
         .animation(spring, value: model.islandSize)
         .animation(spring, value: model.expanded)
-        .modifier(NotchShakeEffect(shakes: model.dropShake))
+        .modifier(ShakeEffect(travel: 5, shakes: model.dropShake))
         // The island has no title of its own, so VoiceOver is given the state
         // as a name (SPEC 18). The expanded buttons keep their own names.
         .accessibilityElement(children: .contain)
@@ -66,11 +66,11 @@ struct NotchRootView: View {
         case .drop:
             dropContent
         case .activity:
-            model.expanded ? AnyView(activityExpanded) : AnyView(activityCompact)
+            if model.expanded { activityExpanded } else { activityCompact }
         case .done:
-            model.expanded ? AnyView(doneExpanded) : AnyView(statusCompact(done: true))
+            if model.expanded { doneExpanded } else { statusCompact(done: true) }
         case .error:
-            model.expanded ? AnyView(errorExpanded) : AnyView(statusCompact(done: false))
+            if model.expanded { errorExpanded } else { statusCompact(done: false) }
         }
     }
 
@@ -184,7 +184,6 @@ struct NotchRootView: View {
             Image(systemName: done ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .font(.system(size: 15))
                 .foregroundStyle(done ? Color(hex: 0x4ADE80) : Color(hex: 0xFF6B6B))
-                .scaleEffect(done ? 1.0 : 1.0)
                 .modifier(DonePop(active: done))
             Spacer(minLength: 0)
             if done {
@@ -272,33 +271,23 @@ private struct DonePop: ViewModifier {
     var active: Bool
     @State private var popped = false
 
+    /// `.task(id:)` runs on appear and again when `active` changes, and SwiftUI
+    /// cancels the wait if the mark leaves before it settles back.
     func body(content: Content) -> some View {
         content
             .scaleEffect(popped ? 1.25 : 1.0)
-            .onAppear { run() }
-            .onChange(of: active) { _, _ in run() }
-    }
-
-    private func run() {
-        guard active else { return }
-        withAnimation(.spring(response: 0.30, dampingFraction: 0.5)) { popped = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.7)) { popped = false }
-        }
-    }
-}
-
-/// One small horizontal shake, used for non-PDF drops.
-struct NotchShakeEffect: GeometryEffect {
-    var travel: CGFloat = 5
-    var shakes: CGFloat
-
-    var animatableData: CGFloat {
-        get { shakes }
-        set { shakes = newValue }
-    }
-
-    func effectValue(size: CGSize) -> ProjectionTransform {
-        ProjectionTransform(CGAffineTransform(translationX: travel * sin(shakes * .pi * 2), y: 0))
+            .task(id: active) {
+                guard active else {
+                    popped = false
+                    return
+                }
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.5)) { popped = true }
+                do {
+                    try await Task.sleep(for: .milliseconds(220))
+                } catch {
+                    return
+                }
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.7)) { popped = false }
+            }
     }
 }

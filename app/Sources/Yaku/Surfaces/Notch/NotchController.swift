@@ -293,7 +293,7 @@ final class NotchController {
     func jobFinished(monoPath: String, dualPath: String) {
         model.finish(monoPath: monoPath, dualPath: dualPath)
         stopElapsedTimer()
-        scheduleClose()
+        model.closeAfterDone()
     }
 
     func jobFailed(message: String) {
@@ -304,14 +304,6 @@ final class NotchController {
     func jobCancelled() {
         model.close()
         stopElapsedTimer()
-    }
-
-    /// done は 4 秒で closed に戻る (SPEC 4.5), unless the island is open.
-    private func scheduleClose() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
-            guard let self, self.model.state == .done, !self.model.expanded else { return }
-            self.model.close()
-        }
     }
 
     private func startElapsedTimer() {
@@ -332,6 +324,11 @@ final class NotchController {
     }
 
     // MARK: demo
+
+    /// `--demo-reject-at`: the island's drop handler, without the drag.
+    func demoDrop(_ url: URL) {
+        acceptDrop(url)
+    }
 
     func applyDemoState(_ state: String) {
         switch state {

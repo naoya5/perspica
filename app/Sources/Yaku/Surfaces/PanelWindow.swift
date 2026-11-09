@@ -23,9 +23,34 @@ final class PanelModel {
     /// panel or the menu bar icon.
     var isDropTarget = false
     var dropHover = false
-    var dropMessage = "PDF をドロップして日本語に"
-    /// Drives the one-off shake for a non-PDF drop.
+    var dropMessage = PanelModel.dropPrompt
+    /// One whole number per refused drop; `ShakeEffect` shakes once for each.
     var dropShake: CGFloat = 0
+
+    static let dropPrompt = "PDF をドロップして日本語に"
+
+    /// The prompt's return after a refusal. A new refusal replaces it, so the
+    /// wording stays 2.2 seconds after the last refusal, not the first.
+    @ObservationIgnored private var dropRestore: Task<Void, Never>?
+
+    /// A refused file (SPEC 4.2): show `message`, shake once, and put the
+    /// prompt back 2.2 seconds later.
+    func rejectDrop(message: String) {
+        dropMessage = message
+        dropHover = false
+        withAnimation(.easeInOut(duration: 0.30)) { dropShake += 1 }
+        dropRestore?.cancel()
+        dropRestore = Task {
+            do {
+                try await Task.sleep(for: .seconds(2.2))
+            } catch {
+                return
+            }
+            guard isDropTarget, dropMessage != Self.dropPrompt else { return }
+            dropMessage = Self.dropPrompt
+            isDropTarget = false
+        }
+    }
 }
 
 /// Borderless, non-activating panel. It becomes key so it can take typing

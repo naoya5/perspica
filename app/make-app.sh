@@ -1,17 +1,23 @@
 #!/bin/sh
-# Build the Swift package, wrap the executable in Yaku.app, and sign it.
+# Build the Swift package, wrap the executable in Perspica.app, and sign it.
 #
 # Signing uses a dedicated development keychain rather than the login
 # keychain. The login keychain's certificate hangs codesign on an
 # authorization prompt that never appears, so it is deliberately not used
 # (SPEC 16; the parent thread owns the SPEC wording).
 #
-#   ./make-app.sh            build and sign build/Yaku.app
-#   ./make-app.sh install    also replace ~/Applications/Yaku.app
+#   ./make-app.sh            build and sign build/Perspica.app
+#   ./make-app.sh install    also replace ~/Applications/Perspica.app
 set -eu
 cd "$(dirname "$0")"
 
-APP_NAME=Yaku
+# The app was called Yaku until 2026-11-09. Only the names people see moved to
+# Perspica: the bundle, its icon and its display name. The Swift product (and
+# so CFBundleExecutable), the bundle identifier, the data and log folders and
+# the signing identity keep the name Yaku, so permissions and data carry over.
+APP_NAME=Perspica
+EXECUTABLE=Yaku
+LEGACY_APP_NAME=Yaku
 BUILD_DIR=build
 APP="$BUILD_DIR/$APP_NAME.app"
 CONTENTS="$APP/Contents"
@@ -30,10 +36,10 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$CONTENTS/Helpers"
 
 cp Resources/Info.plist "$CONTENTS/Info.plist"
 cp Resources/PLAMO-COMMUNITY-LICENSE-en.txt "$CONTENTS/Resources/PLAMO-COMMUNITY-LICENSE-en.txt"
-cp "$BIN_DIR/$APP_NAME" "$CONTENTS/MacOS/$APP_NAME"
+cp "$BIN_DIR/$EXECUTABLE" "$CONTENTS/MacOS/$EXECUTABLE"
 
-# The app icon. `Resources/Yaku.icon` is an Icon Composer document; actool
-# compiles it to Assets.car (the Liquid Glass icon) and Yaku.icns (for anything
+# The app icon. `Resources/Perspica.icon` is an Icon Composer document; actool
+# compiles it to Assets.car (the Liquid Glass icon) and Perspica.icns (for anything
 # that still asks for a plain .icns). The partial plist it writes holds
 # CFBundleIconFile / CFBundleIconName, which are merged into Info.plist here
 # rather than kept in the source plist, so the two cannot drift apart.
@@ -92,4 +98,10 @@ if [ "${1:-}" = "install" ]; then
     rm -rf "$HOME/Applications/$APP_NAME.app"
     cp -R "$APP" "$HOME/Applications/$APP_NAME.app"
     echo "installed: $HOME/Applications/$APP_NAME.app"
+    # The bundle under its old name has the same identifier; two copies would
+    # leave Launch Services and the login item free to pick either one.
+    if [ -d "$HOME/Applications/$LEGACY_APP_NAME.app" ]; then
+        rm -rf "$HOME/Applications/$LEGACY_APP_NAME.app"
+        echo "removed the old bundle: $HOME/Applications/$LEGACY_APP_NAME.app"
+    fi
 fi

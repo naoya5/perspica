@@ -44,8 +44,8 @@ run_and_measure() {
 }
 
 echo "=== 0. the app bundle (llama-server excluded) ==="
-echo "  build/Yaku.app: $(du -sh build/Yaku.app | awk '{print $1}')"
-echo "  Contents/MacOS/Yaku: $(du -h build/Yaku.app/Contents/MacOS/Yaku | awk '{print $1}')"
+echo "  build/Perspica.app: $(du -sh build/Perspica.app | awk '{print $1}')"
+echo "  Contents/MacOS/Yaku: $(du -h build/Perspica.app/Contents/MacOS/Yaku | awk '{print $1}')"
 
 echo
 echo "=== 1. idle, no window, engine never started ==="

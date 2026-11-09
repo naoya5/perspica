@@ -1,7 +1,9 @@
-# Yaku
+# Perspica
 
 メニューバーに常駐する、Mac の中だけで動く翻訳アプリ。選んだ文・入力した文・PDF・画面の文字を訳す。
 PLaMo 3 Translate（GGUF）を llama-server の子プロセスとして動かし、ネットワークには出ない。
+
+2026-11-09 までの名前は Yaku。変えたのは見える名前（`Perspica.app`、表示名、画面の文言、アイコン）だけで、バンドル ID `dev.naoya.yaku`、データとログの場所、Swift のモジュール名（`Yaku` / `YakuCore`）、中の実行ファイル名、署名の名前は Yaku のまま。許可とデータはそのまま引き継がれる。
 
 仕様は [SPEC.md](SPEC.md)。各段階の確認の記録は [docs/checks/](docs/checks/) にある。
 
@@ -9,8 +11,8 @@ PLaMo 3 Translate（GGUF）を llama-server の子プロセスとして動かし
 
 ```sh
 cd app
-./make-app.sh install     # ビルド・署名して ~/Applications/Yaku.app に置く
-open ~/Applications/Yaku.app
+./make-app.sh install     # ビルド・署名して ~/Applications/Perspica.app に置く
+open ~/Applications/Perspica.app
 ```
 
 macOS 26 以降。署名は自己署名の「Yaku Signing」で、開発用のキーチェーン `yaku-dev.keychain-db` を使う（`make-app.sh` が開く）。
@@ -70,17 +72,17 @@ PDF はメニューバーのアイコン・パネル・管理画面・ノッチ�
 cd app
 swift build              # YakuCore + Yaku
 swift test               # 221 テスト
-./make-app.sh            # build/Yaku.app を作って署名
-./make-app.sh install    # ~/Applications/Yaku.app を置き換える
+./make-app.sh            # build/Perspica.app を作って署名
+./make-app.sh install    # ~/Applications/Perspica.app を置き換える
 ```
 
 開発用の起動オプション（`--demo-*`）と計測・撮影の道具は `app/tools/` にある。
 画面を出して確かめるときは `--data-dir "$TMPDIR/yaku-demo-data"` を付けて、本物のデータを触らないようにする。
 
 ```sh
-app/build/Yaku.app/Contents/MacOS/Yaku --data-dir "$TMPDIR/yaku-demo-data" \
+app/build/Perspica.app/Contents/MacOS/Yaku --data-dir "$TMPDIR/yaku-demo-data" \
     --demo-surface panel --demo-state translating --demo-pin
 ```
 
-アイコンは `app/Resources/Yaku.icon`（Icon Composer の文書）で、`make-app.sh` が `xcrun actool` で `Assets.car` と `Yaku.icns` にコンパイルする。
-絵を描き直すときは `swiftc -O app/tools/make-icon.swift -o /tmp/make-icon && /tmp/make-icon app/Resources/Yaku.icon/Assets`。
+アイコンは `app/Resources/Perspica.icon`（Icon Composer の文書）で、`make-app.sh` が `xcrun actool` で `Assets.car` と `Perspica.icns` にコンパイルする。
+層は SVG（`Assets/`）で、`design/app-icon/make-candidates.swift` が描く。描き直すときはそれを実行し、できた `design/app-icon/Perspica-Final.icon` の中身を `app/Resources/Perspica.icon` に写す（使う書体と取得元はスクリプトの先頭）。
