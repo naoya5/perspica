@@ -62,7 +62,7 @@ struct ManagerWindowView: View {
                     .tag(section)
             }
         }
-        // M7: the system's own sidebar material and selection, so the selected
+        // The system's own sidebar material and selection, so the selected
         // row is macOS 26's rounded accent row rather than a flat highlight.
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 176, ideal: 196, max: 240)

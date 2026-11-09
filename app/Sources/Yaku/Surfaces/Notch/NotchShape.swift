@@ -3,8 +3,8 @@ import SwiftUI
 /// The black island: flush with the screen top, concave "ears" at the two top
 /// corners, and continuous-curvature (squircle) corners at the bottom.
 ///
-/// Moved from the prototype (`lab/plamo-pdf-translate/notch-app/swiftui/`), where
-/// the shape was tuned against the real screen (notch-app/SPEC.md 2〜3 章).
+/// Moved from an earlier prototype, where the shape was
+/// tuned against the real screen.
 /// `earRadius` is supplied by `NotchModel`, which grows it with the island so
 /// the ears do not read as small black bumps (SPEC 4.5). The result still needs
 /// one look on an unlocked screen.

@@ -132,7 +132,7 @@ struct ManagerGlossaryView: View {
             }
             .disabled(model.selectedGlossary.isEmpty)
 
-            // M7 7: the two arrows looked alike. Each now carries the word it
+            // the two arrows looked alike. Each now carries the word it
             // does, so 読み込む and 書き出す cannot be mixed up.
             Button {
                 importCSV()

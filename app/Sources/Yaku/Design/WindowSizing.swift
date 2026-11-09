@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Sizes the settings window to the height its content wants, keeping the top
 /// edge where it is, so the window follows the tab it is showing instead of
-/// staying as tall as the tallest one (M7 1).
+/// staying as tall as the tallest one.
 ///
 /// The window uses a full-size content view, so its frame and its content view
 /// are the same rectangle, and the titlebar and the tab bar are drawn *over* the
@@ -49,7 +49,7 @@ struct SettingsWindowSizer: NSViewRepresentable {
             coordinator.lastHeight = height
             coordinator.lastWidth = width
             // The first application settles the window on open, so it is not
-            // animated; a tab switch after that is (M7 1: 滑らかに変わる).
+            // animated; a tab switch after that is (the change is smooth).
             let animated = coordinator.didApplyOnce
             coordinator.didApplyOnce = true
             Self.apply(to: window, contentHeight: height, width: width, animated: animated)

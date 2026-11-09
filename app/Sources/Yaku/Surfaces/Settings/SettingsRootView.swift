@@ -2,10 +2,10 @@ import SwiftUI
 import YakuCore
 
 /// The settings window (SPEC 4.4). A `Settings` scene with one tab per row of
-/// the specification's table; the PDF and overlay tabs show the M3 / M4 items
+/// the specification's table; the PDF and overlay tabs show their items
 /// but leave them inert.
 ///
-/// M7: every tab is built the same way (a section heading, the card, the
+/// Every tab is built the same way (a section heading, the card, the
 /// explanation as the section's footer), and the window is only as tall as the
 /// tab it is showing, so a short tab does not leave half a window empty.
 struct SettingsRootView: View {
@@ -17,7 +17,7 @@ struct SettingsRootView: View {
 
     @State private var contentHeight: CGFloat = 0
 
-    /// SPEC 4.4: the width is fixed; M7 changes only the height.
+    /// SPEC 4.4: the width is fixed; only the height changes.
     private static let width: CGFloat = 560
 
     var body: some View {
@@ -434,7 +434,7 @@ private struct OverlaySettingsTab: View {
             }
 
             Section {
-                // M7: the value sits with the label on the top line, and the
+                // The value sits with the label on the top line, and the
                 // slider gets the full width under it, instead of the value
                 // being wedged beside a short slider.
                 HStack {

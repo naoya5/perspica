@@ -1,8 +1,8 @@
 import Foundation
 import SwiftData
 
-/// One translated request (SPEC 11). The manager's history list is M2; M1 only
-/// writes rows so the data is there.
+/// One translated request (SPEC 11). The manager's history list reads
+/// these rows.
 @Model
 final class HistoryItem {
     var date: Date

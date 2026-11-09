@@ -3,7 +3,7 @@ import Testing
 
 /// Every expectation in this file is copied character for character from the
 /// "PFML3 Prompt Format" section of the model card
-/// (`lab/plamo-pdf-translate/models/plamo-3-translate-0.8b-MLX-4bit/README.md`).
+/// (plamo-3-translate-0.8b-MLX-4bit, README.md).
 @Suite("PFML3")
 struct PFML3Tests {
     @Test("model card: a plain request has no source language")

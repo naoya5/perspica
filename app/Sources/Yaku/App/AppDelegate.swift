@@ -99,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Headless reading run for `--demo-image --demo-dump-blocks`: the blocks
-        // Vision found, as JSON, without a screen (M4).
+        // Vision found, as JSON, without a screen.
         if let path = demo.demoImage, demo.dumpBlocks {
             runDumpBlocksDemo(path)
             return
@@ -116,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             + "dataDir=\(AppPaths.isUsingDataDirectory)")
 
         setUpMenuBar()
-        // SPEC 15 (M5): a light or dark picture behind the glass, so the
+        // SPEC 15: a light or dark picture behind the glass, so the
         // surfaces can be photographed over both without touching the Mac's
         // wallpaper. It sits below the app's own windows.
         if let backdrop = demo.backdrop {
@@ -219,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Apple Event) is answered by SwiftUI's own application delegate while a
     /// sheet is attached: it replies 「ユーザによってキャンセルされました」
     /// (-128) and never asks `applicationShouldTerminate`, so the app stayed
-    /// running with the licence sheet up (SPEC 15, M5). Answering the event
+    /// running with the licence sheet up (SPEC 15). Answering the event
     /// here, before SwiftUI's delegate sees it, makes the quit work in every
     /// state.
     private func installQuitHandler() {
@@ -233,7 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// SwiftUI's 終了 menu item is a scene command: while the licence sheet is
     /// the key window there is no active scene, so the item does nothing and
-    /// the app could not be quit from the menu or with ⌘Q (SPEC 15, M5). Point
+    /// the app could not be quit from the menu or with ⌘Q (SPEC 15). Point
     /// the item at AppKit directly.
     private func installQuitMenuItem() {
         guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
@@ -894,7 +894,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "done":
             pdfQueue.applyDemoJob(state: .done, progress: 1, stage: "Save PDF")
             // A failed row as well, with a long worker error, so the one-line
-            // row and its 詳細 popover can be photographed (M7 9).
+            // row and its 詳細 popover can be photographed.
             pdfQueue.applyDemoJob(
                 state: .failed, progress: 0.31, stage: "Translate Paragraphs",
                 fileName: "manual.pdf", pageCount: 42,
@@ -931,7 +931,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setUpDemo() {
         let text = demo.text ?? DemoText.threeParagraphs
 
-        // SPEC 15 (M5): the accessibility looks and the installed PDF worker
+        // SPEC 15: the accessibility looks and the installed PDF worker
         // are shown through launch options, never by changing the Mac's own
         // settings.
         AppearanceOverrides.reduceMotionDemo = demo.reduceMotionDemo
@@ -1020,7 +1020,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // `--demo-image <png>`: read a file instead of the screen and lay the
-        // translation over it, from the screen's top left (SPEC 15, M4).
+        // translation over it, from the screen's top left (SPEC 15).
         if let path = demo.demoImage {
             let scale = demo.demoScale ?? 1
             AppLog.write("demo-image: \(path) scale=\(scale)")
@@ -1236,7 +1236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `--demo-image <png> --demo-dump-blocks`: print the blocks Vision read as
-    /// JSON and exit, so the reading can be checked without a screen (M4).
+    /// JSON and exit, so the reading can be checked without a screen.
     private func runDumpBlocksDemo(_ path: String) {
         Task {
             guard let image = ScreenCapturer.loadImage(at: path) else {
@@ -1258,7 +1258,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let elapsed = CFAbsoluteTimeGetCurrent() - started
                 // Every line Vision found, with its box and its measured size,
                 // so a line that was left out of a block can be seen next to
-                // the block it should have joined (M6).
+                // the block it should have joined.
                 func lineJSON(_ line: OCRLine) -> [String: Any] {
                     [
                         "text": line.text,

@@ -1,6 +1,6 @@
 import Foundation
 
-/// How long ago a history row was (M7 6).
+/// How long ago a history row was.
 ///
 /// Recent rows read as 「3 分前」; anything older than a week falls back to the
 /// date, so a long list is not a wall of 「1 か月前」. The wording is written out

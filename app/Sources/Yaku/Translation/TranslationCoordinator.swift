@@ -127,10 +127,10 @@ final class TranslationCoordinator {
     /// How often streamed text is published to the panel.
     ///
     /// The first piece is published at once; after that the panel waits this
-    /// long. M1-M4 published on every streamed piece, which re-laid out and
-    /// redrew the whole translation dozens of times a second. M5 measured
+    /// long. Early versions published on every streamed piece, which re-laid out and
+    /// redrew the whole translation dozens of times a second. Profiling measured
     /// 100ms, 300ms, 500ms and 2000ms against each other and found no
-    /// reproducible difference (19.3-19.8% CPU at every setting; M5.md 4.2),
+    /// reproducible difference (19.3-19.8% CPU at every setting),
     /// because the reveal's own redraw sets the cost. 300ms is kept anyway: it
     /// holds the publish rate below the reveal rate, so no layout work is done
     /// for text that cannot be seen yet.
@@ -636,7 +636,7 @@ final class TranslationCoordinator {
             // Publishing re-lays out and redraws the whole translation, so
             // publishing on every streamed piece spends CPU in proportion to
             // the model's speed rather than to what the eye can follow (SPEC
-            // 14, M5.md 4.2). The first piece is published at once, so the
+            // 14). The first piece is published at once, so the
             // text starts to appear as soon as the engine answers; later
             // pieces wait for the interval.
             var lastPublish = ContinuousClock.now - Self.publishInterval

@@ -4,7 +4,7 @@ import SwiftUI
 /// The accessibility appearance the app draws with.
 ///
 /// Each flag follows the Mac's own setting. A demo launch option can stand in
-/// for it, which is how SPEC 15's M5 captures show the reduce-motion,
+/// for it, which is how SPEC 15's captures show the reduce-motion,
 /// reduce-transparency and increase-contrast looks without changing the Mac's
 /// settings (SPEC 18).
 @MainActor

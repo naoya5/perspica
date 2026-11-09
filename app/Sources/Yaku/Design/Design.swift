@@ -1,7 +1,7 @@
 import SwiftUI
 import YakuCore
 
-/// The look the settings and manager windows share (M7).
+/// The look the settings and manager windows share.
 ///
 /// The panel, the HUD, the overlay and the island keep their own numbers in
 /// `PanelLayout` / `HUDLayout`; those surfaces are glass over the screen and
@@ -78,7 +78,7 @@ struct DesignCard: ViewModifier {
 }
 
 extension View {
-    /// Wrap the content in the shared card surface (M7).
+    /// Wrap the content in the shared card surface.
     func designCard(padding: CGFloat = Design.Space.l) -> some View {
         modifier(DesignCard(padding: padding))
     }
@@ -87,7 +87,7 @@ extension View {
 // MARK: - section
 
 /// A section heading for the manager's scrolling pages, so a card is never a
-/// floating rectangle (M7 2). It reads like the settings form's own section
+/// floating rectangle. It reads like the settings form's own section
 /// header: a small semibold caption in the secondary colour, an optional
 /// one-line explanation under it, then the content.
 struct DesignSection<Content: View>: View {
@@ -120,7 +120,7 @@ struct DesignSection<Content: View>: View {
 
 // MARK: - badge
 
-/// One status pill, used wherever a state is shown as a short word (M7 8):
+/// One status pill, used wherever a state is shown as a short word:
 /// 「使用中」「取得済み」「取得中 42%」「未取得」 on the model cards. The tone
 /// picks the colour; the icon is optional.
 struct DesignBadge: View {
@@ -139,7 +139,7 @@ struct DesignBadge: View {
                     .font(.system(size: 9, weight: .semibold))
                     // Decorative: the word carries the meaning, and keeping the
                     // icon out of the accessibility tree leaves the badge's
-                    // VoiceOver name as it was (M7 D).
+                    // VoiceOver name as it was.
                     .accessibilityHidden(true)
             }
             Text(text)
@@ -166,7 +166,7 @@ struct DesignBadge: View {
 // MARK: - language direction
 
 /// 「EN → JA」: the direction of a translation, short enough for a list row and
-/// a detail header (M7 5, 6). `source == nil` shows 「自動」 for the source.
+/// a detail header. `source == nil` shows 「自動」 for the source.
 struct DesignLanguageDirection: View {
     var source: String?
     var target: String

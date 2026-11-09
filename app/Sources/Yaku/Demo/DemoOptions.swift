@@ -1,7 +1,7 @@
 import Foundation
 
-/// Launch options (SPEC 15). M2 adds the manager, settings and onboarding
-/// surfaces, the page inside them, and `--data-dir`.
+/// Launch options (SPEC 15): the surface to show, the page inside the manager,
+/// settings and onboarding surfaces, and `--data-dir`.
 struct DemoOptions {
     /// `--demo-surface panel|hud|manager|settings|onboarding|notch|overlay`
     var surface: String?
@@ -85,28 +85,28 @@ struct DemoOptions {
     var clickPoint: CGPoint?
     var clickAt: [Double] = []
     /// `--demo-image <png>`: read that image instead of the screen and lay the
-    /// translation over it, placed from the screen's top left (SPEC 15, M4).
+    /// translation over it, placed from the screen's top left (SPEC 15).
     var demoImage: String?
     /// `--demo-scale <倍率>`: the scale the demo image was captured at, so its
-    /// pixels map onto points (SPEC 15, M4).
+    /// pixels map onto points (SPEC 15).
     var demoScale: Double?
     /// `--demo-dump-blocks`: print the blocks read from `--demo-image` as JSON
-    /// and exit, so the reading can be checked without a screen (M4).
+    /// and exit, so the reading can be checked without a screen.
     var dumpBlocks = false
     /// `--demo-pdf-worker installed`: report the PDF worker as installed, so the
     /// settings tab's 導入済み state can be photographed without the download
-    /// (SPEC 15, M5).
+    /// (SPEC 15).
     var pdfWorkerDemoInstalled = false
     /// `--demo-reduce-motion` / `--demo-reduce-transparency` /
     /// `--demo-increase-contrast`: draw the accessibility appearance without
-    /// changing the system's own settings (SPEC 15, M5).
+    /// changing the system's own settings (SPEC 15).
     var reduceMotionDemo = false
     var reduceTransparencyDemo = false
     var increaseContrastDemo = false
     /// `--demo-backdrop light|dark`: put a full-screen picture-like backdrop
     /// behind the glass, so the panel, HUD, island and overlay can be captured
     /// over a bright or a dark background without changing the wallpaper
-    /// (SPEC 15, M5).
+    /// (SPEC 15).
     var backdrop: String?
 
     static let current = DemoOptions(arguments: CommandLine.arguments)

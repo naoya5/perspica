@@ -32,7 +32,7 @@ enum ScreenOCR {
     /// The two passes are separate so the caller can lay the first one over the
     /// screen and start translating it while the tiles are still being read:
     /// run together, three Vision passes take about 0.9s on a 1440×900 capture
-    /// and the first block misses SPEC 9's one second (M5.md 3.4). Use
+    /// and the first block misses SPEC 9's one second. Use
     /// `wholeLines` and `recoveredLines` for that; this combined call is for the
     /// paths that want the finished answer in one go.
     static func lines(in image: CGImage, language: String?) async throws -> [OCRLine] {

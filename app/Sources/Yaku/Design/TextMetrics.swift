@@ -9,9 +9,9 @@ import YakuCore
 ///
 /// The panel asks for the source text's height on every redraw, and the reveal
 /// animation redraws at 30Hz, so the same string is measured dozens of times a
-/// second. `boundingRect` breaks the whole string into lines each time; M5's
+/// second. `boundingRect` breaks the whole string into lines each time; a
 /// profile showed it as CoreText shaping on the main thread, and keeping the
-/// answers took the translating CPU from 18.5% to 12.3% (M5.md 4.2).
+/// answers took the translating CPU from 18.5% to 12.3%.
 enum TextMetrics {
     private struct Key: Hashable {
         let text: String

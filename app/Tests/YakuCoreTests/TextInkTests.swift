@@ -62,7 +62,7 @@ private func inkBox(in image: PixelImage) -> CGRect {
 
 @Suite("Text ink")
 struct TextInkTests {
-    /// The sizes the samples actually use (M5.md 8.2): 12 for a row's
+    /// The sizes the samples actually use: 12 for a row's
     /// description, 14 for a sidebar label, 15 for a row's title and 40 for the
     /// article's heading.
     private static let sizes: [CGFloat] = [12, 13, 14, 15, 17, 19, 34, 40]
@@ -86,7 +86,7 @@ struct TextInkTests {
     @Test("the same size measures the same from a whole-picture pass and a tile")
     func cropDoesNotChangeTheSize() throws {
         // Vision's box for one line differs by 15–19% between the whole-picture
-        // pass and a tile (M5.md 8.2), which is what made a sidebar's labels
+        // pass and a tile, which is what made a sidebar's labels
         // come out at 9.5 and 13.8 points for one 14-point size. The ink band
         // is read from the pixels, so the crop cannot move it.
         let tight = draw("General", size: 14)
@@ -119,8 +119,8 @@ struct TextInkTests {
     func theRealBoxes() throws {
         // The UI sample's sidebar, drawn at 14 points: `General` came back in a
         // 16.5-pixel box from the whole-picture pass and a 12.4-pixel box from a
-        // tile, and the overlay drew the two at 13.8 and 10.4 points (M5.md
-        // 8.2). Both boxes hold the same ink, so the band is the same.
+        // tile, and the overlay drew the two at 13.8 and 10.4 points.
+        // Both boxes hold the same ink, so the band is the same.
         let (image, ink) = draw("General", size: 14)
         func box(height: CGFloat) -> CGRect {
             ink.insetBy(dx: -3, dy: -(height - ink.height) / 2)
@@ -172,7 +172,7 @@ struct TextInkTests {
 
     // MARK: measuring from the width of the ink
 
-    /// The sizes the samples draw their text at (M5.md 9.2), and lines long
+    /// The sizes the samples draw their text at, and lines long
     /// enough that one pixel of edge does not matter.
     private static let widthCases: [(String, CGFloat)] = [
         ("The dominant sequence transduction models", 19),
@@ -185,7 +185,7 @@ struct TextInkTests {
     @Test("the width of the ink gives back the size the text was drawn at", arguments: [1.0, 2.0] as [CGFloat])
     func widthFollowsTheSize(scale: CGFloat) throws {
         // Measured on the samples themselves: exact to within 0.3% for Latin
-        // text at 13–19 points and for Japanese text at 17 (M5.md 9.2). The
+        // text at 13–19 points and for Japanese text at 17. The
         // answer comes back in the picture's own pixels, so at 2× it is twice
         // the point size. The margin leaves room for a partly covered edge
         // pixel.
@@ -215,8 +215,8 @@ struct TextInkTests {
     func widthIsTheSameForEveryScript() throws {
         // This is why the split rule compares widths and not ink bands: the
         // band follows the x-height, so it reads the Japanese line of a mixed
-        // sample 35–46% larger than the English one at the same size (M5.md
-        // 9.2), and a paragraph would split at every script change.
+        // sample 35–46% larger than the English one at the same size, and a paragraph would
+        // split at every script change.
         let japanese = draw("エンコーダは、同一の層が6層積層された構成", size: 17)
         let english = draw("We employ a residual connection", size: 17)
         let japaneseWidth = try #require(TextInk.fontSize(

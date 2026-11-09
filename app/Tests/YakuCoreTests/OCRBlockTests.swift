@@ -197,7 +197,7 @@ struct OCRBlockTests {
     @Test("a short title above a long description is two blocks, not a wrap")
     func titleAboveDescription() {
         // The UI sample's own pair: `Play a sound` is 88px wide over a 157px
-        // description, so 0.56 — the two are separate rows (M5.md 8.1).
+        // description, so 0.56 — the two are separate rows.
         let lines = [
             line("Play a sound", x: 100, y: 100, width: 88, height: 17),
             line("Use the system alert sound", x: 100, y: 123, width: 157, height: 15),
@@ -213,7 +213,7 @@ struct OCRBlockTests {
 
     @Test("a wrapped line stays in its paragraph")
     func wrappedLineStays() {
-        // The narrowest pair the samples actually wrapped is 0.92 (M5.md 8.1),
+        // The narrowest pair the samples actually wrapped is 0.92,
         // so a line above at 0.92 of the line below it is a wrap, not a row.
         let lines = [
             line("That is, the output of each sub-layer", x: 100, y: 100, width: 280),
@@ -235,7 +235,7 @@ struct OCRBlockTests {
     @Test("a paragraph's short last line does not split it off")
     func shortLastLine() {
         // Nothing follows the short line, so the rule has nothing to compare it
-        // with: the article stays whole (M5.md 8.1).
+        // with: the article stays whole.
         let lines = [
             line("The dominant sequence transduction", x: 100, y: 100, width: 300),
             line("models are based on complex networks.", x: 100, y: 126, width: 300),
@@ -278,7 +278,7 @@ struct OCRBlockTests {
     func sizeRuleSplitsSameWidthRow() {
         // The UI sample's `Show in Lock Screen` (146.5px, 15pt) over `Keep
         // recent items visible` (144.4px, 12pt): 1.01 of its width, so no width
-        // rule can split it, but the sizes differ by 20% (M5.md 9.2).
+        // rule can split it, but the sizes differ by 20%.
         let lines = [
             line("Show in Lock Screen", x: 100, y: 100, width: 146.5, height: 17),
             line("Keep recent items visible", x: 100, y: 123, width: 144.4, height: 15),
@@ -295,7 +295,7 @@ struct OCRBlockTests {
     @Test("lines within 8% of each other stay one block")
     func sizeRuleKeepsNearSizes() {
         // A paragraph mixing Japanese and English lines reads 1.1% apart at
-        // one size (M5.md 9.2), so it must not split.
+        // one size, so it must not split.
         let lines = [
             line("エンコーダは、同一の層が6層積層された", x: 100, y: 100, width: 400),
             line("multi-head self-attention 機構であり、", x: 100, y: 126, width: 400),
@@ -333,7 +333,7 @@ struct OCRBlockTests {
             line("Show in Lock Screen", x: 100, y: 100, width: 146.5, height: 17),
             line("Keep recent items visible", x: 100, y: 123, width: 144.4, height: 15),
         ]
-        // Without sizes the two lines are one run, as M5 found.
+        // Without sizes the two lines are one run, as the sample showed.
         #expect(OCRBlockBuilder.blocks(from: lines).count == 1)
         // And a line whose size cannot be measured is left to the geometry.
         #expect(OCRBlockBuilder.blocks(from: lines) { $0.text == "Show in Lock Screen" ? 15 : nil }.count == 1)
@@ -354,7 +354,7 @@ struct OCRBlockTests {
 
 /// The wrap rule, which is what the user's screen needed: a bullet's second
 /// line came back in a box a third shorter than the line above it, and the
-/// height rule cut it off and translated the fragment alone (M6.md 2.2).
+/// height rule cut it off and translated the fragment alone.
 ///
 /// The numbers are real. `userLog` is the user's own log from the
 /// 2026-11-08T10:33:52Z run, which gives the boxes but not the rows; the gap
@@ -372,7 +372,7 @@ struct OCRWrapTests {
         ]
     }
 
-    /// The same pair from the M6 sample, whose boxes are 23.4 and 16.7 tall:
+    /// The same pair from a sample, whose boxes are 23.4 and 16.7 tall:
     /// 28.6% apart, which is the height rule's own limit and over it.
     private func sample() -> [OCRLine] {
         [
@@ -496,7 +496,7 @@ struct OCRWrapTests {
         #expect(isContinuation("It reports progress at each milestone, and", "one outcome."))
         #expect(isContinuation("It doesn't do the work itself", "delegates the goal."))
         // A sentence that ended does not continue. A colon ends one too, which
-        // is the brief's own list (`.` `!` `?` `:`).
+        // is the specification's own list (`.` `!` `?` `:`).
         for ender in [".", "!", "?", ":", "。", "！", "？", "："] {
             #expect(!isContinuation("It reports progress\(ender)", "one outcome."), Comment(rawValue: ender))
         }

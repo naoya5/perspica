@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import YakuCore
 
-// MARK: - tiling (M5: Vision misses small text on a large capture)
+// MARK: - tiling
 
 @Suite("OCR tiling")
 struct OCRTilingTests {
@@ -55,7 +55,7 @@ struct OCRTilingTests {
     }
 }
 
-// MARK: - reading order (M5: two columns were mixed)
+// MARK: - reading order
 
 @Suite("Overlay reading order")
 struct OverlayReadingOrderTests {
@@ -102,7 +102,7 @@ struct OverlayReadingOrderTests {
     }
 }
 
-// MARK: - weight (M5: a heading's bold became regular)
+// MARK: - weight
 
 @Suite("Overlay emphasis")
 struct OverlayEmphasisTests {
@@ -144,7 +144,7 @@ struct OverlayEmphasisTests {
     }
 }
 
-// MARK: - the height rule (M5: why the title/description pair cannot be split)
+// MARK: - the height rule
 
 @Suite("OCR height rule")
 struct OCRHeightRuleTests {
@@ -154,7 +154,7 @@ struct OCRHeightRuleTests {
 
     @Test("a paragraph whose lines vary by a fifth stays one block")
     func paragraphTolerance() {
-        // Measured on the M4 columns sample: Vision's box for a line without
+        // Measured on a columns sample: Vision's box for a line without
         // ascenders or descenders is about 20% shorter than its neighbours'.
         let lines = [
             line("The encoder is composed of a stack of six identical layers.", y: 142, height: 17.1),
@@ -170,11 +170,11 @@ struct OCRHeightRuleTests {
 
     @Test("the title and description of a UI row merge, as the rule allows")
     func titleAndDescription() {
-        // Measured on the M4 UI sample: "Play a sound" (17.1pt box) and its
+        // Measured on a UI sample: "Play a sound" (17.1pt box) and its
         // description (14.7pt) differ by 14%. The specification's 25% rule joins
         // them, and so would any rule strict enough to split them — it would
         // also split the paragraph above, whose lines differ by 21%. The rule is
-        // therefore left alone (M5.md).
+        // therefore left alone.
         let lines = [
             line("Play a sound", y: 217.5, height: 17.1),
             line("Use the system alert sound", y: 240.7, height: 14.7),
