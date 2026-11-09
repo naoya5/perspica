@@ -16,28 +16,38 @@ final class TranslationStore {
     let container: ModelContainer
     private let context: ModelContext
     private(set) var isInMemory = false
+    /// The file that could not be opened when the store fell back to memory,
+    /// so the manager can say which file and where the log is. Nil when the
+    /// store opened, or when memory was asked for.
+    private(set) var unopenedLocation: URL?
 
     init(location: URL? = nil, inMemory: Bool = false) {
         let made = Self.makeContainer(location: inMemory ? nil : (location ?? AppPaths.storeURL), inMemory: inMemory)
         container = made.container
         isInMemory = made.inMemory
+        unopenedLocation = made.unopened
         context = ModelContext(container)
         context.autosaveEnabled = true
     }
 
-    private static func makeContainer(location: URL?, inMemory: Bool) -> (container: ModelContainer, inMemory: Bool) {
+    private static func makeContainer(
+        location: URL?,
+        inMemory: Bool
+    ) -> (container: ModelContainer, inMemory: Bool, unopened: URL?) {
         let schema = Schema([HistoryItem.self, CacheEntry.self, GlossaryEntry.self, PDFJob.self])
+        var unopened: URL?
         if !inMemory, let location {
             do {
                 let configuration = ModelConfiguration(schema: schema, url: location)
-                return (try ModelContainer(for: schema, configurations: configuration), false)
+                return (try ModelContainer(for: schema, configurations: configuration), false, nil)
             } catch {
                 AppLog.write("store: could not open \(location.path) (\(error)); using memory")
+                unopened = location
             }
         }
         do {
             let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            return (try ModelContainer(for: schema, configurations: configuration), true)
+            return (try ModelContainer(for: schema, configurations: configuration), true, unopened)
         } catch {
             fatalError("in-memory store could not be created: \(error)")
         }

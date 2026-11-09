@@ -19,6 +19,11 @@ struct ManagerWindowView: View {
             sidebar
         } detail: {
             detail
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if let unopened = model.store.unopenedLocation {
+                        storeBanner(unopened)
+                    }
+                }
         }
         .frame(minWidth: 820, minHeight: 560)
         .background(WindowProbe { window in
@@ -94,6 +99,40 @@ struct ManagerWindowView: View {
         case .failed: .red
         case .stopped: .secondary
         }
+    }
+
+    // MARK: store banner
+
+    /// Shown when `Yaku.store` could not be opened and the app is running on
+    /// an in-memory store: history, cache and glossary edits made now are lost
+    /// at quit, and the user should know rather than find an empty history.
+    private func storeBanner(_ location: URL) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Design.Space.s) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("履歴とキャッシュを保存できません")
+                    .font(.system(size: Design.Font.label, weight: .semibold))
+                Text("\(location.path) を開けませんでした。このまま使えますが、終了すると履歴と用語集の変更は消えます。")
+                    .font(.system(size: Design.Font.caption))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            Spacer(minLength: 0)
+            Button("ログを開く") {
+                AppLog.write("manager: open log from the store banner")
+                NSWorkspace.shared.open(AppPaths.appLog)
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, Design.Space.m)
+        .padding(.vertical, Design.Space.s)
+        .background(.orange.opacity(0.12))
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("履歴とキャッシュを保存できません。\(location.lastPathComponent) を開けませんでした")
     }
 
     // MARK: detail
