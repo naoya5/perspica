@@ -47,6 +47,7 @@ $V translate "Attention is all you need."
 # CPU % (cumulative CPU-time delta) and phys_footprint of one instance
 $V cpu <name> <settle-s> <window-s> <yaku args...>
 
+$V run <name> [WAIT=<s>] <yaku args...>     # no capture: PDF jobs, headless flows, a locked screen
 $V log 'demo-translate|translate first piece'   # grep this run's log slices
 ```
 
@@ -59,7 +60,7 @@ Each run writes to `docs/checks/shots/verify/<timestamp>-<run-name>/` (git-ignor
 A proof:
 
 - Goes through the user's path. `--demo-surface` opens the same window a click opens. `--demo-pdf` takes the same path a drop takes. Do not call internal setters or add test-only endpoints.
-- Shows the action and the result. Capture before and after for a visual change. Compare with the earlier milestone picture of the same composition in `docs/checks/shots/` (for example `M7-manager-translate-done-light.png`).
+- Shows the action and the result. Capture before and after for a visual change. Capture the same composition from the previous commit first (build it in a separate worktree) and compare the two.
 - Checks side effects too. Translation lands in `<state>/data/Yaku.store` (history, cache). A PDF writes `<name>-ja.pdf` next to the source. The log names every step (`engine ready`, `translate first piece … in Xs`, `pdf: done … in Xs`).
 - States what was not verified. For example, VoiceOver on a real screen, or a hotkey a human must press.
 
@@ -84,4 +85,4 @@ Run `end` after every attempt, including failed ones. It never kills by process 
 - `scripts/yaku-verify` is the only entry point (usage: run it with no arguments).
 - `app/tools/capture-lib.sh` (`capture_windows`) picks the window with the most drawn pixels. `shot` uses it.
 - `app/tools/measure_cpu.py <pid> <seconds>` does the CPU math. `cpu` uses it.
-- `app/tools/measure-m5.sh` and `measure-m6-pdf.sh` re-measure every SPEC 14 number in one go. They predate this skill and do not stop the installed app, so run `$V begin` first and `$V end` after.
+- `app/tools/measure-targets.sh` re-measures every SPEC 14 target in one go and needs `YAKU_DEV_MODEL`; `measure-pdf.sh` times the PDF worker alone against a private engine (see `features/pdf.md`). They do not stop the installed app, so run them between `$V begin` and `$V end`.

@@ -113,9 +113,13 @@ model does not stay in memory while you are not using it.
   translate a PDF, to install the PDF worker with `uv` (from PyPI) along with the fonts and layout
   model it needs.
 - The engine listens only on `127.0.0.1` and requires a random key that changes every launch.
-- History and the translation cache stay on your Mac. Turn history off or erase both in
-  **Settings > プライバシー**.
-- Logs record what the app did and how long it took, not what you translated.
+- History and the translation caches stay on your Mac. Turn history off in **Settings > プライバシー**.
+- Logs record what the app did and how long it took, not what you translated. Development runs
+  started with `--data-dir` also log text, for debugging; set `YAKU_LOG_CONTENT=0` to turn that off.
+- **Settings > プライバシー > 履歴とキャッシュを消す** erases history, both translation caches (the
+  app's and the PDF worker's) and the logs.
+- Builds before 2026-11-10 let the PDF worker keep a cache in `~/.cache/pdf2zh_next`. If you do not
+  use pdf2zh-next on its own, delete that folder.
 
 ## Where data lives
 

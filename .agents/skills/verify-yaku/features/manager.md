@@ -18,7 +18,7 @@ The manager is a normal window with a sidebar: 翻訳, PDF, 履歴, 用語集, �
 
 - **Each page.** Run `$V shot manager-<page> WAIT=10 --appearance light --demo-surface manager --demo-page <page> --demo-quit-after 60`, where `<page>` is `history`, `glossary`, `models` or `pdf`. Repeat with `--appearance dark`.
 - **Licence sheet.** Run `$V shot manager-license WAIT=10 --demo-surface manager --demo-page models --demo-download 0.8b --demo-download-gate --demo-quit-after 60`. The sheet `PLaMo Community License` appears with `同意して取得する`. Nothing is downloaded.
-- **Layout check.** In every page the right edge of the content keeps the same 20 pt margin as the left. The sidebar is about 196 pt. The 2026-11-08 review found HSplitView pushing the right pane 15 pt out of the window, so compare with `M7-manager-*.png`.
+- **Layout check.** In every page the right edge of the content keeps the same 20 pt margin as the left. The sidebar is about 196 pt. An `HSplitView` inside the window once pushed the right pane 15 pt out of the window, so check the right margin in every page.
 
 ## Gotchas
 

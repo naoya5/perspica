@@ -1,7 +1,7 @@
 #!/bin/sh
-# M6: translate a PDF with the worker and print one line of numbers.
+# Translate a PDF with the worker (no app) and print one line of numbers.
 #
-#   tools/measure-m6-pdf.sh <label> <input.pdf> <out-dir> [extra worker args...]
+#   tools/measure-pdf.sh <label> <input.pdf> <out-dir> [extra worker args...]
 #
 # Prints:  label<TAB>seconds<TAB>paragraphs<TAB>cache hits<TAB>errors<TAB>done
 #
@@ -42,7 +42,7 @@ mkdir -p "$out"
 
 # A private HOME per run, so the translation cache starts empty and stays out of
 # the user's own cache. Only `.cache/babeldoc` is shared, and only read.
-FAKE_HOME=${FAKE_HOME:-${TMPDIR:-/tmp}/yaku-m6-home}
+FAKE_HOME=${FAKE_HOME:-${TMPDIR:-/tmp}/yaku-measure-pdf-home}
 mkdir -p "$FAKE_HOME/.cache"
 if [ ! -e "$FAKE_HOME/.cache/babeldoc" ]; then
     ln -s "$REAL_HOME/.cache/babeldoc" "$FAKE_HOME/.cache/babeldoc"

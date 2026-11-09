@@ -1,7 +1,12 @@
 #!/bin/sh
-# Measure every number in SPEC 14, for M5.
+# Measure every target in SPEC 14 (size, idle and translating CPU, memory,
+# engine start, latency, PDF time) against the release build.
 #
-#   tools/measure-m5.sh
+#   YAKU_DEV_MODEL=/path/to/model.gguf tools/measure-targets.sh [worker-python]
+#
+# Every run uses a scratch --data-dir, so the app has no settings or downloads
+# there and needs YAKU_DEV_MODEL for the model. Stop the installed app first
+# (only one instance runs), for example inside `yaku-verify begin` / `end`.
 #
 # Memory uses `footprint <pid>` (phys_footprint), which is what Activity
 # Monitor calls "Memory". CPU uses tools/measure_cpu.py (a cumulative CPU-time
@@ -13,6 +18,8 @@
 # time, but a busy Mac makes every window of the measurement noisier, and the
 # translating row in particular moves by a few points between runs.
 set -eu
+: "${YAKU_DEV_MODEL:?set YAKU_DEV_MODEL to a GGUF file}"
+export YAKU_DEV_MODEL
 cd "$(dirname "$0")/.."
 
 BIN=.build/arm64-apple-macosx/release/Yaku
@@ -70,7 +77,7 @@ run_and_measure "glow only" 14 12 \
 echo
 echo "=== 5. translating (light + the text appearing) ==="
 echo "  This is the number for the SPEC 14 row 「訳している最中の CPU」. What it"
-echo "  costs is the reveal redrawing the translation (M5.md 4.2): the publish"
+echo "  costs is the reveal redrawing the translation (the reveal costs about 3 points; see docs/perf-review-2026-11-09.md): the publish"
 echo "  interval makes no difference, and the source text's height is measured"
 echo "  once instead of on every frame. Run it more than once; a busy Mac moves"
 echo "  it by a point or two."
@@ -113,7 +120,7 @@ echo "=== 8. PDF, 15 pages (SPEC 14 の最後の行) ==="
 # about 12s; the 15-page row needs every page. Point PDF at the paper and give
 # the worker's interpreter as the first argument:
 #
-#   PDF=…/attention.pdf tools/measure-m5.sh ~/…/.venv/bin/python
+#   PDF=…/attention.pdf tools/measure-targets.sh <worker-python>
 #
 # Without an argument it falls back to the installed worker, or to
 # $YAKU_PDF_PYTHON while the worker has not been installed yet.

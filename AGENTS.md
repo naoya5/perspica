@@ -58,7 +58,8 @@ cd ../pdf-worker/tests
 
 - Translated and source text never leave the Mac. The only network code is the model downloader
   (Hugging Face) and the PDF worker install (`uv`, PyPI) with its first-run assets.
-- No translated or source text in logs.
+- No translated or source text in logs: lines that carry user text go through `AppLog.content`, which
+  writes only in `--data-dir` runs or with `YAKU_LOG_CONTENT=1`.
 - No paths from your own machine in code or docs. Development-only inputs come from the
   environment (`YAKU_DEV_MODEL`) or from the source location (`#filePath`).
 - UI text is Japanese. Code, comments and these docs are English, except `SPEC.md` and the

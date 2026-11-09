@@ -1,4 +1,4 @@
-# Shared by capture-m2/m3/m4.sh: capture every onscreen Yaku window and keep
+# Used by the verify-yaku helper: capture every onscreen Yaku window and keep
 # the ones with something drawn in them, most drawn first.
 #
 # AppKit keeps some of Yaku's windows "onscreen" while they show nothing (the
