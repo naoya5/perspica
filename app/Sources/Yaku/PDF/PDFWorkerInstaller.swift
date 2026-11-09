@@ -5,19 +5,19 @@ import YakuCore
 /// Installs the PDF worker's Python environment with `uv` (SPEC 8.2).
 ///
 /// The environment goes into `~/Library/Application Support/Yaku/pdf-worker`,
-/// Python 3.12, with `pdf2zh-next==2.9.0` and `bitstring<5`. Progress is
-/// reported from `uv`'s own output so the first PDF can show what is happening
-/// while several hundred megabytes are fetched.
+/// Python 3.12, synced to the hashed lock file `requirements.txt` so every
+/// install is the same set of packages. The same run brings an existing
+/// environment up to date when the requirements change. Progress is reported
+/// from `uv`'s own output so the first PDF can show what is happening while
+/// several hundred megabytes are fetched.
 @MainActor
 @Observable
 final class PDFWorkerInstaller {
     /// The size shown in the wording before anything is installed (SPEC 13:
-    /// 「約 ___MB」). Measured during the M3 check and recorded in M3.md.
-    /// Measured on this Mac: a fresh 3.12 environment with
-    /// `pdf2zh-next==2.9.0` and `bitstring<5` is 957 MB on disk (22,987 files),
-    /// and the install took 33 seconds (SPEC 13: 「約 ___MB」).
+    /// 「約 ___MB」). Measured on this Mac: a fresh 3.12 environment synced to
+    /// the current requirements.txt (pdf2zh-next 2.10.2, BabelDOC 0.7.1).
     static let estimatedSizeText = "950MB"
-    /// The same figure in bytes, for the demo's 導入済み size (M3: 957 MB).
+    /// The same figure in bytes, for the demo's 導入済み size.
     static let estimatedBytes: Int64 = 957 * 1000 * 1000
 
     enum Phase: Equatable {
@@ -34,16 +34,27 @@ final class PDFWorkerInstaller {
     private(set) var message = ""
     private(set) var installedBytes: Int64 = 0
 
+    /// Called after a successful install, so the files that were waiting for
+    /// the worker can run whichever surface started the install.
+    var onInstalled: (() -> Void)?
+
     private var process: Process?
     private var cancelled = false
 
-    /// Runs `uv venv` and then `uv pip install -r requirements.txt`.
+    /// Runs `uv venv` and then `uv pip sync` against the hashed lock file. A
+    /// second call while one is running returns at once: the first run is
+    /// the one the caller will see finish.
     func install() async {
+        guard phase != .running else {
+            AppLog.write("pdf-worker: install already running")
+            return
+        }
+        let isUpdate = PDFWorkerPaths.isInstalled
         cancelled = false
         phase = .running
         progress = 0
-        message = "Python 3.12 の環境を作っています…"
-        AppLog.write("pdf-worker: install started")
+        message = isUpdate ? "部品を確かめています…" : "Python 3.12 の環境を作っています…"
+        AppLog.write(isUpdate ? "pdf-worker: sync started" : "pdf-worker: install started")
 
         guard let uvPath = PDFWorkerPaths.uvPath else {
             fail("uv が見つかりません（\(ExecutableLocator.searchDirectories.joined(separator: "、")) を探しました）。`brew install uv` で入れてください")
@@ -68,17 +79,21 @@ final class PDFWorkerInstaller {
         }
 
         progress = 0.2
-        message = "部品を取得しています…"
+        message = isUpdate ? "部品を更新しています…" : "部品を取得しています…"
+        // `sync` makes the environment exactly the lock file: packages that
+        // left the file are removed, and every download is checked against
+        // the hashes recorded in it.
         let installStatus = await run(uv, [
-            "pip", "install",
+            "pip", "sync", "--require-hashes",
             "--python", PDFWorkerPaths.installedPython.path,
-            "-r", requirements.path,
+            requirements.path,
         ])
         guard !cancelled else { return }
         guard installStatus == 0 else {
             fail("部品を取得できませんでした")
             return
         }
+        PDFWorkerPaths.writeRequirementsStamp()
 
         progress = 0.97
         message = "大きさを測っています…"
@@ -87,6 +102,7 @@ final class PDFWorkerInstaller {
         message = "導入しました（\(ByteCount.format(installedBytes))）"
         phase = .done
         AppLog.write("pdf-worker: installed \(installedBytes) bytes at \(environment.path)")
+        onInstalled?()
     }
 
     func cancel() {
@@ -127,17 +143,22 @@ final class PDFWorkerInstaller {
             }
         }
 
-        do {
-            try process.run()
-        } catch {
-            self.process = nil
-            fail("uv を起動できませんでした: \(error.localizedDescription)")
-            return -1
-        }
-
+        // The handler is set before `run()`, so a child that exits at once
+        // still resumes the continuation; a `run()` that throws resumes it
+        // from the catch, and the handler never fires for a process that did
+        // not start.
         let status: Int32 = await withCheckedContinuation { continuation in
             process.terminationHandler = { finished in
                 continuation.resume(returning: finished.terminationStatus)
+            }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                Task { @MainActor in
+                    self.fail("uv を起動できませんでした: \(error.localizedDescription)")
+                }
+                continuation.resume(returning: -1)
             }
         }
         self.process = nil
@@ -154,7 +175,7 @@ final class PDFWorkerInstaller {
             progress = max(progress, 0.35)
         } else if line.contains("Prepared") {
             progress = max(progress, 0.6)
-        } else if line.contains("Installed") {
+        } else if line.contains("Installed") || line.contains("Uninstalled") {
             progress = max(progress, 0.9)
         } else if line.contains("Downloading") || line.contains("Downloaded") {
             progress = max(progress, 0.45)
