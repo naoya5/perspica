@@ -1,0 +1,122 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.20392,0.27451,0.62353,1.00000",
+          "srgb:0.07451,0.07059,0.22745,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.10196,0.12549,0.31373,1.00000",
+          "srgb:0.02353,0.02745,0.10196,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:0.93333,0.94510,0.98431,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "image-name" : "4 Frame.svg",
+          "name" : "4 Frame"
+        }
+      ],
+      "lighting" : "combined",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true
+    },
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "3 Kana.svg",
+          "name" : "3 Kana"
+        },
+        {
+          "glass" : true,
+          "image-name" : "3 Latin.svg",
+          "name" : "3 Latin"
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.25
+      },
+      "specular" : false
+    },
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "2 Lens Right.svg",
+          "name" : "2 Lens Right",
+          "opacity" : 0.88
+        },
+        {
+          "glass" : true,
+          "image-name" : "2 Lens Left.svg",
+          "name" : "2 Lens Left",
+          "opacity" : 0.88
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.20000000000000001
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.29999999999999999
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

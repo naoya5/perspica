@@ -1,0 +1,112 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.16471,0.49804,0.81569,1.00000",
+          "srgb:0.04314,0.14118,0.34118,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.07843,0.21176,0.41569,1.00000",
+          "srgb:0.01961,0.04706,0.11765,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "2 Table.svg",
+          "name" : "2 Table",
+          "opacity" : 0.94999999999999996
+        },
+        {
+          "glass" : true,
+          "image-name" : "2 Crown Right.svg",
+          "name" : "2 Crown Right",
+          "opacity" : 0.69999999999999996
+        },
+        {
+          "glass" : true,
+          "image-name" : "2 Crown Left.svg",
+          "name" : "2 Crown Left",
+          "opacity" : 0.55000000000000004
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.34999999999999998
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.40000000000000002
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "1 Pavilion Right.svg",
+          "name" : "1 Pavilion Right",
+          "opacity" : 0.59999999999999998
+        },
+        {
+          "glass" : true,
+          "image-name" : "1 Pavilion Middle.svg",
+          "name" : "1 Pavilion Middle",
+          "opacity" : 0.41999999999999998
+        },
+        {
+          "glass" : true,
+          "image-name" : "1 Pavilion Left.svg",
+          "name" : "1 Pavilion Left",
+          "opacity" : 0.81999999999999995
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.34999999999999998
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.40000000000000002
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

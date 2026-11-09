@@ -1,0 +1,109 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.09412,0.14510,0.30980,1.00000",
+          "srgb:0.02745,0.04314,0.10980,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "srgb:0.06275,0.09412,0.22745,1.00000",
+          "srgb:0.01569,0.02353,0.05882,1.00000"
+        ],
+        "orientation" : {
+          "start" : {
+            "x" : 0.5,
+            "y" : 0
+          },
+          "stop" : {
+            "x" : 0.5,
+            "y" : 1
+          }
+        }
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "3 Lens.svg",
+          "name" : "3 Lens",
+          "opacity" : 0.35999999999999999
+        }
+      ],
+      "lighting" : "combined",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.45000000000000001
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.59999999999999998
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "2 Light 1.svg",
+          "name" : "2 Light 1"
+        },
+        {
+          "glass" : true,
+          "image-name" : "2 Light 2.svg",
+          "name" : "2 Light 2"
+        },
+        {
+          "glass" : true,
+          "image-name" : "2 Light 3.svg",
+          "name" : "2 Light 3"
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.20000000000000001
+      },
+      "specular" : false
+    },
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "1 Grey Lines.svg",
+          "name" : "1 Grey Lines",
+          "opacity" : 0.59999999999999998
+        }
+      ],
+      "lighting" : "combined",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0
+      },
+      "specular" : false
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
