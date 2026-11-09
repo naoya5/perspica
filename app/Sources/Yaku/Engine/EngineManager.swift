@@ -35,7 +35,13 @@ final class EngineManager {
     static let defaultIdleSeconds: Double = 600
     static let modelAlias = "plamo-3-translate"
     static let modelName = "plamo-3-translate"
-    static let startupTimeout: TimeInterval = 15
+    /// How long the server gets to answer `/health` at all. Loading the model
+    /// is not counted here: once the server answers 503 (still loading) the
+    /// wait goes on while the process lives, up to `startupLoadTimeout`.
+    static let startupConnectTimeout: TimeInterval = 15
+    /// Absolute cap on one start. A 5 GB GGUF on a cold disk, an eGPU-less Mac
+    /// or a Mac under memory pressure can take well over 15 s to load.
+    static let startupLoadTimeout: TimeInterval = 180
 
     private(set) var state: State = .stopped
     private(set) var port: UInt16?
@@ -91,7 +97,9 @@ final class EngineManager {
         let task = Task { await self.performStart() }
         startTask = task
         let result = await task.value
-        startTask = nil
+        // `stop()` may have cancelled this start and `restart()` begun a new
+        // one by the time this resumes; only clear our own task.
+        if startTask == task { startTask = nil }
         return result
     }
 
@@ -132,6 +140,15 @@ final class EngineManager {
     func stop() async {
         idleTimer?.invalidate()
         idleTimer = nil
+        // A start still in progress is cancelled and waited for first, so a
+        // model change during a warm-up does not keep the old start (and the
+        // old model) alive, and `restart()` begins from a clean state.
+        if let startTask {
+            AppLog.write("engine: stop while starting; cancelling the start")
+            startTask.cancel()
+            _ = await startTask.value
+            self.startTask = nil
+        }
         stoppingIntentionally = true
         await stopProcess()
         stoppingIntentionally = false
@@ -187,6 +204,8 @@ final class EngineManager {
         crashedUnexpectedly = false
 
         await reapLeftoverEngine()
+        // Cancelled by `stop()`: it owns the state from here on.
+        if Task.isCancelled { return false }
 
         guard let executable = Self.locateExecutable() else {
             lastStartFailure = .executableMissing
@@ -255,6 +274,17 @@ final class EngineManager {
             process.standardError = handle
         }
 
+        // A crash (as opposed to a stop we asked for) is noticed here. The
+        // handler is installed before `run()`, so a child that exits at once
+        // cannot slip past it.
+        process.terminationHandler = { [weak self] finished in
+            let pid = finished.processIdentifier
+            let status = finished.terminationStatus
+            Task { @MainActor in
+                self?.childExited(pid: pid, status: status)
+            }
+        }
+
         do {
             try process.run()
         } catch {
@@ -264,15 +294,8 @@ final class EngineManager {
             return false
         }
 
-        // A crash (as opposed to a stop we asked for) is noticed here.
         let shellPid = process.processIdentifier
-        process.terminationHandler = { [weak self] finished in
-            let status = finished.terminationStatus
-            Task { @MainActor in
-                self?.childExited(pid: shellPid, status: status)
-            }
-        }
-
+        let launched = Date()
         self.process = process
         self.port = freePort
         self.apiKey = key
@@ -291,17 +314,33 @@ final class EngineManager {
             startedAt: ISO8601DateFormatter().string(from: Date())
         ))
         AppLog.write("engine start server=\(serverPid ?? 0) watchdog=\(EngineWatchdog.script.count) bytes")
+        if Task.isCancelled { return false }
 
         let client = EngineClient(baseURL: URL(string: "http://127.0.0.1:\(freePort)")!, apiKey: key)
-        let deadline = Date().addingTimeInterval(Self.startupTimeout)
-        while Date() < deadline {
-            if await client.health() {
+        let connectDeadline = launched.addingTimeInterval(Self.startupConnectTimeout)
+        let loadDeadline = launched.addingTimeInterval(Self.startupLoadTimeout)
+        // Set once the server has answered 503: from then on the start waits
+        // for the model load rather than for the server to come up.
+        var loading = false
+        var loggedLoading = false
+        while true {
+            if Task.isCancelled { return false }
+            let status = await client.healthStatus()
+            if status == 200 {
                 setState(.running)
-                AppLog.write("engine ready server=\(serverPid ?? 0) in \(String(format: "%.2f", Self.startupTimeout - deadline.timeIntervalSinceNow))s")
+                AppLog.write("engine ready server=\(serverPid ?? 0) in \(String(format: "%.2f", Date().timeIntervalSince(launched)))s")
                 scheduleIdleStop()
                 return true
             }
+            if status == 503 {
+                loading = true
+                if !loggedLoading {
+                    loggedLoading = true
+                    AppLog.write("engine loading the model (503) \(String(format: "%.2f", Date().timeIntervalSince(launched)))s after launch")
+                }
+            }
             if !process.isRunning {
+                if Task.isCancelled { return false }
                 lastStartFailure = .diedAtStartup
                 setState(.failed("エンジンが起動直後に終了しました"))
                 AppLog.write("engine died during startup shell=\(shellPid)")
@@ -312,12 +351,17 @@ final class EngineManager {
                 EnginePidFile.remove()
                 return false
             }
+            let now = Date()
+            let deadline = loading ? loadDeadline : connectDeadline
+            if now >= deadline { break }
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
+        if Task.isCancelled { return false }
 
+        let limit = Int(loading ? Self.startupLoadTimeout : Self.startupConnectTimeout)
         lastStartFailure = .timedOut
-        setState(.failed("エンジンの起動が \(Int(Self.startupTimeout)) 秒で終わりませんでした"))
-        AppLog.write("engine startup timed out shell=\(shellPid)")
+        setState(.failed("エンジンの起動が \(limit) 秒で終わりませんでした"))
+        AppLog.write("engine startup timed out shell=\(shellPid) after \(limit)s (loading=\(loading))")
         stoppingIntentionally = true
         await stopProcess()
         stoppingIntentionally = false
@@ -326,7 +370,7 @@ final class EngineManager {
 
     private func waitForServerPid() async -> pid_t? {
         let deadline = Date().addingTimeInterval(3)
-        while Date() < deadline {
+        while Date() < deadline, !Task.isCancelled {
             if let pid = EngineWatchdog.serverPid(), pid > 0 { return pid }
             try? await Task.sleep(nanoseconds: 100_000_000)
         }

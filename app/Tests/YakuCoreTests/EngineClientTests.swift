@@ -149,6 +149,15 @@ struct EngineClientTests {
         #expect(await makeClient().health() == false)
     }
 
+    @Test("healthStatus tells loading (503) apart from ready (200)")
+    func healthStatus() async {
+        StubURLProtocol.reset(status: 200, chunks: [Data("{}".utf8)])
+        #expect(await makeClient().healthStatus() == 200)
+
+        StubURLProtocol.reset(status: 503, chunks: [Data("{}".utf8)])
+        #expect(await makeClient().healthStatus() == 503)
+    }
+
     @Test("cancelling the consumer cancels the request")
     func cancellation() async throws {
         StubURLProtocol.reset(chunks: [sse(["a", "b", "c"])])
