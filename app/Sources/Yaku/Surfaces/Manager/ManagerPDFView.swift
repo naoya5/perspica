@@ -251,7 +251,7 @@ struct ManagerPDFView: View {
         guard let provider = providers.first else { return false }
         _ = provider.loadObject(ofClass: URL.self) { url, _ in
             guard let url else { return }
-            Task { @MainActor in _ = pdf.enqueue(url: url) }
+            Task { @MainActor in _ = await pdf.enqueue(url: url) }
         }
         return true
     }

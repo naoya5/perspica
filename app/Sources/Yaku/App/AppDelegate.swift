@@ -154,8 +154,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Finder's 「このアプリで開く」 (SPEC 8.1, CFBundleDocumentTypes).
     func application(_ application: NSApplication, open urls: [URL]) {
         AppLog.write("open: \(urls.map(\.lastPathComponent).joined(separator: ", "))")
-        for url in urls where url.pathExtension.lowercased() == "pdf" {
-            enqueuePDF(url)
+        let pdfs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
+        // One task, in order, so the queue sees the files as the user did.
+        Task {
+            for url in pdfs {
+                await enqueuePDF(url)
+            }
         }
     }
 
@@ -277,7 +281,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
         hosting.onDrop = { [weak self] url in
-            _ = self?.pdfQueue.enqueue(url: url)
+            Task { _ = await self?.enqueuePDF(url) }
         }
         hosting.onReject = { [weak self] in
             self?.shakePanelForRejection()
@@ -714,10 +718,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pdfQueue.onRejected = { [weak self] message in
             self?.pdfRejected(message)
         }
+        // The target for a PDF follows the panel's rule: a language pair the
+        // user set wins; otherwise the 既定の目的の言語 setting, unless the
+        // document is already in it, in which case SPEC 5.1's ja/en rule.
+        pdfQueue.resolveTarget = { [weak self] source in
+            if let pair = self?.coordinator.manualPair, pair.source == nil || pair.source == source {
+                return pair.target
+            }
+            let preferred = AppSettings.shared.defaultTargetLanguage
+            return preferred != source ? preferred : LanguageDetector.defaultTarget(forSource: source)
+        }
 
         let controller = NotchController()
         controller.onDrop = { [weak self] url in
-            _ = self?.pdfQueue.enqueue(url: url)
+            Task { _ = await self?.enqueuePDF(url) }
         }
         controller.onReject = { [weak self] in
             self?.shakePanelForRejection()
@@ -787,51 +801,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         picker.canChooseDirectories = false
         picker.prompt = "訳す"
         if picker.runModal() == .OK, let url = picker.url {
-            enqueuePDF(url)
+            Task { _ = await enqueuePDF(url) }
         }
     }
 
     /// The one path every entry point takes into the queue.
     @discardableResult
-    func enqueuePDF(_ url: URL, pages: String? = nil) -> PDFQueue.EnqueueResult {
-        let result = pdfQueue.enqueue(url: url, pages: pages)
-        if case .needsWorker = result {
-            promptForWorkerInstall()
+    func enqueuePDF(_ url: URL, pages: String? = nil) async -> PDFQueue.EnqueueResult {
+        let result = await pdfQueue.enqueue(url: url, pages: pages)
+        switch result {
+        case .needsWorker:
+            promptForWorkerInstall(update: false)
+        case .needsWorkerUpdate:
+            promptForWorkerInstall(update: true)
+        case .accepted, .waitingForWorker, .rejected:
+            break
         }
         return result
     }
 
+    /// True while the install question is on screen, so a second file that
+    /// arrives meanwhile waits in the queue instead of asking again.
+    private var isAskingForWorkerInstall = false
+
     /// SPEC 8.2 / 13: the first PDF asks before the extra parts are fetched.
-    private func promptForWorkerInstall() {
+    /// `update` is the same question for an environment that has to be synced
+    /// to new requirements. The queue runs the waiting files when the
+    /// installer finishes, whichever surface started it.
+    private func promptForWorkerInstall(update: Bool) {
+        guard !isAskingForWorkerInstall, pdfQueue.installer.phase != .running else { return }
         // A `--demo-pdf` run is scripted and unattended, so the question is
         // treated as already answered; the Settings PDF tab keeps the button.
         if demo.pdf != nil {
             AppLog.write("pdf-worker: install question skipped (demo)")
-            Task {
-                await pdfQueue.installer.install()
-                if pdfQueue.installer.phase == .done {
-                    pdfQueue.runPendingIntake()
-                }
-            }
+            Task { await pdfQueue.installer.install() }
             return
         }
 
+        isAskingForWorkerInstall = true
+        defer { isAskingForWorkerInstall = false }
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "PDF の翻訳には追加の部品が必要です"
-        alert.informativeText = "約 \(PDFWorkerInstaller.estimatedSizeText)、取得に数分かかります。"
-        alert.addButton(withTitle: "取得する")
+        if update {
+            alert.messageText = "PDF の翻訳に使う部品を更新します"
+            alert.informativeText = "新しい版の取得に数分かかります。"
+            alert.addButton(withTitle: "更新する")
+        } else {
+            alert.messageText = "PDF の翻訳には追加の部品が必要です"
+            alert.informativeText = "約 \(PDFWorkerInstaller.estimatedSizeText)、取得に数分かかります。"
+            alert.addButton(withTitle: "取得する")
+        }
         alert.addButton(withTitle: "やめる")
-        AppLog.write("pdf-worker: prompting for install")
+        AppLog.write("pdf-worker: prompting for \(update ? "sync" : "install")")
         if alert.runModal() == .alertFirstButtonReturn {
-            Task {
-                await pdfQueue.installer.install()
-                if pdfQueue.installer.phase == .done {
-                    pdfQueue.runPendingIntake()
-                }
-            }
+            Task { await pdfQueue.installer.install() }
         } else {
             AppLog.write("pdf-worker: install declined")
+            pdfQueue.discardPendingIntakes()
         }
     }
 
@@ -897,12 +923,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.autoFocusEnabled = false
         }
 
-        // `--demo-pdf` goes through the same intake as a drop (SPEC 15).
-        if let pdfPath = demo.pdf {
-            let url = URL(fileURLWithPath: pdfPath)
-            AppLog.write("demo-pdf: \(pdfPath) pages=\(demo.pdfPages ?? "-")")
+        // `--demo-pdf` goes through the same intake as a drop (SPEC 15). The
+        // option may be given more than once, which stands in for several
+        // files opened together from Finder.
+        if demo.pdf != nil {
+            let arguments = CommandLine.arguments
+            let paths = arguments.indices.dropLast()
+                .filter { arguments[$0] == "--demo-pdf" }
+                .map { arguments[$0 + 1] }
+            AppLog.write("demo-pdf: \(paths.count) file(s) pages=\(demo.pdfPages ?? "-")")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.enqueuePDF(url, pages: self?.demo.pdfPages)
+                Task { [weak self] in
+                    for path in paths {
+                        await self?.enqueuePDF(URL(fileURLWithPath: path), pages: self?.demo.pdfPages)
+                    }
+                }
             }
         }
 
