@@ -255,11 +255,17 @@ final class EngineManager {
             "--no-warmup",
             "--host", "127.0.0.1",
             "--port", "\(freePort)",
-            "--api-key", key,
             "--alias", Self.modelAlias,
             "--no-webui",
             "--log-disable",
         ]
+        // The key travels in the environment (llama-server reads
+        // LLAMA_API_KEY), not in argv: every local account can read another
+        // process's command line with `ps`. The watchdog is /bin/sh and hands
+        // its environment to the server unchanged.
+        var environment = ProcessInfo.processInfo.environment
+        environment["LLAMA_API_KEY"] = key
+        process.environment = environment
 
         // The watchdog's lifeline (see EngineWatchdog): the Process keeps the
         // pipe's write end open for as long as it is held, and the kernel
@@ -307,7 +313,6 @@ final class EngineManager {
             pid: shellPid,
             serverPid: serverPid,
             port: freePort,
-            apiKey: key,
             executable: executable,
             model: model,
             startedAt: ISO8601DateFormatter().string(from: Date())
@@ -482,9 +487,9 @@ final class EngineManager {
     // MARK: leftover engine from a previous run
 
     /// Stops an engine this app started in an earlier run that was force quit.
-    /// Only a process whose command line carries our own alias, API key and
-    /// port is touched; anything else (for example the shared engine on port
-    /// 5191) is left alone.
+    /// Only a process whose command line carries llama-server, our own port
+    /// and our alias is touched (the key is not on the command line any more);
+    /// anything else, for example a llama-server the user runs, is left alone.
     private func reapLeftoverEngine() async {
         guard let record = EnginePidFile.read() else { return }
         EnginePidFile.remove()
@@ -504,8 +509,8 @@ final class EngineManager {
                 continue
             }
             let matches = command.contains("llama-server")
-                && command.contains("--api-key \(record.apiKey)")
                 && command.contains("--port \(record.port)")
+                && command.contains("--alias \(Self.modelAlias)")
             guard matches else {
                 AppLog.write("leftover engine pid=\(pid) is not ours; leaving it alone")
                 continue
