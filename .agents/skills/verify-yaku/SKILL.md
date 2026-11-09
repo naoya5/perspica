@@ -76,7 +76,8 @@ Run `end` after every attempt, including failed ones. It never kills by process 
 ## Profiling
 
 - Time Profiler: start the instance by hand inside a `begin` / `end` pair (`app/.build/arm64-apple-macosx/release/Yaku --data-dir /tmp/yaku-verify-state/data <args> &`), then `xcrun xctrace record --template 'Time Profiler' --attach <pid> --time-limit 10s --output <file>.trace`. Export with `xcrun xctrace export --input <file>.trace --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]'` and aggregate the XML (rows carry `thread`, `weight` and a `backtrace` of `frame name=` elements, with `id`/`ref` reuse).
-- Never use `xctrace record --launch`. It starts the bundle that LaunchServices resolves for the identifier, which is the user's `~/Applications/Yaku.app`, not the release binary, and that instance can hang suspended after the recording. The SwiftUI template records nothing in `--attach` mode, so view-update counts are not available this way.
+- Never point `xctrace record --launch` at the release binary or `build/Yaku.app`: LaunchServices resolves the identifier `dev.naoya.yaku` and starts the user's `~/Applications/Yaku.app`, which can hang suspended after the recording. To launch under a template (the run loop and display-update tables need it), copy `build/Yaku.app` (from `app/make-app.sh`) to `/tmp`, set `CFBundleIdentifier` to `dev.naoya.yaku.profile` with PlistBuddy, re-sign ad hoc with a `com.apple.security.get-task-allow` entitlement, and launch that copy inside a `begin` / `end` pair. `end` stops the copy if it lingers.
+- The SwiftUI template's own tables (`swiftui-updates`, `swiftui-causes`) stay empty for Yaku in both modes. `runloop-events` (main-thread wake-ups per second) and `hitches-updates` are recorded.
 
 ## Helpers
 
