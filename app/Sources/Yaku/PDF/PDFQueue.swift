@@ -127,6 +127,9 @@ final class PDFQueue {
                 return .accepted(job)
 
             case .needsInstall, .needsUpdate:
+                // The same file dropped again after a failed install replaces
+                // its earlier entry, so one install does not run it twice.
+                pendingIntakes.removeAll { $0.accepted.url == accepted.url }
                 pendingIntakes.append((accepted, pages))
                 if installer.phase == .running {
                     AppLog.write("pdf: worker install running; \(url.lastPathComponent) waits")
