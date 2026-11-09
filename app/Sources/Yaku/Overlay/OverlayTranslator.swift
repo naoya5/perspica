@@ -289,7 +289,7 @@ final class OverlayTranslator {
             targetLanguage: target,
             form: form?.rawValue ?? "",
             frontApp: "",
-            model: EngineManager.modelName,
+            model: ModelStore.cacheKey(),
             seconds: seconds
         ))
     }

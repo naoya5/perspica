@@ -34,7 +34,6 @@ final class EngineManager {
     /// Default: stop the engine ten minutes after the last request (SPEC 7.1).
     static let defaultIdleSeconds: Double = 600
     static let modelAlias = "plamo-3-translate"
-    static let modelName = "plamo-3-translate"
     /// How long the server gets to answer `/health` at all. Loading the model
     /// is not counted here: once the server answers 503 (still loading) the
     /// wait goes on while the process lives, up to `startupLoadTimeout`.

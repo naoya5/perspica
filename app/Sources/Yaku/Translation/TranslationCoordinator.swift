@@ -710,7 +710,7 @@ final class TranslationCoordinator {
             targetLanguage: target,
             form: form?.rawValue ?? "",
             frontApp: frontApp ?? "",
-            model: EngineManager.modelName,
+            model: ModelStore.cacheKey(),
             seconds: seconds
         ))
     }
