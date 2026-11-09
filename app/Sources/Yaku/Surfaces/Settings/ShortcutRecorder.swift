@@ -8,6 +8,8 @@ struct ShortcutRecorder: NSViewRepresentable {
     var shortcut: Shortcut?
     /// True when this shortcut overlaps another one (SPEC 4.4: 重なったら警告).
     var conflicted: Bool
+    /// True when the system refused to register it (another app holds the key).
+    var registrationFailed: Bool = false
     var onChange: (Shortcut) -> Void
     var onClear: () -> Void
 
@@ -21,6 +23,7 @@ struct ShortcutRecorder: NSViewRepresentable {
     func updateNSView(_ view: RecorderView, context: Context) {
         view.shortcut = shortcut
         view.conflicted = conflicted
+        view.registrationFailed = registrationFailed
         view.onChange = onChange
         view.onClear = onClear
         view.needsDisplay = true
@@ -29,6 +32,7 @@ struct ShortcutRecorder: NSViewRepresentable {
     final class RecorderView: NSView {
         var shortcut: Shortcut? { didSet { needsDisplay = true } }
         var conflicted = false { didSet { needsDisplay = true } }
+        var registrationFailed = false { didSet { needsDisplay = true } }
         var onChange: ((Shortcut) -> Void)?
         var onClear: (() -> Void)?
 
@@ -43,10 +47,11 @@ struct ShortcutRecorder: NSViewRepresentable {
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
             (isRecording ? NSColor.controlAccentColor.withAlphaComponent(0.12) : NSColor.controlBackgroundColor).setFill()
             path.fill()
-            let strokeColor: NSColor = conflicted ? .systemRed
+            let warned = conflicted || registrationFailed
+            let strokeColor: NSColor = warned ? .systemRed
                 : (isRecording ? .controlAccentColor : .separatorColor)
             strokeColor.setStroke()
-            path.lineWidth = conflicted || isRecording ? 1.5 : 1
+            path.lineWidth = warned || isRecording ? 1.5 : 1
             path.stroke()
 
             let text: String
@@ -117,20 +122,29 @@ struct ShortcutRow: View {
     @Bindable var settings: AppSettings
     let bindingID: String
     let conflicted: Bool
+    /// The system refused this shortcut (another app already uses the key).
+    var registrationFailed: Bool = false
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
                     .font(.system(size: 13))
-                Text(help)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                if registrationFailed {
+                    Text("他のアプリが使っています")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red)
+                } else {
+                    Text(help)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             ShortcutRecorder(
                 shortcut: current,
                 conflicted: conflicted,
+                registrationFailed: registrationFailed,
                 onChange: { set($0) },
                 onClear: { set(nil) }
             )

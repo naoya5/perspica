@@ -350,10 +350,11 @@ final class OverlayController {
         // labels come out at different sizes (M5.md 8.2). `from` says whether
         // the height was measured from the ink or came from Vision's box, which
         // is not comparable with a measured one (M6.md 2.3).
-        AppLog.write(String(format: "overlay: block %d %@ frame=%.0fx%.0f lineHeight=%.1f (box %.1f, from %@) lines=%d bold=%@ %@",
+        AppLog.write(String(format: "overlay: block %d %@ frame=%.0fx%.0f lineHeight=%.1f (box %.1f, from %@) lines=%d bold=%@ chars=%d",
                             id, origin, frame.width, frame.height, lineHeight, boxLineHeight,
                             lineHeightSource.rawValue,
-                            block.lines.count, isBold ? "yes" : "no", String(block.text.prefix(40))))
+                            block.lines.count, isBold ? "yes" : "no", block.text.count))
+        AppLog.content("overlay: block \(id) text=\(block.text.prefix(40))")
         return OverlayBlock(
             id: id,
             source: block.text,
@@ -477,7 +478,8 @@ final class OverlayController {
         model.blocks[index].translation = translation
         model.blocks[index].layout = layout
         updateHitRects()
-        AppLog.write(String(format: "overlay: block %d translation=%@", index, translation))
+        AppLog.write("overlay: block \(index) translated (\(translation.count) chars)")
+        AppLog.content("overlay: block \(index) translation=\(translation)")
         // The fitted size, so a block that came out too small can be traced to
         // its input (the frame and the line height) rather than guessed at.
         AppLog.write(String(format: "overlay: block %d layout size=%.1fpt scale=%.2f width=%.0f (box %.0f) height=%.0f overflow=%.1f",

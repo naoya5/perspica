@@ -2,6 +2,22 @@ import AppKit
 import Carbon.HIToolbox
 import YakuCore
 
+/// Which shortcuts the system refused to register, by binding id. Carbon
+/// answers `eventHotKeyExistsErr` when another app already holds the key, in
+/// which case the shortcut looks set in Settings but never fires; the
+/// recorder reads this to say so.
+@MainActor
+@Observable
+final class HotKeyStatus {
+    static let shared = HotKeyStatus()
+    private(set) var failedBindingIDs: Set<String> = []
+
+    fileprivate func record(_ failed: Set<String>) {
+        guard failed != failedBindingIDs else { return }
+        failedBindingIDs = failed
+    }
+}
+
 /// Global hotkeys through Carbon's `RegisterEventHotKey`, which needs no
 /// accessibility permission and works while another app is frontmost.
 ///
@@ -25,15 +41,18 @@ final class HotKeyManager {
     func update(bindings: [ShortcutBinding], actions: [UInt32: () -> Void]) {
         unregisterAll()
         self.actions = actions
+        var failed: Set<String> = []
         for binding in bindings {
             guard let shortcut = binding.shortcut, shortcut.isUsable else { continue }
             let id = Self.id(for: binding.id)
-            register(
+            let status = register(
                 keyCode: UInt32(shortcut.keyCode),
                 modifiers: Self.carbonModifiers(shortcut.modifiers),
                 id: id
             )
+            if status != noErr { failed.insert(binding.id) }
         }
+        HotKeyStatus.shared.record(failed)
     }
 
     static func id(for bindingID: String) -> UInt32 {
@@ -44,7 +63,8 @@ final class HotKeyManager {
         }
     }
 
-    private func register(keyCode: UInt32, modifiers: UInt32, id: UInt32) {
+    @discardableResult
+    private func register(keyCode: UInt32, modifiers: UInt32, id: UInt32) -> OSStatus {
         installHandlerIfNeeded()
 
         var ref: EventHotKeyRef?
@@ -59,6 +79,7 @@ final class HotKeyManager {
         )
         if let ref { hotKeyRefs.append(ref) }
         AppLog.write("hotkey register id=\(id) keyCode=\(keyCode) modifiers=\(modifiers) status=\(status)")
+        return status
     }
 
     private func unregisterAll() {

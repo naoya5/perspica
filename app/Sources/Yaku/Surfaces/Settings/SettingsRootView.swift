@@ -137,6 +137,7 @@ private struct GeneralSettingsTab: View {
 private struct ShortcutSettingsTab: View {
     @Bindable var settings: AppSettings
     @Bindable var state: SettingsState
+    private let hotKeyStatus = HotKeyStatus.shared
 
     var body: some View {
         Form {
@@ -147,13 +148,27 @@ private struct ShortcutSettingsTab: View {
                         help: help(for: binding.id),
                         settings: settings,
                         bindingID: binding.id,
-                        conflicted: conflicts.contains(binding.id)
+                        conflicted: conflicts.contains(binding.id),
+                        registrationFailed: hotKeyStatus.failedBindingIDs.contains(binding.id)
                     )
                 }
             } header: {
                 Text("キー")
             } footer: {
                 Text("欄を押してからキーを押すと登録できます。どれもどこでも効きます。")
+            }
+
+            if !hotKeyStatus.failedBindingIDs.isEmpty {
+                Section {
+                    HStack(alignment: .top, spacing: Design.Space.s) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        Text("他のアプリが同じキーを使っているので、このキーは効きません。別のキーにしてください。")
+                            .font(.system(size: Design.Font.label))
+                    }
+                } header: {
+                    Text("使えないキー")
+                }
             }
 
             if !conflicts.isEmpty {

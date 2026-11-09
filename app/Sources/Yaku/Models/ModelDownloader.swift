@@ -122,6 +122,20 @@ final class ModelDownloader: NSObject {
     nonisolated(unsafe) private var progressClock = Date()
     nonisolated(unsafe) private var progressBytes: Int64 = 0
 
+    /// Why the response was refused, set on the delegate queue before the task
+    /// is cancelled. The delegate queue is serial, so `didCompleteWithError`
+    /// reads it after `didReceive response` wrote it, and the cancellation
+    /// that follows a refused response is not shown as 「取り消しました」.
+    private enum Refusal {
+        case httpStatus(Int)
+        /// 416: the partial file is longer than the server's file. It is
+        /// deleted and the download starts again from zero, once.
+        case staleRange
+    }
+
+    nonisolated(unsafe) private var refusal: Refusal?
+    private var restartedAfterStaleRange = false
+
     override init() {
         super.init()
         let queue = OperationQueue()
@@ -135,6 +149,11 @@ final class ModelDownloader: NSObject {
 
     func start(_ model: TranslationModel) {
         guard !state.isActive else { return }
+        restartedAfterStaleRange = false
+        begin(model)
+    }
+
+    private func begin(_ model: TranslationModel) {
         current = model
         state.modelID = model.id
         state.total = model.bytes
@@ -157,6 +176,7 @@ final class ModelDownloader: NSObject {
         state.received = existing
         progressClock = Date()
         progressBytes = existing
+        refusal = nil
 
         var request = URLRequest(url: model.downloadURL)
         request.timeoutInterval = 60
@@ -184,6 +204,23 @@ final class ModelDownloader: NSObject {
     private func fail(_ message: String) {
         state.phase = .failed(message)
         AppLog.write("download failed: \(message)")
+    }
+
+    /// The server answered 416 to our `Range`: the `.partial` is longer than
+    /// the file it has (a changed file, or a partial from another model). It
+    /// is thrown away and the download restarts from zero, once; a second 416
+    /// is reported like any other refused response.
+    private func restartAfterStaleRange() {
+        guard let model = current else { return }
+        let partial = ModelStore.partialURL(for: model)
+        try? FileManager.default.removeItem(at: partial)
+        guard !restartedAfterStaleRange else {
+            fail("サーバーが 416 を返しました")
+            return
+        }
+        restartedAfterStaleRange = true
+        AppLog.write("download: server answered 416; partial removed, starting again from 0")
+        begin(model)
     }
 
     private func verify(written: Int64) async {
@@ -240,8 +277,12 @@ extension ModelDownloader: URLSessionDataDelegate {
             sink?.restart()
         case 206:
             break
+        case 416:
+            refusal = .staleRange
+            completionHandler(.cancel)
+            return
         default:
-            Task { @MainActor in self.fail("サーバーが \(status) を返しました") }
+            refusal = .httpStatus(status)
             completionHandler(.cancel)
             return
         }
@@ -275,9 +316,21 @@ extension ModelDownloader: URLSessionDataDelegate {
         let written = sink?.count ?? 0
         sink?.close()
         sink = nil
+        let refusal = self.refusal
+        self.refusal = nil
 
         Task { @MainActor in
             self.task = nil
+            switch refusal {
+            case .httpStatus(let status):
+                self.fail("サーバーが \(status) を返しました")
+                return
+            case .staleRange:
+                self.restartAfterStaleRange()
+                return
+            case nil:
+                break
+            }
             if let error {
                 if (error as NSError).code == NSURLErrorCancelled {
                     self.state.phase = .cancelled

@@ -229,7 +229,12 @@ final class TranslationCoordinator {
     }
 
     func dismissHUD() {
-        cancelCurrent(reason: "hud dismissed", keeping: nil)
+        // Only the HUD's own request is cancelled. A notice (nothing selected,
+        // permission missing) or a click outside the HUD must not stop a panel
+        // or manager translation that is streaming at the same time.
+        if currentSurface == .hud {
+            cancelCurrent(reason: "hud dismissed", keeping: nil)
+        }
         hud.phase = .empty
         hud.translation = ""
         hud.elapsed = nil
@@ -279,7 +284,8 @@ final class TranslationCoordinator {
         let trimmedTarget = target.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSource.isEmpty, !trimmedTarget.isEmpty else { return }
         _ = store.addGlossaryEntry(source: trimmedSource, target: trimmedTarget)
-        AppLog.write("glossary: added \(trimmedSource) → \(trimmedTarget) from history")
+        AppLog.write("glossary: added an entry from history (\(trimmedSource.count)→\(trimmedTarget.count) chars)")
+        AppLog.content("glossary: added \(trimmedSource) → \(trimmedTarget)")
     }
 
     // MARK: preferences
@@ -650,6 +656,9 @@ final class TranslationCoordinator {
                 let joined = TextChunker.join(finished + [buffer], chunks: chunks)
                 mutate(surface) { $0.translation = joined }
             }
+            // A cancelled task ends the stream without throwing, so without
+            // this check the stale partial text would be published once more.
+            try Task.checkCancellation()
             let cleaned = TranslationCleanup.clean(buffer)
             finished.append(cleaned)
             pairs.append(HistoryPair(source: chunk.text, target: cleaned))
@@ -702,7 +711,7 @@ final class TranslationCoordinator {
             targetLanguage: target,
             form: form?.rawValue ?? "",
             frontApp: frontApp ?? "",
-            model: EngineManager.modelName,
+            model: ModelStore.cacheKey(),
             seconds: seconds
         ))
     }

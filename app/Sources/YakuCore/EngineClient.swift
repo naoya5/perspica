@@ -37,14 +37,21 @@ public struct EngineClient: Sendable {
 
     /// `GET /health` returns 200 once the model is loaded (503 while loading).
     public func health(timeout: TimeInterval = 1) async -> Bool {
+        await healthStatus(timeout: timeout) == 200
+    }
+
+    /// The HTTP status `GET /health` answered with, or nil when the server did
+    /// not answer at all (not listening yet, or gone). llama-server says 503
+    /// while the model is still loading and 200 once it can serve requests.
+    public func healthStatus(timeout: TimeInterval = 1) async -> Int? {
         var request = URLRequest(url: baseURL.appendingPathComponent("health"))
         request.timeoutInterval = timeout
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         do {
             let (_, response) = try await session.data(for: request)
-            return (response as? HTTPURLResponse)?.statusCode == 200
+            return (response as? HTTPURLResponse)?.statusCode
         } catch {
-            return false
+            return nil
         }
     }
 

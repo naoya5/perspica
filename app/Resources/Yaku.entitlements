@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Signed with the hardened runtime (codesign's runtime option). The app has no
+  JIT, no plug-ins and sends no Apple Events, so no entitlement is needed:
+  Accessibility, Screen Recording, the network client, launching llama-server
+  and the PDF worker all work without one outside the App Sandbox. Add a key
+  here only when the real app proves it needs it, and say why.
+-->
+<dict/>
+</plist>
