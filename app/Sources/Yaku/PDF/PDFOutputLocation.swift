@@ -4,45 +4,59 @@ import YakuCore
 /// Where a finished PDF is written and what it is called (SPEC 8.3).
 @MainActor
 enum PDFOutputLocation {
-    /// 元のファイルと同じフォルダ → 選んだフォルダ → `~/Downloads`.
-    static func destinationDirectory(for input: URL) -> URL {
+    /// 元のファイルと同じフォルダ → 選んだフォルダ → `~/Downloads`, in that order.
+    /// Every folder is tried, because a folder that looks writable can still
+    /// refuse the file (a protected folder, a full or read-only volume).
+    static func candidateDirectories(for input: URL) -> [URL] {
         let settings = AppSettings.shared
-        let inputDirectory = input.deletingLastPathComponent()
-
-        if settings.pdfOutputSameFolder, FileManager.default.isWritableFile(atPath: inputDirectory.path) {
-            return inputDirectory
+        var candidates: [URL] = []
+        if settings.pdfOutputSameFolder {
+            candidates.append(input.deletingLastPathComponent())
         }
         let chosen = settings.pdfOutputFolder
         if !chosen.isEmpty {
-            let url = URL(fileURLWithPath: (chosen as NSString).expandingTildeInPath)
-            if FileManager.default.isWritableFile(atPath: url.path) { return url }
+            candidates.append(URL(fileURLWithPath: (chosen as NSString).expandingTildeInPath))
         }
         let downloads = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
         try? FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
-        AppLog.write("pdf: fell back to ~/Downloads for \(input.lastPathComponent)")
-        return downloads
+        candidates.append(downloads)
+
+        var seen: Set<String> = []
+        return candidates.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
     struct Placed {
         let mono: URL?
         let dual: URL?
+        /// The folders that were tried, for the failure message.
+        let tried: [URL]
     }
 
     /// Renames what BabelDOC wrote (`….no_watermark.ja.mono.pdf`) to
-    /// `<元>.ja.pdf` / `<元>.ja.対訳.pdf`, adding ` (2)` when taken.
+    /// `<元>.ja.pdf` / `<元>.ja.対訳.pdf`, adding ` (2)` when taken. The first
+    /// folder that takes the translated PDF also gets the side-by-side one.
+    /// `mono == nil` means no folder took it; the source files are untouched.
     static func place(
         monoPath: String,
         dualPath: String,
         input: URL,
         makeDual: Bool
     ) -> Placed {
-        let directory = destinationDirectory(for: input)
-        let mono = move(monoPath, named: PDFOutputName.mono(forInput: input.lastPathComponent), into: directory)
-        var dual: URL?
-        if makeDual {
-            dual = move(dualPath, named: PDFOutputName.dual(forInput: input.lastPathComponent), into: directory)
+        let directories = candidateDirectories(for: input)
+        for (index, directory) in directories.enumerated() {
+            guard let mono = move(monoPath, named: PDFOutputName.mono(forInput: input.lastPathComponent), into: directory) else {
+                continue
+            }
+            if index > 0 {
+                AppLog.write("pdf: fell back to \(directory.path) for \(input.lastPathComponent)")
+            }
+            var dual: URL?
+            if makeDual {
+                dual = move(dualPath, named: PDFOutputName.dual(forInput: input.lastPathComponent), into: directory)
+            }
+            return Placed(mono: mono, dual: dual, tried: Array(directories.prefix(index + 1)))
         }
-        return Placed(mono: mono, dual: dual)
+        return Placed(mono: nil, dual: nil, tried: directories)
     }
 
     private static func move(_ sourcePath: String, named preferred: String, into directory: URL) -> URL? {
@@ -65,6 +79,7 @@ enum PDFOutputLocation {
                 AppLog.write("pdf: output (copied) \(destination.path)")
                 return destination
             }
+            try? FileManager.default.removeItem(at: destination)
             AppLog.write("pdf: could not place the output at \(destination.path) (\(error))")
             return nil
         }
