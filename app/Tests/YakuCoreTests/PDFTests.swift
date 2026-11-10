@@ -7,21 +7,16 @@ struct PDFProgressGateTests {
     @Test("small updates accumulate against the last published value")
     func accumulatedProgress() {
         var gate = PDFProgressGate()
-        #expect(gate.accepts(value: 0, stage: "Translate"))
-        #expect(!gate.accepts(value: 0.004, stage: "Translate"))
-        #expect(!gate.accepts(value: 0.008, stage: "Translate"))
-        #expect(gate.accepts(value: 0.012, stage: "Translate"))
-        #expect(!gate.accepts(value: 0.013, stage: "Translate"))
+        let results = [0, 0.004, 0.008, 0.012, 0.013].map { gate.accepts(value: $0, stage: "Translate") }
+        #expect(results == [true, false, false, true, false])
     }
 
     @Test("stage changes and completion publish, invalid and duplicate values do not")
     func stageAndCompletion() {
         var gate = PDFProgressGate()
-        #expect(gate.accepts(value: 0.995, stage: "Translate"))
-        #expect(gate.accepts(value: 0.995, stage: "Save"))
-        #expect(gate.accepts(value: 1, stage: "Save"))
-        #expect(!gate.accepts(value: 1, stage: "Save"))
-        #expect(!gate.accepts(value: .nan, stage: "Save"))
+        let steps: [(Double, String)] = [(0.995, "Translate"), (0.995, "Save"), (1, "Save"), (1, "Save"), (.nan, "Save")]
+        let results = steps.map { gate.accepts(value: $0.0, stage: $0.1) }
+        #expect(results == [true, true, true, false, false])
     }
 }
 

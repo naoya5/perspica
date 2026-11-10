@@ -33,7 +33,7 @@ final class EngineManager {
 
     /// Default: stop the engine ten minutes after the last request (SPEC 7.1).
     static let defaultIdleSeconds: Double = 600
-    static let modelAlias = "plamo-3-translate"
+    nonisolated static let modelAlias = "plamo-3-translate"
     /// SPEC 7.1: `GET /health` must answer 200 within 15 seconds of the
     /// launch, model load included; otherwise the start has failed.
     static let startupTimeout: TimeInterval = 15
