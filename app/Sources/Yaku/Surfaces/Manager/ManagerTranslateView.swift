@@ -58,13 +58,16 @@ struct ManagerTranslateView: View {
             // uses: TextEditor keeps an empty scrollbar track down its
             // right edge even with .scrollIndicators(.hidden) (seen in the
             // screenshots); the field does not.
-            TextField("訳したい文を入力", text: $coordinator.manager.sourceText, axis: .vertical)
+            TextField("訳したい文を入力", text: Binding(
+                get: { coordinator.manager.sourceText },
+                set: {
+                    coordinator.manager.sourceText = $0
+                    coordinator.managerTextChanged()
+                }
+            ), axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
                 .lineLimit(4...)
-                .onChange(of: coordinator.manager.sourceText) { _, _ in
-                    coordinator.managerTextChanged()
-                }
                 .accessibilityLabel("訳したい文")
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .designCard(padding: Design.Space.m)
@@ -161,7 +164,11 @@ struct ManagerTranslateView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 8) {
-                    Button("もう一度") { coordinator.retryManager() }
+                    if failure == .modelMissing {
+                        Button("モデルを取得") { WindowBridge.shared.openManager(page: .models) }
+                    } else {
+                        Button("もう一度") { coordinator.retryManager() }
+                    }
                     if failure.showsLogButton {
                         Button("ログを見る") { NSWorkspace.shared.open(AppPaths.logsDirectory) }
                     }
@@ -197,7 +204,7 @@ struct ManagerTranslateView: View {
         ToolbarItemGroup(placement: .navigation) {
             languageMenu
             Button {
-                coordinator.swapLanguages()
+                coordinator.swapLanguages(on: .manager)
             } label: {
                 Image(systemName: "arrow.left.arrow.right")
             }
@@ -219,18 +226,18 @@ struct ManagerTranslateView: View {
 
     private var languageMenu: some View {
         Menu {
-            Button("自動（原文を判定）") { coordinator.clearManualPair() }
+            Button("自動（原文を判定）") { coordinator.clearManualPair(on: .manager) }
             Section("よく使う") {
                 ForEach(LanguageCatalog.frequent) { language in
                     Button(language.japaneseName) {
-                        coordinator.setManualTarget(language.code, forSource: coordinator.manager.sourceLanguage)
+                        coordinator.setManualTarget(language.code, forSource: coordinator.manager.sourceLanguage, on: .manager)
                     }
                 }
             }
             Section("その他") {
                 ForEach(LanguageCatalog.others) { language in
                     Button(language.japaneseName) {
-                        coordinator.setManualTarget(language.code, forSource: coordinator.manager.sourceLanguage)
+                        coordinator.setManualTarget(language.code, forSource: coordinator.manager.sourceLanguage, on: .manager)
                     }
                 }
             }
@@ -263,9 +270,9 @@ struct ManagerTranslateView: View {
     }
 
     private func formSegment(_ title: String, value: TranslationForm) -> some View {
-        let selected = coordinator.form == value
+        let selected = coordinator.managerForm == value
         return Button {
-            withAnimation(.snappy(duration: 0.25)) { coordinator.setForm(value) }
+            withAnimation(.snappy(duration: 0.25)) { coordinator.managerForm = value }
         } label: {
             Text(title)
                 .font(.system(size: 11))
@@ -275,6 +282,7 @@ struct ManagerTranslateView: View {
                 .contentShape(.capsule)
         }
         .buttonStyle(.plain)
+        .focusable()
         .glassEffect(selected ? .regular.interactive() : .identity, in: .capsule)
         .glassEffectID(value.rawValue, in: formNamespace)
         .help("\(title) で訳す")

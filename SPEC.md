@@ -303,7 +303,7 @@ PFN の PLaMo 3 Translate を Mac の中だけで動かし、文・PDF・画面�
 - 順番待ちにして 1 件ずつ処理する。処理中でも次を受け付ける
 
 ### 8.2 PDF ワーカー
-- 中身: Python 3.12 + `pdf2zh-next==2.9.0` + `bitstring<5`（試作で確かめた組み合わせ。新しい bitstring だと起動できない）
+- 中身: Python 3.12 + `pdf2zh-next==2.10.2` + `BabelDOC>=0.7.1,<0.8.0`。`requirements.txt` の版とハッシュに固定して導入する
 - 導入: 初めて PDF を受け取ったとき「PDF の翻訳には追加の部品（約 ___MB、取得に数分）が必要です」と聞き、`uv` で `~/Library/Application Support/Yaku/pdf-worker/` に入れる（大きさは M3 で測って文言に入れる）。開発中は設定の「Python のパス」か `--pdf-python` で別の環境を使える
 - 起動: `pdf-worker/bin/python translate_pdf.py <入力> --output <出力フォルダ> [--pages] --engine-url <URL> --context <題名> --form <plain|polite> --glossary <JSON ファイル> [--qps 24] [--pool-max-workers 4] [--primary-font-family auto]`。API キーは引数ではなく環境変数 `YAKU_ENGINE_API_KEY` で渡す（プロセスの引数一覧に見えないようにするため）
   - `--qps`（既定 24）と `--pool-max-workers`（既定 4）: 律速はモデルではなく pdf2zh-next のレート制限なので上げた（M6。17 ページで 99.4 秒 → 57.7 秒、訳文は qps 3 と 422/422 行一致）

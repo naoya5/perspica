@@ -34,13 +34,9 @@ final class EngineManager {
     /// Default: stop the engine ten minutes after the last request (SPEC 7.1).
     static let defaultIdleSeconds: Double = 600
     static let modelAlias = "plamo-3-translate"
-    /// How long the server gets to answer `/health` at all. Loading the model
-    /// is not counted here: once the server answers 503 (still loading) the
-    /// wait goes on while the process lives, up to `startupLoadTimeout`.
-    static let startupConnectTimeout: TimeInterval = 15
-    /// Absolute cap on one start. A 5 GB GGUF on a cold disk, an eGPU-less Mac
-    /// or a Mac under memory pressure can take well over 15 s to load.
-    static let startupLoadTimeout: TimeInterval = 180
+    /// SPEC 7.1: `GET /health` must answer 200 within 15 seconds of the
+    /// launch, model load included; otherwise the start has failed.
+    static let startupTimeout: TimeInterval = 15
 
     private(set) var state: State = .stopped
     private(set) var port: UInt16?
@@ -50,10 +46,6 @@ final class EngineManager {
 
     /// The file the running engine is using, for the manager's status line.
     private(set) var loadedModelLabel: String?
-
-    /// Set when the child process disappears without us asking it to (SPEC
-    /// 7.1). The coordinator uses it to restart the engine once per request.
-    private(set) var crashedUnexpectedly = false
 
     var onStateChange: ((State) -> Void)?
 
@@ -69,6 +61,16 @@ final class EngineManager {
     /// Number of PDF jobs in flight. While one is running the idle countdown is
     /// suspended, so the engine is never stopped mid-document (SPEC 7.1).
     private var pdfWorkCount = 0
+    /// The current start saw `/health` answer 503 (model loading).
+    private var startupSawLoading = false
+
+    /// The four request slots every caller shares (SPEC 7.3).
+    nonisolated let slots = EngineSlots(capacity: 4)
+    /// The loopback proxy the PDF worker talks to, made on first use.
+    private var pdfProxy: EngineProxy?
+    /// Bumped every time the engine becomes ready, so a failed request can
+    /// tell whether the engine it used is still the one serving.
+    private(set) var generation: UInt64 = 0
 
     var client: EngineClient? {
         guard let port, let apiKey else { return nil }
@@ -131,9 +133,247 @@ final class EngineManager {
         Task { [weak self] in _ = await self?.ensureRunning() }
     }
 
-    /// Clears the crash flag once the caller has decided to restart.
-    func acknowledgeCrash() {
-        crashedUnexpectedly = false
+    // MARK: requests
+
+    /// Streams one translation through the shared slots (SPEC 7.3).
+    ///
+    /// The request waits for a slot in priority order, starts the engine if
+    /// needed and is fitted into one slot's 4,096 tokens. If the engine dies
+    /// before the first piece, it is started once more and the request is sent
+    /// again (SPEC 7.1). Once a piece has been yielded nothing is sent twice:
+    /// a later failure ends the stream with `EngineStreamError.engineStopped`.
+    /// Cancelling the consuming task releases the slot and closes the
+    /// connection, which stops the generation.
+    func stream(_ request: CompletionRequest, priority: EnginePriority) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task { @MainActor [weak self] in
+                guard let self else {
+                    continuation.finish(throwing: EngineStreamError.engineStopped)
+                    return
+                }
+                do {
+                    try await EngineRequestRunner.run(
+                        priority: priority,
+                        slots: self.slots,
+                        ensureRunning: { [weak self] in await self?.ensureRunning() ?? false },
+                        isServing: { [weak self] generation in await self?.isServing(generation) ?? false },
+                        open: { [weak self] in
+                            guard let self, let current = await self.currentClient() else {
+                                throw EngineStreamError.engineStopped
+                            }
+                            let (client, generation) = current
+                            let fitted = try await RequestBudget.fit(request) { try await client.tokenCount($0) }
+                            await self.noteFitted(original: request, fitted: fitted, priority: priority)
+                            return EngineAttempt(stream: client.stream(fitted), generation: generation)
+                        },
+                        onRestart: { [weak self] in await self?.noteRestart(priority) },
+                        yield: { _ = continuation.yield($0) }
+                    )
+                    self.markUsed()
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func currentClient() -> (EngineClient, UInt64)? {
+        guard isRunning, let client else { return nil }
+        return (client, generation)
+    }
+
+    /// Whether the engine that served `generation` is still up, checked
+    /// without waiting for the termination callback: when llama-server dies,
+    /// the socket error reaches the request before the watchdog shell has
+    /// exited and `childExited` has run.
+    ///
+    /// A dead engine is forgotten here, before the request retries: until
+    /// `childExited` runs, `isRunning` still says yes and `ensureRunning()`
+    /// would hand back the same dead port instead of starting a new engine.
+    private func isServing(_ generation: UInt64) async -> Bool {
+        guard generation == self.generation, isRunning, let client else { return false }
+        let pid = serverPid
+        let alive = await EngineLiveness.isAlive(
+            pidAlive: { pid.map { kill($0, 0) == 0 } },
+            probe: { await client.healthProbe(timeout: $0) }
+        )
+        if alive { return generation == self.generation }
+        forgetDeadEngine(generation)
+        return false
+    }
+
+    /// Drops the engine of `generation` so the next `ensureRunning()` starts a
+    /// new one through the shared start. Its later `childExited` finds a
+    /// different (or no) process and changes nothing.
+    private func forgetDeadEngine(_ generation: UInt64) {
+        guard generation == self.generation, state == .running, startTask == nil else { return }
+        let shell = process
+        let server = serverPid
+        AppLog.write("engine: generation \(generation) stopped serving "
+            + "shell=\(shell?.processIdentifier ?? 0) server=\(server ?? 0); forgetting it")
+        process = nil
+        serverPid = nil
+        port = nil
+        apiKey = nil
+        idleTimer?.invalidate()
+        idleTimer = nil
+        if let server, server > 0, kill(server, 0) == 0 { kill(server, SIGKILL) }
+        if let shell, shell.isRunning { shell.terminate() }
+        EnginePidFile.remove()
+        EngineWatchdog.clearPidFile()
+        setState(.failed("エンジンが予期せず終了しました"))
+    }
+
+    private func noteFitted(original: CompletionRequest, fitted: CompletionRequest, priority: EnginePriority) {
+        markUsed()
+        guard fitted != original else { return }
+        AppLog.write("engine: \(priority) request trimmed to fit 4096 tokens "
+            + "(prompt \(original.prompt.utf8.count)→\(fitted.prompt.utf8.count) bytes, "
+            + "max_tokens \(original.maxTokens)→\(fitted.maxTokens))")
+    }
+
+    private func noteRestart(_ priority: EnginePriority) {
+        AppLog.write("engine: died before a \(priority) request answered; starting it once more")
+    }
+
+    /// The address and key the PDF worker uses (SPEC 7.3: PDF goes through
+    /// the same slots, at the lowest priority). The proxy starts the engine
+    /// per request, so this does not need the engine to be running.
+    func ensurePDFEndpoint() async -> (url: URL, apiKey: String)? {
+        if let pdfProxy, pdfProxy.port > 0 {
+            return (URL(string: "http://127.0.0.1:\(pdfProxy.port)")!, pdfProxy.apiKey)
+        }
+        let proxy = EngineProxy(apiKey: Self.randomAPIKey()) { [weak self] request in
+            guard let self else { return .error(status: 503, "engine unavailable") }
+            return await Self.handleProxy(request, engine: self)
+        }
+        do {
+            let port = try proxy.start()
+            pdfProxy = proxy
+            AppLog.write("engine: PDF proxy listening on 127.0.0.1:\(port)")
+            return (URL(string: "http://127.0.0.1:\(port)")!, proxy.apiKey)
+        } catch {
+            AppLog.write("engine: PDF proxy could not start (\(error))")
+            return nil
+        }
+    }
+
+    nonisolated private static func handleProxy(_ request: ProxyRequest, engine: EngineManager) async -> ProxyReply {
+        switch (request.method, request.path) {
+        case ("GET", "/health"):
+            // The proxy starts the engine for each request, so it is ready
+            // whenever it answers.
+            return .json(status: 200, ["status": "ok"])
+        case ("POST", "/v1/completions"):
+            break
+        case ("POST", "/tokenize"):
+            return await proxyTokenize(request, engine: engine)
+        case (_, "/health"), (_, "/v1/completions"), (_, "/tokenize"):
+            return .error(status: 405, "method not allowed")
+        default:
+            return .error(status: 404, "not found")
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any],
+              object["prompt"] is String else {
+            return .error(status: 400, "a string prompt is required")
+        }
+        let streaming = (object["stream"] as? Bool) ?? false
+        let body = request.body
+        let stream = AsyncThrowingStream<Data, Error> { continuation in
+            let task = Task {
+                do {
+                    try await EngineRequestRunner.run(
+                        priority: .pdf,
+                        slots: engine.slots,
+                        ensureRunning: { await engine.ensureRunning() },
+                        isServing: { await engine.isServing($0) },
+                        open: {
+                            guard let current = await engine.currentClient() else {
+                                throw EngineStreamError.engineStopped
+                            }
+                            let (client, generation) = current
+                            let upstream = try await Self.fittedProxyBody(body, client: client)
+                            await engine.markUsed()
+                            return EngineAttempt(
+                                stream: client.rawCompletion(body: upstream, expectsDone: streaming),
+                                generation: generation
+                            )
+                        },
+                        onRestart: { await engine.noteRestart(.pdf) },
+                        yield: { _ = continuation.yield($0) }
+                    )
+                    await engine.markUsed()
+                    continuation.finish()
+                } catch EngineStreamError.requestTooLarge {
+                    continuation.finish(throwing: ProxyHTTPError(status: 413, message: "the request does not fit in 4096 tokens"))
+                } catch EngineStreamError.startFailed {
+                    continuation.finish(throwing: ProxyHTTPError(status: 503, message: "the engine could not be started"))
+                } catch EngineStreamError.engineStopped {
+                    continuation.finish(throwing: ProxyHTTPError(status: 503, message: "the engine stopped"))
+                } catch EngineError.httpStatus(let status) {
+                    continuation.finish(throwing: ProxyHTTPError(status: status, message: "engine answered \(status)"))
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+        return ProxyReply(
+            status: 200,
+            contentType: streaming ? "text/event-stream" : "application/json",
+            body: stream
+        )
+    }
+
+    /// Lets the worker count a prompt exactly as `/v1/completions` will. It
+    /// takes no slot: tokenizing does not use one of the engine's sequences.
+    nonisolated private static func proxyTokenize(_ request: ProxyRequest, engine: EngineManager) async -> ProxyReply {
+        guard let object = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any],
+              let content = object["content"] as? String else {
+            return .error(status: 400, "a string content is required")
+        }
+        guard await engine.ensureRunning(), let client = await engine.client else {
+            return .error(status: 503, "the engine could not be started")
+        }
+        do {
+            let tokens = try await client.tokenize(content)
+            await engine.markUsed()
+            return .json(status: 200, ["count": tokens.count, "tokens": tokens])
+        } catch {
+            return .error(status: 503, "the engine could not tokenize")
+        }
+    }
+
+    /// The worker's body with `max_tokens` fitted into one slot and the
+    /// engine's alias as the model. Everything else is sent as it came.
+    nonisolated private static func fittedProxyBody(_ body: Data, client: EngineClient) async throws -> Data {
+        guard var object = try JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let prompt = object["prompt"] as? String else {
+            throw ProxyHTTPError(status: 400, message: "a string prompt is required")
+        }
+        let asked = (object["max_tokens"] as? Int) ?? (object["n_predict"] as? Int) ?? CompletionRequest.maximumMaxTokens
+        let requested = CompletionRequest(prompt: prompt, maxTokens: max(1, min(asked, CompletionRequest.maximumMaxTokens)))
+        let fitted = try await RequestBudget.fit(requested) { try await client.tokenCount($0) }
+        object["max_tokens"] = fitted.maxTokens
+        object.removeValue(forKey: "n_predict")
+        object["model"] = modelAlias
+        return try JSONSerialization.data(withJSONObject: object)
+    }
+
+    /// The running llama-server's memory as Activity Monitor shows it
+    /// (`phys_footprint`), for the settings' engine status.
+    var residentMemoryBytes: UInt64? {
+        guard isRunning, let serverPid, serverPid > 0 else { return nil }
+        var info = rusage_info_v2()
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(serverPid, RUSAGE_INFO_V2, $0)
+            }
+        }
+        guard result == 0 else { return nil }
+        return info.ri_phys_footprint
     }
 
     func stop() async {
@@ -165,6 +405,8 @@ final class EngineManager {
 
     /// Best-effort synchronous stop for `applicationWillTerminate`.
     func stopSynchronously() {
+        pdfProxy?.stop()
+        pdfProxy = nil
         idleTimer?.invalidate()
         idleTimer = nil
         stoppingIntentionally = true
@@ -200,7 +442,6 @@ final class EngineManager {
         if isRunning { markUsed(); return true }
         setState(.starting)
         lastStartFailure = nil
-        crashedUnexpectedly = false
 
         await reapLeftoverEngine()
         // Cancelled by `stop()`: it owns the state from here on.
@@ -272,12 +513,11 @@ final class EngineManager {
         // closes it when this app exits.
         process.standardInput = Pipe()
 
-        FileManager.default.createFile(atPath: AppPaths.engineLog.path, contents: nil)
-        if let handle = try? FileHandle(forWritingTo: AppPaths.engineLog) {
-            _ = try? handle.seekToEnd()
-            process.standardOutput = handle
-            process.standardError = handle
-        }
+        // SPEC 11: engine.log rotates at 5 MB while the engine runs too, so
+        // the app writes it rather than the child.
+        let log = AppLog.rotatingPipe(for: AppPaths.engineLog)
+        process.standardOutput = log
+        process.standardError = log
 
         // A crash (as opposed to a stop we asked for) is noticed here. The
         // handler is installed before `run()`, so a child that exits at once
@@ -321,55 +561,60 @@ final class EngineManager {
         if Task.isCancelled { return false }
 
         let client = EngineClient(baseURL: URL(string: "http://127.0.0.1:\(freePort)")!, apiKey: key)
-        let connectDeadline = launched.addingTimeInterval(Self.startupConnectTimeout)
-        let loadDeadline = launched.addingTimeInterval(Self.startupLoadTimeout)
-        // Set once the server has answered 503: from then on the start waits
-        // for the model load rather than for the server to come up.
-        var loading = false
-        var loggedLoading = false
-        while true {
+        let deadline = launched.addingTimeInterval(Self.startupTimeout)
+        startupSawLoading = false
+        let outcome = await EngineStartupWait.waitForReady(
+            deadline: deadline,
+            probe: { await client.healthStatus(timeout: $0) },
+            isAlive: { [weak self] in await self?.isShellRunning(shellPid) ?? false },
+            onLoading: { [weak self] in await self?.noteStartupLoading(since: launched) }
+        )
+        switch outcome {
+        case .cancelled:
+            return false
+        case .ready:
             if Task.isCancelled { return false }
-            let status = await client.healthStatus()
-            if status == 200 {
-                setState(.running)
-                AppLog.write("engine ready server=\(serverPid ?? 0) in \(String(format: "%.2f", Date().timeIntervalSince(launched)))s")
-                scheduleIdleStop()
-                return true
-            }
-            if status == 503 {
-                loading = true
-                if !loggedLoading {
-                    loggedLoading = true
-                    AppLog.write("engine loading the model (503) \(String(format: "%.2f", Date().timeIntervalSince(launched)))s after launch")
-                }
-            }
-            if !process.isRunning {
-                if Task.isCancelled { return false }
-                lastStartFailure = .diedAtStartup
-                setState(.failed("エンジンが起動直後に終了しました"))
-                AppLog.write("engine died during startup shell=\(shellPid)")
-                self.process = nil
-                self.serverPid = nil
-                self.port = nil
-                self.apiKey = nil
-                EnginePidFile.remove()
-                return false
-            }
-            let now = Date()
-            let deadline = loading ? loadDeadline : connectDeadline
-            if now >= deadline { break }
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            generation += 1
+            setState(.running)
+            AppLog.write("engine ready server=\(serverPid ?? 0) in \(String(format: "%.2f", Date().timeIntervalSince(launched)))s")
+            scheduleIdleStop()
+            return true
+        case .died:
+            if Task.isCancelled { return false }
+            lastStartFailure = .diedAtStartup
+            setState(.failed("エンジンが起動直後に終了しました"))
+            AppLog.write("engine died during startup shell=\(shellPid)")
+            self.process = nil
+            self.serverPid = nil
+            self.port = nil
+            self.apiKey = nil
+            EnginePidFile.remove()
+            return false
+        case .timedOut:
+            break
         }
         if Task.isCancelled { return false }
 
-        let limit = Int(loading ? Self.startupLoadTimeout : Self.startupConnectTimeout)
+        let limit = Int(Self.startupTimeout)
         lastStartFailure = .timedOut
         setState(.failed("エンジンの起動が \(limit) 秒で終わりませんでした"))
-        AppLog.write("engine startup timed out shell=\(shellPid) after \(limit)s (loading=\(loading))")
+        AppLog.write("engine startup timed out shell=\(shellPid) after \(limit)s (loading=\(startupSawLoading))")
         stoppingIntentionally = true
         await stopProcess()
         stoppingIntentionally = false
         return false
+    }
+
+    /// The watchdog shell of this start is still up (`childExited` clears
+    /// `process` when it goes).
+    private func isShellRunning(_ pid: Int32) -> Bool {
+        guard let process, process.processIdentifier == pid else { return false }
+        return process.isRunning
+    }
+
+    private func noteStartupLoading(since launched: Date) {
+        startupSawLoading = true
+        AppLog.write("engine loading the model (503) \(String(format: "%.2f", Date().timeIntervalSince(launched)))s after launch")
     }
 
     private func waitForServerPid() async -> pid_t? {
@@ -382,7 +627,8 @@ final class EngineManager {
     }
 
     /// Called from the child's termination handler. If we did not ask for the
-    /// exit, this was a crash and the next request may restart it once.
+    /// exit, this was a crash; the request that notices it starts the engine
+    /// once more (`EngineRequestRunner`).
     private func childExited(pid: Int32, status: Int32) {
         guard let process, process.processIdentifier == pid else { return }
         let orphan = serverPid
@@ -408,7 +654,6 @@ final class EngineManager {
         } else {
             EnginePidFile.remove()
         }
-        crashedUnexpectedly = true
         setState(.failed("エンジンが予期せず終了しました (status=\(status))"))
         AppLog.write("engine exited unexpectedly shell=\(pid) status=\(status)")
     }

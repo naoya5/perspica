@@ -38,11 +38,10 @@ final class PDFWorkerProcess {
         for (key, value) in environment { merged[key] = value }
         process.environment = merged
 
-        FileManager.default.createFile(atPath: AppPaths.pdfLog.path, contents: nil)
-        if let log = try? FileHandle(forWritingTo: AppPaths.pdfLog) {
-            _ = try? log.seekToEnd()
-            process.standardError = log
-        }
+        // SPEC 11: pdf.log rotates at 5 MB during a job too, so the app writes
+        // it rather than the worker.
+        AppLog.rotateIfNeeded(AppPaths.pdfLog)
+        process.standardError = AppLog.rotatingPipe(for: AppPaths.pdfLog)
 
         let pipe = Pipe()
         process.standardOutput = pipe

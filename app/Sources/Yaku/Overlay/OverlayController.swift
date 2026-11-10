@@ -20,6 +20,12 @@ final class OverlayController {
     private var window: OverlayWindow?
     private var monitors: [Any] = []
     private var dismissTask: Task<Void, Never>?
+    private var captureTask: Task<Void, Never>?
+    private var captureGeneration = 0
+    private var captureRight: CGFloat = 0
+    private var translationAllowed = true
+    private var readingComplete = false
+    private var retryBlocks: [OCRBlock] = []
     /// The toast's 1.2-second wait. A new toast replaces it, so a second copy
     /// keeps 「コピーしました」 up for its own 1.2 seconds.
     private var toastTask: Task<Void, Never>?
@@ -42,31 +48,34 @@ final class OverlayController {
             self?.finish(reason: "picker cancelled")
         }
         translator.onTranslation = { [weak self] index, translation in
-            self?.apply(translation, to: index)
+            await self?.apply(translation, to: index)
         }
         translator.onFinished = { [weak self] completed in
-            guard let self, completed else { return }
-            // Nothing came back at all: say so rather than leaving the band on a
-            // blank screen (SPEC 13 の文言に合わせる).
-            if self.model.translatedCount == 0, self.translator.skippedCount > 0 {
-                self.model.blocks = []
-                self.model.hitRects = []
-                self.model.phase = .empty
-                AppLog.write("overlay: every block was code or already in the target language")
-                return
-            }
-            if self.model.translatedCount == 0 {
-                self.model.blocks = []
-                self.model.hitRects = []
-                self.model.phase = .failed("翻訳できませんでした")
-                AppLog.write("overlay: no block could be translated")
-                return
-            }
-            self.model.phase = .showing
-            let elapsed = CFAbsoluteTimeGetCurrent() - self.runStarted
-            AppLog.write(String(format: "overlay: all %d block(s) drawn %.3fs after capture",
-                                self.model.translatedCount, elapsed))
+            guard completed else { return }
+            self?.finishTranslations()
         }
+    }
+
+    private func finishTranslations() {
+        guard readingComplete, isActive, translationAllowed, !translator.isRunning,
+              model.phase == .showing else { return }
+        // Keep the first-pass blocks until tiled recovery finishes, even when
+        // all first-pass translations were skipped or failed.
+        if model.translatedCount == 0 {
+            model.translationFailure = translator.failure
+            model.hitRects = []
+            if let failure = translator.failure {
+                model.phase = .failed(failure.message)
+            } else {
+                model.blocks = []
+                model.phase = translator.skippedCount > 0 ? .empty : .failed("翻訳できませんでした")
+            }
+            AppLog.write("overlay: no translated blocks after both reading passes")
+            return
+        }
+        let elapsed = CFAbsoluteTimeGetCurrent() - runStarted
+        AppLog.write(String(format: "overlay: all %d block(s) drawn %.3fs after capture",
+                            model.translatedCount, elapsed))
     }
 
     // MARK: starting
@@ -86,6 +95,7 @@ final class OverlayController {
         }
         isActive = true
         model.reset()
+        retryBlocks = []
         model.phase = .picking
         picker.show()
     }
@@ -94,6 +104,7 @@ final class OverlayController {
     func showPickerDemo() {
         isActive = true
         model.reset()
+        retryBlocks = []
         model.phase = .picking
         picker.show()
     }
@@ -102,7 +113,8 @@ final class OverlayController {
     /// overlay, so its translations stop. The overlay itself stays up with
     /// whatever has already been drawn.
     func yieldToDialogue() {
-        guard translator.isRunning else { return }
+        guard isActive else { return }
+        translationAllowed = false
         translator.cancel(notify: false)
         AppLog.write("overlay: gave way to a dialogue request")
     }
@@ -110,18 +122,27 @@ final class OverlayController {
     // MARK: capture
 
     private func startCapture(rect: CGRect) {
+        guard isActive else { return }
+        captureTask?.cancel()
+        translator.cancel(notify: false)
+        model.reset()
+        captureGeneration += 1
+        let generation = captureGeneration
+        translationAllowed = true
         model.phase = .reading
         showWindow(on: ScreenGeometry.screen(containingCGRect: rect))
         let started = CFAbsoluteTimeGetCurrent()
         runStarted = started
         firstBlockLogged = false
 
-        Task { [weak self] in
+        captureTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let capture = try await ScreenCapturer.capture(rect: rect)
+                guard !Task.isCancelled, generation == self.captureGeneration else { return }
                 try await self.read(capture: capture, started: started)
             } catch {
+                guard !Task.isCancelled, generation == self.captureGeneration else { return }
                 AppLog.write("overlay: capture failed \(error)")
                 self.fail(ScreenRecordingPermission.isGranted
                     ? "画面を読み取れませんでした: \(error.localizedDescription)"
@@ -132,6 +153,11 @@ final class OverlayController {
 
     /// `--demo-image <png>`: read a file instead of the screen (SPEC 15).
     func showImage(path: String, scale: CGFloat) {
+        captureGeneration += 1
+        let generation = captureGeneration
+        captureTask?.cancel()
+        translator.cancel(notify: false)
+        translationAllowed = true
         isActive = true
         model.reset()
         guard let image = ScreenCapturer.loadImage(at: path) else {
@@ -176,10 +202,11 @@ final class OverlayController {
         let started = CFAbsoluteTimeGetCurrent()
         runStarted = started
         firstBlockLogged = false
-        Task { [weak self] in
+        captureTask = Task { [weak self] in
             do {
                 try await self?.read(capture: capture, started: started)
             } catch {
+                guard !Task.isCancelled, generation == self?.captureGeneration else { return }
                 AppLog.write("overlay: demo read failed \(error)")
                 self?.fail("画面を読み取れませんでした")
             }
@@ -189,14 +216,30 @@ final class OverlayController {
     // MARK: reading
 
     private func read(capture: ScreenCapturer.Capture, started: CFAbsoluteTime) async throws {
+        readingComplete = false
+        let generation = captureGeneration
+        defer {
+            if !Task.isCancelled, generation == captureGeneration, isActive {
+                readingComplete = true
+                finishTranslations()
+            }
+        }
         let language = AppSettings.shared.overlayLanguage
         // The whole-picture pass first, so the first blocks go up and start
         // translating while the tiled pass is still reading.
         let visionStarted = CFAbsoluteTimeGetCurrent()
-        let wholeLines = try await ScreenOCR.wholeLines(in: capture.image, language: language)
+        let wholePass = try await ScreenOCR.wholeLines(in: capture.image, language: language)
+        let neededEarlyRecovery = wholePass.isEmpty
+        let wholeLines = neededEarlyRecovery
+            ? try await ScreenOCR.recoveredLines(in: capture.image, language: language)
+            : wholePass
+        try Task.checkCancellation()
         let visionSeconds = CFAbsoluteTimeGetCurrent() - visionStarted
 
-        guard let pixels = PixelImage(cgImage: capture.image) else {
+        let image = capture.image
+        guard let pixels = try await Self.background({
+            PixelImage(cgImage: image)
+        }) else {
             throw ScreenCapturer.CaptureError.failed("画像を読み取れませんでした")
         }
         // One reading per line, shared by the split rule and by the size the
@@ -204,9 +247,13 @@ final class OverlayController {
         // rather than once per use.
         let pointsPerPixel = 1 / max(1, capture.scale)
         let inkStarted = CFAbsoluteTimeGetCurrent()
-        let readings = measure(wholeLines, pixels: pixels, pointsPerPixel: pointsPerPixel)
+        var readings = try await Self.background {
+            Self.measure(wholeLines, pixels: pixels, pointsPerPixel: pointsPerPixel)
+        }
+        try Task.checkCancellation()
         let inkSeconds = CFAbsoluteTimeGetCurrent() - inkStarted
-        let sizeOf: (OCRLine) -> CGFloat? = { readings[$0.rect]?.size }
+        let initialReadings = readings
+        let sizeOf: (OCRLine) -> CGFloat? = { initialReadings[$0.rect]?.size }
 
         let groupStarted = CFAbsoluteTimeGetCurrent()
         let blocks = OCRBlockBuilder.blocks(from: wholeLines, sizeOf: sizeOf)
@@ -233,20 +280,31 @@ final class OverlayController {
         let windowOffset = window.map {
             CGPoint(x: $0.frame.minX - capture.screen.frame.minX, y: $0.frame.minY - capture.screen.frame.minY)
         } ?? .zero
+        captureRight = ScreenGeometry.windowRect(
+            forPixelRect: CGRect(x: 0, y: 0, width: image.width, height: image.height),
+            capture: capture.rect, scale: capture.scale, screen: capture.screen
+        ).maxX - windowOffset.x
         // The page's usual line height, so a heading can be told from body text
         // when the weight is measured (`OverlayEmphasis`). It comes from the
         // picture's ink like the size itself, so the two are compared in the
         // same units and with the same precision (`TextInk`).
-        let measured = blocks.map { measuredLineHeight(of: $0, readings: readings, fallback: $0.lineHeight) }
+        let measured = blocks.map { Self.measuredLineHeight(of: $0, readings: readings, fallback: $0.lineHeight) }
         let sortedHeights = measured.map(\.pixels).sorted()
         let medianLineHeight = sortedHeights.isEmpty ? 0 : sortedHeights[sortedHeights.count / 2]
         let buildStarted = CFAbsoluteTimeGetCurrent()
+        let appearances = try await Self.background {
+            blocks.enumerated().map { index, block in
+                Self.appearance(block, pixels: pixels, lineHeight: measured[index].pixels,
+                                medianLineHeight: medianLineHeight)
+            }
+        }
+        try Task.checkCancellation()
         model.blocks = blocks.enumerated().map { index, block in
             overlayBlock(
                 block,
                 id: index,
                 capture: capture,
-                pixels: pixels,
+                appearance: appearances[index],
                 windowOffset: windowOffset,
                 medianLineHeight: medianLineHeight,
                 lineHeightPixels: measured[index].pixels,
@@ -263,7 +321,9 @@ final class OverlayController {
 
         // The first block's translation is what the reader waits for; the
         // measurement of "reading to everything drawn" starts here.
-        translator.start(blocks: blocks)
+        retryBlocks = blocks
+        if translationAllowed { translator.start(blocks: blocks) }
+        guard !neededEarlyRecovery else { return }
 
         // The tiled pass, which is what finds small text such as a sidebar's.
         // It runs after the first blocks are up. A block that overlaps one that
@@ -272,24 +332,39 @@ final class OverlayController {
         // twice.
         let tiledStarted = CFAbsoluteTimeGetCurrent()
         let recovered = try await ScreenOCR.recoveredLines(in: capture.image, language: language)
+        try Task.checkCancellation()
         guard !recovered.isEmpty else { return }
+        let extraReadings = try await Self.background {
+            Self.measure(recovered, pixels: pixels, pointsPerPixel: pointsPerPixel)
+        }
+        try Task.checkCancellation()
+        readings.merge(extraReadings) { existing, _ in existing }
+        let allReadings = readings
         let merged = OCRBlockBuilder.blocks(
             from: OCRTiling.mergeRecovered(base: wholeLines, extra: recovered),
-            sizeOf: sizeOf
+            sizeOf: { allReadings[$0.rect]?.size }
         )
         let additions = merged.filter { candidate in
             let frame = windowFrame(for: candidate, capture: capture, windowOffset: windowOffset)
             return !model.blocks.contains { $0.frame.intersects(frame) }
         }
         guard !additions.isEmpty else { return }
+        let addedReadings = additions.map { Self.measuredLineHeight(of: $0, readings: readings, fallback: $0.lineHeight) }
+        let addedAppearances = try await Self.background {
+            additions.enumerated().map { index, block in
+                Self.appearance(block, pixels: pixels, lineHeight: addedReadings[index].pixels,
+                                medianLineHeight: medianLineHeight)
+            }
+        }
+        try Task.checkCancellation()
         let firstNewIndex = model.blocks.count
         for (offset, block) in additions.enumerated() {
-            let reading = measuredLineHeight(of: block, readings: readings, fallback: block.lineHeight)
+            let reading = addedReadings[offset]
             model.blocks.append(overlayBlock(
                 block,
                 id: firstNewIndex + offset,
                 capture: capture,
-                pixels: pixels,
+                appearance: addedAppearances[offset],
                 windowOffset: windowOffset,
                 medianLineHeight: medianLineHeight,
                 lineHeightPixels: reading.pixels,
@@ -299,7 +374,15 @@ final class OverlayController {
         }
         updateWidenLimits()
         updateHitRects()
-        translator.extend(blocks: additions, indexes: Array(firstNewIndex..<model.blocks.count))
+        // A newly recovered neighbor can narrow an already translated block.
+        for block in model.blocks where block.hasTranslation {
+            try Task.checkCancellation()
+            await apply(block.translation ?? "", to: block.id)
+        }
+        if translationAllowed {
+            retryBlocks.append(contentsOf: additions)
+            translator.extend(blocks: additions, indexes: Array(firstNewIndex..<model.blocks.count))
+        }
         AppLog.write(String(format: "overlay: the tiled pass added %d block(s) in %.3fs",
                             additions.count, CFAbsoluteTimeGetCurrent() - tiledStarted))
     }
@@ -320,11 +403,29 @@ final class OverlayController {
 
     /// One recognised block placed on the overlay, with its colours, its fitted
     /// font size and its weight.
+    private struct Appearance: Sendable {
+        let background: RGBColor
+        let textColor: RGBColor
+        let isBold: Bool
+    }
+
+    nonisolated private static func appearance(
+        _ block: OCRBlock, pixels: PixelImage, lineHeight: CGFloat, medianLineHeight: CGFloat
+    ) -> Appearance {
+        let background = OverlayBackground.color(in: pixels, around: block.rect)
+        return Appearance(
+            background: background,
+            textColor: OverlayBackground.textColor(in: pixels, block: block.rect, background: background),
+            isBold: OverlayEmphasis.isBold(in: pixels, block: block.rect, text: block.text,
+                                         lineHeight: lineHeight, medianLineHeight: medianLineHeight)
+        )
+    }
+
     private func overlayBlock(
         _ block: OCRBlock,
         id: Int,
         capture: ScreenCapturer.Capture,
-        pixels: PixelImage,
+        appearance: Appearance,
         windowOffset: CGPoint,
         medianLineHeight: CGFloat,
         lineHeightPixels: CGFloat,
@@ -332,18 +433,10 @@ final class OverlayController {
         origin: String
     ) -> OverlayBlock {
         let frame = windowFrame(for: block, capture: capture, windowOffset: windowOffset)
-        let background = OverlayBackground.color(in: pixels, around: block.rect)
-        let textColor = OverlayBackground.textColor(in: pixels, block: block.rect, background: background)
         let pointsPerPixel = block.rect.height > 0 ? frame.height / block.rect.height : 1
         let boxLineHeight = block.lineHeight * pointsPerPixel
         let lineHeight = lineHeightPixels * pointsPerPixel
-        let isBold = OverlayEmphasis.isBold(
-            in: pixels,
-            block: block.rect,
-            text: block.text,
-            lineHeight: lineHeightPixels,
-            medianLineHeight: medianLineHeight
-        )
+        let isBold = appearance.isBold
         // The drawn size comes from the line height, so the reading that
         // produced it is recorded here: the whole-picture pass and a tile report
         // different boxes for the same line, which is what made equally sized
@@ -362,8 +455,8 @@ final class OverlayController {
             lineHeight: lineHeight,
             availableHeight: max(frame.height, lineHeight),
             lineCount: block.lines.count,
-            background: background,
-            textColor: textColor,
+            background: appearance.background,
+            textColor: appearance.textColor,
             isBold: isBold,
             translation: nil,
             layout: nil
@@ -375,8 +468,6 @@ final class OverlayController {
     /// blocks, because a block the tiled pass adds can sit beside one that is
     /// already up.
     private func updateWidenLimits() {
-        let gap = OverlayModel.widenGap
-        let edge = model.windowWidth
         for index in model.blocks.indices {
             let frame = model.blocks[index].frame
             guard model.blocks[index].lineCount == 1, frame.width > 0 else {
@@ -385,15 +476,10 @@ final class OverlayController {
             }
             // The nearest block sharing this block's rows and starting to its
             // right, or the edge of what was captured when there is none.
-            var boundary = edge > 0 ? edge : frame.maxX
-            for other in model.blocks where other.id != index {
-                guard other.frame.minX >= frame.maxX - 1,
-                      other.frame.maxY > frame.minY, other.frame.minY < frame.maxY
-                else { continue }
-                boundary = min(boundary, other.frame.minX)
-            }
-            let limit = boundary - gap
-            model.blocks[index].widenTo = limit > frame.width ? limit : nil
+            model.blocks[index].widenTo = OverlayGeometry.wideningWidth(
+                frame: frame, neighbors: model.blocks.filter { $0.id != index }.map(\.frame),
+                captureRight: captureRight, gap: OverlayModel.widenGap
+            )
         }
     }
 
@@ -403,7 +489,7 @@ final class OverlayController {
     /// come from the same reading, or a line the ink cannot be measured from
     /// would be split on Vision's box height in one place and drawn from it in
     /// another. The picture is scanned once per line here.
-    private func measure(
+    nonisolated private static func measure(
         _ lines: [OCRLine],
         pixels: PixelImage,
         pointsPerPixel: CGFloat
@@ -411,6 +497,7 @@ final class OverlayController {
         var readings: [CGRect: TextInk.Reading] = [:]
         readings.reserveCapacity(lines.count)
         for line in lines where readings[line.rect] == nil {
+            guard !Task.isCancelled else { break }
             readings[line.rect] = TextInk.reading(
                 in: pixels, line: line.rect, text: line.text, pointsPerPixel: pointsPerPixel
             )
@@ -419,7 +506,7 @@ final class OverlayController {
     }
 
     /// A block's line height in image pixels, with the reading it came from.
-    private struct LineHeight {
+    private struct LineHeight: Sendable {
         let pixels: CGFloat
         let source: TextInk.Reading.Source
     }
@@ -434,7 +521,7 @@ final class OverlayController {
     /// (`TextInk.fontSize(in:line:text:)`). The band is the fallback and
     /// Vision's box the last resort — a box value is not comparable with a
     /// measured one, which is why the source travels with it and is logged.
-    private func measuredLineHeight(
+    nonisolated private static func measuredLineHeight(
         of block: OCRBlock,
         readings: [CGRect: TextInk.Reading],
         fallback: CGFloat
@@ -453,9 +540,11 @@ final class OverlayController {
     }
 
     /// Sizes and stores one block's translation, which makes the view draw it.
-    private func apply(_ translation: String, to index: Int) {
+    private func apply(_ translation: String, to index: Int) async {
         guard index >= 0, index < model.blocks.count else { return }
-        let frame = model.blocks[index].frame
+        let generation = captureGeneration
+        let block = model.blocks[index]
+        let frame = block.frame
         let minimumScale = CGFloat(AppSettings.shared.overlayMinScale)
         // The room the translation is fitted into is the block's box, but never
         // less than one line at the original size: Vision's box is the ink, and
@@ -463,18 +552,26 @@ final class OverlayController {
         // which would shrink every one-line block to the floor (`TextInk`).
         let available = CGSize(
             width: frame.width,
-            height: max(model.blocks[index].availableHeight, 1)
+            height: max(block.availableHeight, 1)
         )
-        let layout = OverlayTextFit.layout(
-            text: translation,
-            blockSize: available,
-            originalFontSize: OverlayTextFit.originalFontSize(forLineHeight: model.blocks[index].lineHeight),
-            minimumScale: minimumScale,
-            widenTo: model.blocks[index].widenTo,
-            measure: { text, width, size in
-                TextMetrics.height(text, width: width - 4, size: size, lineSpacing: 0)
-            }
-        )
+        guard let layout = try? await Self.background({
+            OverlayTextFit.layout(
+                text: translation,
+                blockSize: available,
+                originalFontSize: OverlayTextFit.originalFontSize(forLineHeight: block.lineHeight),
+                minimumScale: minimumScale,
+                widenTo: block.widenTo,
+                measure: { text, width, size in
+                    TextMetrics.height(text, width: width, size: size, lineSpacing: 0,
+                                       weight: block.isBold ? .bold : .regular)
+                }
+            )
+        }), !Task.isCancelled, generation == captureGeneration, isActive,
+              index < model.blocks.count else { return }
+        if model.blocks[index].widenTo != block.widenTo {
+            await apply(translation, to: index)
+            return
+        }
         model.blocks[index].translation = translation
         model.blocks[index].layout = layout
         updateHitRects()
@@ -501,10 +598,12 @@ final class OverlayController {
             window.setFrame(screen.frame, display: true)
             model.windowHeight = screen.frame.height
             model.windowWidth = screen.frame.width
+            updateHitRects()
             return
         }
         model.windowHeight = screen.frame.height
         model.windowWidth = screen.frame.width
+        updateHitRects()
 
         let actions = OverlayActions(
             copyBlock: { [weak self] index in self?.copyBlock(index) },
@@ -514,7 +613,16 @@ final class OverlayController {
                 guard let self else { return }
                 self.model.showSource.toggle()
             },
-            openSettings: { ScreenRecordingPermission.openSettings() }
+            openSettings: { ScreenRecordingPermission.openSettings() },
+            openModels: { [weak self] in
+                self?.finish(reason: "open models")
+                WindowBridge.shared.openManager(page: .models)
+            },
+            openLogs: { [weak self] in
+                self?.finish(reason: "open logs")
+                NSWorkspace.shared.open(AppPaths.logsDirectory)
+            },
+            retry: { [weak self] in self?.retryTranslation() }
         )
         let container = OverlayContainerView(model: model, actions: actions)
         container.frame = CGRect(origin: .zero, size: screen.frame.size)
@@ -561,6 +669,19 @@ final class OverlayController {
         showPermissionNotice()
     }
 
+    /// Foreground refresh never prompts or captures a screen on its own.
+    func refreshPermissions(screenRecordingGranted: Bool) {
+        if screenRecordingGranted {
+            if model.phase == .needsPermission {
+                finish(reason: "screen recording permission granted")
+            }
+            return
+        }
+        guard isActive, model.phase != .needsPermission else { return }
+        finish(reason: "screen recording permission revoked")
+        showPermissionNotice()
+    }
+
     /// `--demo-surface overlay` with no image: the empty state (SPEC 13).
     func showEmptyDemo() {
         isActive = true
@@ -589,6 +710,13 @@ final class OverlayController {
             }
         )
         if let global { monitors.append(global) }
+        let localChanges = NSEvent.addLocalMonitorForEvents(
+            matching: [.scrollWheel, .leftMouseDragged, .rightMouseDragged]
+        ) { [weak self] event in
+            MainActor.assumeIsolated { self?.dismissSoon(reason: "screen changed") }
+            return event
+        }
+        if let localChanges { monitors.append(localChanges) }
 
         let observer = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -649,8 +777,7 @@ final class OverlayController {
     /// A short delay, so a scroll that is really part of the reading does not
     /// take the overlay away the instant the wheel moves.
     private func dismissSoon(reason: String) {
-        guard isActive, window != nil else { return }
-        dismissTask?.cancel()
+        guard isActive, window != nil, dismissTask == nil else { return }
         dismissTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
@@ -659,6 +786,16 @@ final class OverlayController {
     }
 
     // MARK: actions
+
+    private func retryTranslation() {
+        guard isActive, !retryBlocks.isEmpty else { return }
+        model.translationFailure = nil
+        model.phase = .showing
+        translationAllowed = true
+        readingComplete = true
+        updateHitRects()
+        translator.start(blocks: retryBlocks)
+    }
 
     private func copyBlock(_ index: Int) {
         guard index >= 0, index < model.blocks.count else { return }
@@ -695,6 +832,13 @@ final class OverlayController {
         guard isActive || window != nil else { return }
         dismissTask?.cancel()
         dismissTask = nil
+        captureGeneration += 1
+        captureTask?.cancel()
+        captureTask = nil
+        translationAllowed = false
+        retryBlocks = []
+        toastTask?.cancel()
+        toastTask = nil
         translator.cancel(notify: false)
         picker.hide()
         for monitor in monitors { NSEvent.removeMonitor(monitor) }
@@ -723,19 +867,33 @@ final class OverlayController {
 
     // MARK: helpers
 
+    /// Expensive image and CoreText work never runs on the UI executor.
+    /// Detached work still stops when its capture/translation is cancelled.
+    nonisolated private static func background<T: Sendable>(
+        _ operation: @escaping @Sendable () -> T
+    ) async throws -> T {
+        let worker = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            return operation()
+        }
+        return try await withTaskCancellationHandler {
+            let result = try await worker.value
+            try Task.checkCancellation()
+            return result
+        } onCancel: {
+            worker.cancel()
+        }
+    }
+
     /// The rects the container lets clicks through in: every block that has a
     /// translation, plus the band.
     private func updateHitRects() {
         var rects = model.blocks.filter(\.hasTranslation).map { block in
-            let overflow = block.layout?.overflow ?? 0
             let width = block.layout?.width ?? block.frame.width
-            let rect = CGRect(
-                x: block.frame.minX,
-                y: block.frame.minY,
-                width: width,
-                height: block.frame.height
+            return OverlayGeometry.hitRect(
+                frame: block.frame, width: width,
+                height: max(block.lineHeight, block.layout?.textHeight ?? 0)
             )
-            return rect.insetBy(dx: -4, dy: -2).offsetBy(dx: 0, dy: -overflow)
         }
         if model.windowHeight > 0 {
             let band = OverlayModel.bandRect(windowSize: CGSize(width: model.windowWidth, height: model.windowHeight))

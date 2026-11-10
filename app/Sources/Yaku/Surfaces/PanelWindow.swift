@@ -23,6 +23,9 @@ final class PanelModel {
     /// panel or the menu bar icon.
     var isDropTarget = false
     var dropHover = false
+    /// Separate from status-item hover so its delayed exit cannot erase a
+    /// drag that has already entered the panel.
+    var isPanelDropHovered = false
     var dropMessage = PanelModel.dropPrompt
     /// One whole number per refused drop; `ShakeEffect` shakes once for each.
     var dropShake: CGFloat = 0
@@ -38,7 +41,9 @@ final class PanelModel {
     func rejectDrop(message: String) {
         dropMessage = message
         dropHover = false
-        withAnimation(.easeInOut(duration: 0.30)) { dropShake += 1 }
+        if !AppearanceOverrides.reduceMotion {
+            withAnimation(.easeInOut(duration: 0.30)) { dropShake += 1 }
+        }
         dropRestore?.cancel()
         dropRestore = Task {
             do {
@@ -105,7 +110,7 @@ final class PanelContainerView: NSView {
                     flipped: false
                 )
             },
-            phase: { coordinator.panel.phase },
+            phase: { model.isDropTarget && model.dropHover ? .translating : coordinator.panel.phase },
             isOpen: { model.isOpen }
         )
         super.init(frame: CGRect(origin: .zero, size: PanelLayout.windowSize))
@@ -138,18 +143,23 @@ final class PanelContainerView: NSView {
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard hasFileURL(sender) else { return [] }
+        model.isDropTarget = true
+        model.isPanelDropHovered = true
         model.dropHover = true
         return .copy
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard hasFileURL(sender) else { return [] }
+        model.isPanelDropHovered = true
         model.dropHover = true
         return .copy
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
+        model.isPanelDropHovered = false
         model.dropHover = false
+        model.isDropTarget = false
     }
 
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
@@ -161,12 +171,15 @@ final class PanelContainerView: NSView {
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
         ) as? [URL]) ?? []
-        guard let first = urls.first else { return false }
+        guard !urls.isEmpty else { return false }
+        model.isPanelDropHovered = false
         model.dropHover = false
-        if first.pathExtension.lowercased() == "pdf" {
+        let pdfs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
+        if !pdfs.isEmpty {
             model.isDropTarget = false
-            onDrop?(first)
-        } else {
+            pdfs.forEach { onDrop?($0) }
+        }
+        if pdfs.count != urls.count {
             onReject?()
         }
         return true

@@ -47,3 +47,18 @@ final class SettingsState {
     static let shared = SettingsState()
     var tab: SettingsTab = .general
 }
+
+/// Foreground refreshes never request permission; all surfaces share the
+/// latest system answers instead of retaining a stale permission notice.
+@MainActor
+@Observable
+final class PermissionState {
+    static let shared = PermissionState()
+    private(set) var accessibilityGranted = AccessibilityPermission.isTrusted
+    private(set) var screenRecordingGranted = ScreenRecordingPermission.isGranted
+
+    func refresh() {
+        accessibilityGranted = AccessibilityPermission.isTrusted
+        screenRecordingGranted = ScreenRecordingPermission.isGranted
+    }
+}

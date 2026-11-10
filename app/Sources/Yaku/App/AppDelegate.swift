@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import Observation
 import SwiftUI
 import YakuCore
 
@@ -28,6 +29,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The job the island is currently showing, so the start transition is
     /// noticed once.
     private var notchJobID: UUID?
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        let permissions = PermissionState.shared
+        permissions.refresh()
+        hud.refreshPermissions(accessibilityGranted: permissions.accessibilityGranted)
+        overlay.refreshPermissions(screenRecordingGranted: permissions.screenRecordingGranted)
+    }
 
     // MARK: launch
 
@@ -107,9 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         _ = store
         store.seedGlossaryIfNeeded()
-        if settings.keepHistory {
-            store.pruneHistory(olderThanDays: settings.historyRetentionDays)
-        }
+        store.pruneHistory(olderThanDays: settings.historyRetentionDays)
         URLCacheLeftovers.remove()
         AppLog.write("store ready inMemory=\(store.isInMemory) history=\(store.historyCount) "
             + "cache=\(store.cacheCount) glossary=\(store.glossaryCount) "
@@ -279,6 +285,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             WindowBridge.shared.openSettingsWindow()
         }
         controller.onQuit = { NSApp.terminate(nil) }
+        controller.onDragEntered = { [weak self] in
+            guard let self else { return }
+            self.model.isDropTarget = true
+            self.model.dropHover = true
+            self.openPanel(reason: "icon-drag")
+        }
+        controller.onDrop = { [weak self] url in
+            guard let self else { return }
+            self.model.dropHover = false
+            self.model.isDropTarget = false
+            Task { _ = await self.enqueuePDF(url) }
+        }
+        controller.onDragExited = { [weak self] in
+            guard let self, !self.model.isPanelDropHovered else { return }
+            self.model.dropHover = false
+            self.model.isDropTarget = false
+        }
         menuBar = controller
     }
 
@@ -286,7 +309,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch state {
         case .starting:
             menuBar?.setEngineBusy(true)
-        case .running, .stopped, .failed:
+        case .failed:
+            menuBar?.setEngineBusy(false)
+            menuBar?.setPDFBadge(.failed)
+        case .running, .stopped:
             menuBar?.setEngineBusy(false)
         }
     }
@@ -382,6 +408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.isOpen = false
         model.isDropTarget = false
         model.dropHover = false
+        model.isPanelDropHovered = false
         panel?.ignoresMouseEvents = true
         panel?.resignKey()
         AppLog.write("panel close (\(reason))")
@@ -499,10 +526,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: monitors
 
     private func setUpMonitors() {
+        if let local = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .scrollWheel],
+            handler: { [weak self] event in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if event.type == .scrollWheel {
+                        if !(event.window is HUDWindow) { self.hud.hide(reason: "selection scrolled") }
+                    } else {
+                        if event.window !== self.panel, self.model.isOpen, !self.model.isPinned {
+                            self.closePanel(reason: "own-window outside click")
+                        }
+                        if !(event.window is HUDWindow), !self.demo.pin {
+                            self.hud.hide(reason: "own-window outside click")
+                        }
+                    }
+                }
+                return event
+            }
+        ) { monitors.append(local) }
         // Clicks inside the panel or HUD are delivered to our own app, so
         // anything the global monitor sees is outside them.
         if let global = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown, .leftMouseDragged, .leftMouseUp],
+            matching: [.leftMouseDown, .rightMouseDown, .leftMouseDragged, .leftMouseUp, .scrollWheel, .flagsChanged],
             handler: { [weak self] event in
                 MainActor.assumeIsolated { self?.handleGlobalEvent(event) }
             }
@@ -560,6 +606,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleGlobalEvent(_ event: NSEvent) {
         switch event.type {
+        case .scrollWheel:
+            if !demo.pin { hud.hide(reason: "selection scrolled") }
+        case .flagsChanged:
+            coordinator.optionDown = event.modifierFlags.contains(.option)
         case .leftMouseDown, .rightMouseDown:
             handleOutsideClick()
         case .leftMouseDragged:
@@ -633,7 +683,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case 45: // N
             if matches(event, modifiers: [.command]) {
-                WindowBridge.shared.openManager(page: managerPageForDemo)
+                coordinator.openPanelInManager()
                 closePanel(reason: "open manager")
                 return true
             }
@@ -654,6 +704,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hud.hide(reason: "esc")
             return true
         case 48: // tab
+            if matches(event, modifiers: [.control]) {
+                NSApp.keyWindow?.selectNextKeyView(nil)
+                return true
+            }
+            guard matches(event, modifiers: []) else { return false }
             coordinator.toggleFormAndRetranslateHUD()
             return true
         case 36, 76: // return / enter
@@ -729,6 +784,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: PDF (SPEC 8)
 
     private func setUpPDF() {
+        pdfQueue.onNeedsWorker = { [weak self] update in
+            self?.promptForWorkerInstall(update: update)
+        }
         PDFNotifications.shared.onOpen = { path in
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -760,12 +818,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.onReject = { [weak self] in
             self?.shakePanelForRejection()
         }
+        controller.onRetry = { [weak self] in
+            guard let self, let job = self.pdfQueue.recentlyFailed else { return }
+            self.pdfQueue.retry(job)
+        }
         notch = controller
         let forced = demo.surface == "notch"
         // An overlay or HUD demo is photographed on its own, so the island
         // window is left out of it.
         let notchEnabled = !demoHidesPanel && (forced || AppSettings.shared.useNotch)
         controller.setUp(enabled: notchEnabled, force: forced)
+        observeNotchSetting()
+    }
+
+    private func observeNotchSetting() {
+        withObservationTracking {
+            _ = AppSettings.shared.useNotch
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.notch?.setUp(enabled: !self.demoHidesPanel && AppSettings.shared.useNotch)
+                if AppSettings.shared.useNotch, let job = self.pdfQueue.activeJob {
+                    self.notchJobID = nil
+                    self.pdfProgress(job)
+                }
+                self.observeNotchSetting()
+            }
+        }
     }
 
     private func pdfProgress(_ job: PDFJob) {
@@ -1323,7 +1402,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             let started = CFAbsoluteTimeGetCurrent()
             let ok = await engine.ensureRunning()
-            guard ok, let client = engine.client else {
+            guard ok else {
                 print("エンジンを起動できませんでした: \(engine.state)")
                 AppLog.write("demo-translate: engine failed \(engine.state)")
                 NSApp.terminate(nil)
@@ -1335,14 +1414,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let glossary = demo.glossaryEnabled
                 ? GlossaryFilter.relevant(store.enabledGlossaryPairs(), in: text)
                 : []
-            let request = CompletionRequest(
-                prompt: PFML3.prompt(
-                    source: text,
-                    targetLanguage: "ja",
-                    form: .polite,
-                    glossary: glossary
-                ),
-                source: text
+            let sourceLanguage = LanguageDetector.resolve(text: text, previous: nil)
+            let target = coordinator.resolvedTarget(forSource: sourceLanguage)
+            let request = PFML3.request(
+                source: text,
+                sourceLanguage: sourceLanguage,
+                targetLanguage: target,
+                form: target == "ja" ? coordinator.form : nil,
+                glossary: glossary
             )
             AppLog.write("demo-translate glossary=\(glossary.count) chars=\(text.count)")
             AppLog.content("demo-translate text=\(text)")
@@ -1351,7 +1430,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             var firstPiece: Double?
             var collected = ""
             do {
-                for try await piece in client.stream(request) {
+                for try await piece in engine.stream(request, priority: .interactive) {
                     if firstPiece == nil { firstPiece = CFAbsoluteTimeGetCurrent() - translateStart }
                     collected += piece
                 }

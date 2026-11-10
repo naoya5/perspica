@@ -164,8 +164,8 @@ public enum OverlayTextFit {
     }
 
     /// The number of characters of `text` that fit on the first line at this
-    /// width and size. The height only grows with more text, so counting up from
-    /// one character finds the break with the same measurement the drawing uses.
+    /// width and size. Bisection avoids shaping every prefix of a long
+    /// translation, using at most eighteen measurements.
     static func firstLineCount(
         _ text: String,
         width: CGFloat,
@@ -173,10 +173,19 @@ public enum OverlayTextFit {
         height: CGFloat,
         measure: (String, CGFloat, CGFloat) -> CGFloat
     ) -> Int {
+        let characters = Array(text)
         var best = 0
-        for count in 1...max(1, text.count) {
-            guard measure(String(text.prefix(count)), width, size) <= height else { break }
-            best = count
+        var low = 1
+        var high = characters.count
+        for _ in 0..<18 {
+            guard low <= high else { break }
+            let count = low + (high - low) / 2
+            if measure(String(characters.prefix(count)), width, size) <= height {
+                best = count
+                low = count + 1
+            } else {
+                high = count - 1
+            }
         }
         return best
     }

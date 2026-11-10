@@ -71,8 +71,10 @@ enum AppLog {
     private static let lock = NSLock()
     nonisolated(unsafe) private static let formatter = ISO8601DateFormatter()
 
-    /// `app.log` is renamed to `app.log.1` at launch once it is this large.
-    static let rotateAbove: UInt64 = 5 * 1024 * 1024
+    /// SPEC 11: each log switches to a new file at 5 MB, and at most three
+    /// files are kept per log (`app.log`, `app.log.1`, `app.log.2`).
+    static let rotateAbove = RotatingLogFile.maximumBytes
+    static let keptFiles = RotatingLogFile.keptFiles
 
     /// Whether `content(_:)` writes. `YAKU_LOG_CONTENT=1` or `=0` decides when
     /// it is set; otherwise a `--data-dir` run (a demo or verification run
@@ -92,32 +94,58 @@ enum AppLog {
         write(line())
     }
 
-    /// Keeps `app.log` from growing forever: above `rotateAbove` it becomes
-    /// `app.log.1` (replacing the previous one) and a fresh file starts.
-    /// Called once at launch.
+    static var allLogs: [URL] { [AppPaths.appLog, AppPaths.engineLog, AppPaths.pdfLog] }
+
+    /// `<name>.log.<n>`, the n-th older file of a log.
+    static func archive(of url: URL, index: Int) -> URL {
+        RotatingLogFile.archive(of: url, index: index)
+    }
+
+    /// Rotates every log that is over the limit. Called at launch.
     static func rotateIfNeeded() {
         lock.lock()
         defer { lock.unlock() }
-        let url = AppPaths.appLog
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? UInt64, size > rotateAbove else { return }
-        let rotated = url.deletingPathExtension().appendingPathExtension("log.1")
-        try? FileManager.default.removeItem(at: rotated)
-        try? FileManager.default.moveItem(at: url, to: rotated)
+        for url in allLogs { rotateLocked(url) }
     }
 
-    /// Empties every log the app writes (`app.log`, `engine.log`, `pdf.log`),
-    /// for the privacy controls. The files stay so open handles keep working.
-    static func clearAll() {
+    /// Rotates one log if it is over the limit. The engine and the PDF worker
+    /// call this before they open their log for a new child process.
+    static func rotateIfNeeded(_ url: URL) {
         lock.lock()
         defer { lock.unlock() }
-        for url in [AppPaths.appLog, AppPaths.engineLog, AppPaths.pdfLog] {
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            if let handle = try? FileHandle(forWritingTo: url) {
-                try? handle.truncate(atOffset: 0)
-                try? handle.close()
+        rotateLocked(url)
+    }
+
+    private static func rotateLocked(_ url: URL) {
+        try? RotatingLogFile.rotateIfNeeded(url)
+    }
+
+    /// Empties every log the app writes (`app.log`, `engine.log`, `pdf.log`)
+    /// and removes their older files, for the privacy controls. The current
+    /// files stay so open handles keep working. Returns false when any of them
+    /// could not be emptied or removed.
+    @discardableResult
+    static func clearAll() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let manager = FileManager.default
+        var ok = true
+        for url in allLogs {
+            for index in 1..<keptFiles {
+                let old = archive(of: url, index: index)
+                guard manager.fileExists(atPath: old.path) else { continue }
+                if (try? manager.removeItem(at: old)) == nil { ok = false }
+            }
+            guard manager.fileExists(atPath: url.path) else { continue }
+            do {
+                let handle = try FileHandle(forWritingTo: url)
+                defer { try? handle.close() }
+                try handle.truncate(atOffset: 0)
+            } catch {
+                ok = false
             }
         }
+        return ok
     }
 
     static func write(_ line: String) {
@@ -126,14 +154,33 @@ enum AppLog {
 
         let stamped = "\(formatter.string(from: Date())) \(line)\n"
         guard let data = stamped.data(using: .utf8) else { return }
-        let url = AppPaths.appLog
+        appendLocked(data, to: AppPaths.appLog)
+    }
 
-        if let handle = try? FileHandle(forWritingTo: url) {
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: data)
-        } else {
-            try? data.write(to: url)
+    /// Appends to a log, splitting writes before reaching the file limit.
+    static func append(_ data: Data, to url: URL) {
+        lock.lock()
+        defer { lock.unlock() }
+        appendLocked(data, to: url)
+    }
+
+    private static func appendLocked(_ data: Data, to url: URL) {
+        try? RotatingLogFile.append(data, to: url)
+    }
+
+    /// A pipe for a child's stdout or stderr whose output the app appends to
+    /// `url` with the same rotation, instead of the child writing the file
+    /// directly and growing it without a bound while it runs.
+    static func rotatingPipe(for url: URL) -> Pipe {
+        let pipe = Pipe()
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                return
+            }
+            append(data, to: url)
         }
+        return pipe
     }
 }

@@ -16,6 +16,9 @@ final class MenuBarController: NSObject {
     var onOpenManager: (() -> Void)?
     var onOpenSettings: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onDragEntered: (() -> Void)?
+    var onDragExited: (() -> Void)?
+    var onDrop: ((URL) -> Void)?
 
     private let statusItem: NSStatusItem
     private var blinkTimer: Timer?
@@ -48,6 +51,14 @@ final class MenuBarController: NSObject {
         badge.autoresizingMask = [.width, .height]
         button.addSubview(badge)
         self.badge = badge
+        let drop = StatusItemDropView(frame: button.bounds)
+        drop.autoresizingMask = [.width, .height]
+        drop.onEntered = { [weak self] in self?.onDragEntered?() }
+        drop.onExited = { [weak self] in self?.onDragExited?() }
+        drop.onDrop = { [weak self] url in self?.onDrop?(url) }
+        drop.registerForDraggedTypes([.fileURL])
+        button.registerForDraggedTypes([.fileURL])
+        button.addSubview(drop)
     }
 
     /// The PDF progress ring, the one-off bounce, and the failure dot.
@@ -162,6 +173,7 @@ final class MenuBarBadgeView: NSView {
     override var isFlipped: Bool { false }
 
     func bounce() {
+        guard !AppearanceOverrides.reduceMotion else { return }
         wantsLayer = true
         guard let layer else { return }
         let animation = CAKeyframeAnimation(keyPath: "transform.scale")
@@ -211,5 +223,35 @@ final class MenuBarBadgeView: NSView {
             NSColor.systemRed.setFill()
             NSBezierPath(ovalIn: dot).fill()
         }
+    }
+}
+
+/// NSStatusBarButton does not expose drag delegate callbacks. This small
+/// destination forwards ordinary clicks to the button and accepts file drops.
+@MainActor
+private final class StatusItemDropView: NSView {
+    var onEntered: (() -> Void)?
+    var onExited: (() -> Void)?
+    var onDrop: ((URL) -> Void)?
+
+    override func mouseDown(with event: NSEvent) { superview?.mouseDown(with: event) }
+    override func rightMouseDown(with event: NSEvent) { superview?.rightMouseDown(with: event) }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard sender.draggingPasteboard.availableType(from: [.fileURL]) != nil else { return [] }
+        onEntered?()
+        return .copy
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
+    override func draggingExited(_ sender: NSDraggingInfo?) { onExited?() }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = sender.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] ?? []
+        guard !urls.isEmpty else { return false }
+        urls.forEach { onDrop?($0) }
+        return true
     }
 }

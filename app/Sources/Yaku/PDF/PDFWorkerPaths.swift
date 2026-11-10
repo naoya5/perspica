@@ -70,6 +70,9 @@ enum PDFWorkerPaths {
         return [
             cache.appendingPathComponent("pdf2zh_next"),
             cache.appendingPathComponent("babeldoc/cache.v1.db"),
+            cache.appendingPathComponent("babeldoc/cache.v1.db-wal"),
+            cache.appendingPathComponent("babeldoc/cache.v1.db-shm"),
+            cache.appendingPathComponent("babeldoc/cache.v1.db-journal"),
         ]
     }
 
@@ -161,22 +164,38 @@ enum PDFWorkerPaths {
     }
 
     /// 「削除」: the environment and the worker's private home, caches and all.
-    static func removeInstallation() {
+    @discardableResult
+    static func removeInstallation() -> Bool {
+        var succeeded = true
         for folder in [environmentDirectory, privateHomeDirectory]
         where FileManager.default.fileExists(atPath: folder.path) {
-            try? FileManager.default.removeItem(at: folder)
-            AppLog.write("pdf-worker: removed \(folder.path)")
+            do {
+                try FileManager.default.removeItem(at: folder)
+                AppLog.write("pdf-worker: removed \(folder.path)")
+            } catch {
+                succeeded = false
+                AppLog.write("pdf-worker: removal failed (\(error))")
+            }
         }
+        return succeeded
     }
 
     /// Deletes the paragraph-level translation caches and keeps the assets
     /// (fonts, layout model), so the next PDF does not download them again.
-    static func clearTranslationCache() {
+    @discardableResult
+    static func clearTranslationCache() -> Bool {
+        var succeeded = true
         for location in translationCacheLocations
         where FileManager.default.fileExists(atPath: location.path) {
-            try? FileManager.default.removeItem(at: location)
-            AppLog.write("pdf-worker: removed the translation cache at \(location.path)")
+            do {
+                try FileManager.default.removeItem(at: location)
+                AppLog.write("pdf-worker: removed the translation cache at \(location.path)")
+            } catch {
+                succeeded = false
+                AppLog.write("pdf-worker: cache removal failed (\(error))")
+            }
         }
+        return succeeded
     }
 
     private static func directorySize(_ url: URL) -> Int64 {

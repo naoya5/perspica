@@ -3,7 +3,7 @@ import Observation
 import YakuCore
 
 /// One recognised block, placed on the overlay and painted (SPEC 4.6 の 3).
-struct OverlayBlock: Identifiable {
+struct OverlayBlock: Identifiable, Sendable {
     /// The block's index in reading order, top to bottom.
     let id: Int
     /// The text as read from the screen.
@@ -62,6 +62,7 @@ final class OverlayModel {
     }
 
     var phase: Phase = .idle
+    var translationFailure: TranslationCoordinator.TranslationFailure?
     var blocks: [OverlayBlock] = []
     /// Where the window claims clicks: the blocks and the bottom band.
     var hitRects: [CGRect] = []
@@ -103,6 +104,7 @@ final class OverlayModel {
 
     func reset() {
         blocks = []
+        translationFailure = nil
         hitRects = []
         toast = nil
         showSource = false

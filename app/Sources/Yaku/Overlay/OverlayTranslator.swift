@@ -17,7 +17,7 @@ final class OverlayTranslator {
     static let maximumConcurrent = 3
 
     /// Called on the main actor as each block's translation arrives.
-    var onTranslation: ((Int, String) -> Void)?
+    var onTranslation: ((Int, String) async -> Void)?
     /// Called once, when the last block has finished or the run was cancelled.
     var onFinished: ((Bool) -> Void)?
 
@@ -33,6 +33,7 @@ final class OverlayTranslator {
     /// Blocks of this run left untranslated on purpose: code, or a translation
     /// that only repeated the source. The original stays visible for those.
     private(set) var skippedCount = 0
+    private(set) var failure: TranslationCoordinator.TranslationFailure?
 
     /// The blocks this run is working through, in reading order, with the index
     /// each one has in the overlay's model. A second reading pass can add to it
@@ -48,6 +49,16 @@ final class OverlayTranslator {
     private var target = "ja"
     private var form: TranslationForm?
     private var model = ""
+    private var glossaryPairs: [GlossaryPair] = []
+    private struct Prepared {
+        let context: String?
+        let glossary: [GlossaryPair]
+        let cacheKey: String
+    }
+    private var prepared: [Int: Prepared] = [:]
+    private var cacheHits: [String: String] = [:]
+    private var pendingCache: [(key: String, target: String)] = []
+    private var pendingHistory: [HistoryItem] = []
 
     init(engine: EngineManager, store: TranslationStore) {
         self.engine = engine
@@ -70,6 +81,7 @@ final class OverlayTranslator {
         isRunning = true
         activeWorkers = 0
         skippedCount = 0
+        failure = nil
 
         let settings = AppSettings.shared
         let allTexts = blocks.map(\.text)
@@ -79,9 +91,12 @@ final class OverlayTranslator {
         // cannot be read as a different language (SPEC 5.1). Code is left out:
         // a page of English prose with Python in it was read as Dutch.
         sourceLanguage = LanguageDetector.detect(texts.joined(separator: " ")).code
-        target = LanguageDetector.defaultTarget(forSource: sourceLanguage)
+        let preferred = settings.defaultTargetLanguage
+        target = preferred != sourceLanguage ? preferred : LanguageDetector.defaultTarget(forSource: sourceLanguage)
         form = target == "ja" ? settings.defaultForm : nil
         model = ModelStore.cacheKey()
+        glossaryPairs = store.enabledGlossaryPairs()
+        prepare(items: queue)
 
         AppLog.write("overlay: translating \(blocks.count) block(s) "
             + "source=\(sourceLanguage ?? "?") target=\(target) "
@@ -97,6 +112,7 @@ final class OverlayTranslator {
     func extend(blocks: [OCRBlock], indexes: [Int]) {
         guard !blocks.isEmpty, blocks.count == indexes.count, generation > 0 else { return }
         queue.append(contentsOf: zip(indexes, blocks).map { (index: $0.0, block: $0.1) })
+        prepare(items: Array(queue.suffix(blocks.count)))
         remaining += blocks.count
         runTotal += blocks.count
         AppLog.write("overlay: \(blocks.count) more block(s) from the tiled pass")
@@ -119,24 +135,25 @@ final class OverlayTranslator {
                     self.cursor += 1
 
                     let item = self.queue[index]
-                    let context = OverlayContext.context(forIndex: item.index, in: self.queue.map(\.block.text))
-                    let glossary = GlossaryFilter.relevant(self.store.enabledGlossaryPairs(), in: item.block.text)
+                    guard let prepared = self.prepared[item.index] else { return }
                     let translation = await self.translate(
                         block: item.block,
                         index: item.index,
-                        context: context.isEmpty ? nil : context,
+                        context: prepared.context,
                         sourceLanguage: self.sourceLanguage,
                         target: self.target,
                         form: self.form,
-                        glossary: glossary,
-                        model: self.model
+                        glossary: prepared.glossary,
+                        cacheKey: prepared.cacheKey
                     )
                     guard token == self.generation else { return }
                     if let translation {
-                        self.onTranslation?(item.index, translation)
+                        await self.onTranslation?(item.index, translation)
                     }
+                    guard token == self.generation else { return }
                     self.remaining -= 1
                     if self.remaining == 0 {
+                        self.flushRecords()
                         self.isRunning = false
                         let seconds = CFAbsoluteTimeGetCurrent() - self.runStarted
                         AppLog.write(String(
@@ -161,6 +178,7 @@ final class OverlayTranslator {
     /// Stops every in-flight request (their connections close, which makes
     /// llama-server stop generating).
     func cancel(notify: Bool = true) {
+        flushRecords()
         guard isRunning || !workers.isEmpty else { return }
         generation += 1
         for task in workers { task.cancel() }
@@ -169,6 +187,8 @@ final class OverlayTranslator {
         queue = []
         cursor = 0
         remaining = 0
+        prepared = [:]
+        cacheHits = [:]
         isRunning = false
         AppLog.write("overlay: translation cancelled")
         if notify { onFinished?(false) }
@@ -184,7 +204,7 @@ final class OverlayTranslator {
         target: String,
         form: TranslationForm?,
         glossary: [GlossaryPair],
-        model: String
+        cacheKey: String
     ) async -> String? {
         let text = block.text
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
@@ -195,16 +215,7 @@ final class OverlayTranslator {
         }
         let blockStarted = CFAbsoluteTimeGetCurrent()
 
-        let cacheKey = CacheKey.key(
-            source: text,
-            context: context,
-            glossary: glossary,
-            sourceLanguage: sourceLanguage,
-            targetLanguage: target,
-            form: form,
-            model: model
-        )
-        if let hit = store.cached(key: cacheKey) {
+        if let hit = cacheHits[cacheKey] {
             AppLog.write("overlay: block \(index) cache=hit")
             if CodeLikeText.isUnchanged(source: text, translation: hit) {
                 skippedCount += 1
@@ -217,7 +228,10 @@ final class OverlayTranslator {
 
         // The engine is started before the capture when the hotkey is pressed,
         // but the first block can arrive before /health is 200.
-        guard await engine.ensureRunning(), let client = engine.client else {
+        guard await engine.ensureRunning(), engine.client != nil else {
+            if !Task.isCancelled {
+                failure = engine.lastStartFailure == .modelMissing ? .modelMissing : .engineStartFailed
+            }
             AppLog.write("overlay: engine unavailable for block \(index)")
             return nil
         }
@@ -230,7 +244,7 @@ final class OverlayTranslator {
             for (chunkIndex, chunk) in chunks.enumerated() {
                 try Task.checkCancellation()
                 let chunkGlossary = GlossaryFilter.relevant(glossary, in: chunk.text)
-                let prompt = PFML3.prompt(
+                let request = PFML3.request(
                     source: chunk.text,
                     sourceLanguage: sourceLanguage,
                     targetLanguage: target,
@@ -239,9 +253,8 @@ final class OverlayTranslator {
                     history: Array(pairs.suffix(PFML3.historyLimit)),
                     glossary: chunkGlossary
                 )
-                let request = CompletionRequest(prompt: prompt, source: chunk.text)
                 var buffer = ""
-                for try await piece in client.stream(request) {
+                for try await piece in engine.stream(request, priority: .screen) {
                     if Task.isCancelled { throw CancellationError() }
                     buffer += piece
                 }
@@ -253,18 +266,36 @@ final class OverlayTranslator {
                 }
             }
         } catch {
+            if !Task.isCancelled, failure == nil {
+                if let streamError = error as? EngineStreamError {
+                    switch streamError {
+                    case .startFailed:
+                        failure = engine.lastStartFailure == .modelMissing ? .modelMissing : .engineStartFailed
+                    case .engineStopped:
+                        failure = .engineStopped
+                    case .requestTooLarge:
+                        failure = .requestFailed
+                    }
+                } else {
+                    failure = .requestFailed
+                }
+            }
             AppLog.write("overlay: block \(index) failed: \(error)")
             return nil
         }
 
         let joined = TextChunker.join(finished, chunks: chunks)
-        guard !joined.isEmpty else { return nil }
+        guard !Task.isCancelled else { return nil }
+        guard !joined.isEmpty else {
+            if failure == nil { failure = .requestFailed }
+            return nil
+        }
         if CodeLikeText.isUnchanged(source: text, translation: joined) {
             skippedCount += 1
             AppLog.write("overlay: block \(index) left as is (the translation repeated the source)")
             return nil
         }
-        if chunks.count == 1 { store.store(key: cacheKey, target: joined) }
+        pendingCache.append((key: cacheKey, target: joined))
         record(text: text, translation: joined, sourceLanguage: sourceLanguage, target: target,
                form: form, seconds: CFAbsoluteTimeGetCurrent() - blockStarted)
         return joined
@@ -280,7 +311,7 @@ final class OverlayTranslator {
         seconds: Double
     ) {
         guard AppSettings.shared.keepHistory else { return }
-        store.addHistory(HistoryItem(
+        pendingHistory.append(HistoryItem(
             date: Date(),
             origin: "overlay",
             source: text,
@@ -292,5 +323,30 @@ final class OverlayTranslator {
             model: ModelStore.cacheKey(),
             seconds: seconds
         ))
+    }
+
+    private func prepare(items: [(index: Int, block: OCRBlock)]) {
+        let texts = queue.map(\.block.text)
+        var keys: [String] = []
+        for item in items {
+            let context = OverlayContext.context(forIndex: item.index, in: texts)
+            let glossary = GlossaryFilter.relevant(glossaryPairs, in: item.block.text)
+            let value = Prepared(
+                context: context.isEmpty ? nil : context, glossary: glossary,
+                cacheKey: CacheKey.key(source: item.block.text, context: context.isEmpty ? nil : context,
+                                       glossary: glossary, sourceLanguage: sourceLanguage,
+                                       targetLanguage: target, form: form, model: model)
+            )
+            prepared[item.index] = value
+            keys.append(value.cacheKey)
+        }
+        cacheHits.merge(store.cachedBatch(keys: keys)) { _, new in new }
+    }
+
+    private func flushRecords() {
+        if !pendingCache.isEmpty { store.storeBatch(pendingCache) }
+        pendingCache = []
+        if !pendingHistory.isEmpty { store.addHistoryBatch(pendingHistory) }
+        pendingHistory = []
     }
 }

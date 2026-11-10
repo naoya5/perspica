@@ -90,6 +90,22 @@ class TokenTests(unittest.TestCase):
         self.assertEqual(paragraph_translator.max_tokens_for("a" * 100000), 2048)
 
 
+class ChunkTests(unittest.TestCase):
+    def test_weighted_and_byte_bounds_preserve_text(self):
+        for source in ["a" * 12001, "日" * 6001, "😀" * 1201,
+                       "Sentence. " * 300, "文です。" * 700]:
+            chunks = paragraph_translator.split_text(source)
+            self.assertEqual("".join(chunk for chunk, _ in chunks), source.strip())
+            for chunk, _ in chunks:
+                self.assertLessEqual(sum(map(paragraph_translator.character_weight, chunk)), 1200)
+                self.assertLessEqual(len(chunk.encode()), 1800)
+
+    def test_sentence_and_paragraph_boundaries(self):
+        sentence = "a" * 650 + ". "
+        chunks = paragraph_translator.split_text(sentence * 2 + "\n\nLast.")
+        self.assertEqual(chunks, [(sentence, True), (sentence, False), ("Last.", True)])
+
+
 class GlossaryTests(unittest.TestCase):
     def test_only_terms_present_in_the_paragraph_are_kept(self):
         glossary = [

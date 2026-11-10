@@ -5,6 +5,7 @@ import YakuCore
 /// The 「押して登録する欄」 of the shortcut settings (SPEC 4.4). Built here
 /// rather than pulled in, because the app takes no external dependencies.
 struct ShortcutRecorder: NSViewRepresentable {
+    var accessibleName = "ショートカット"
     var shortcut: Shortcut?
     /// True when this shortcut overlaps another one (SPEC 4.4: 重なったら警告).
     var conflicted: Bool
@@ -17,6 +18,9 @@ struct ShortcutRecorder: NSViewRepresentable {
         let view = RecorderView()
         view.onChange = onChange
         view.onClear = onClear
+        view.setAccessibilityElement(true)
+        view.setAccessibilityRole(.button)
+        view.focusRingType = .exterior
         return view
     }
 
@@ -26,6 +30,9 @@ struct ShortcutRecorder: NSViewRepresentable {
         view.registrationFailed = registrationFailed
         view.onChange = onChange
         view.onClear = onClear
+        view.setAccessibilityLabel(accessibleName)
+        view.setAccessibilityValue(shortcut?.display ?? "なし")
+        view.setAccessibilityHelp("Return またはスペースで登録を開始、Esc でやめる")
         view.needsDisplay = true
     }
 
@@ -40,6 +47,16 @@ struct ShortcutRecorder: NSViewRepresentable {
 
         override var acceptsFirstResponder: Bool { true }
         override var canBecomeKeyView: Bool { true }
+        override var focusRingMaskBounds: NSRect { bounds }
+        override func drawFocusRingMask() {
+            NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+        }
+
+        override func accessibilityPerformPress() -> Bool {
+            window?.makeFirstResponder(self)
+            isRecording = true
+            return true
+        }
 
         override var intrinsicContentSize: NSSize { NSSize(width: 130, height: 22) }
 
@@ -86,6 +103,16 @@ struct ShortcutRecorder: NSViewRepresentable {
         }
 
         override func keyDown(with event: NSEvent) {
+            if event.keyCode == 48, event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+                isRecording = false
+                if event.modifierFlags.contains(.shift) { window?.selectPreviousKeyView(nil) }
+                else { window?.selectNextKeyView(nil) }
+                return
+            }
+            if !isRecording, event.keyCode == 36 || event.keyCode == 49 {
+                isRecording = true
+                return
+            }
             guard isRecording else {
                 super.keyDown(with: event)
                 return
@@ -142,6 +169,7 @@ struct ShortcutRow: View {
             }
             Spacer()
             ShortcutRecorder(
+                accessibleName: "\(title)のショートカット",
                 shortcut: current,
                 conflicted: conflicted,
                 registrationFailed: registrationFailed,
@@ -156,6 +184,7 @@ struct ShortcutRow: View {
             }
             .buttonStyle(.borderless)
             .help("既定に戻す")
+            .accessibilityLabel("\(title)のショートカットを既定に戻す")
         }
     }
 

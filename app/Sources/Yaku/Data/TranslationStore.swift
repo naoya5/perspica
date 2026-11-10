@@ -8,9 +8,9 @@ import YakuCore
 /// failure modes.
 @MainActor
 final class TranslationStore {
-    /// SPEC 5.3 caps the cache at 5,000 entries. History uses the same cap so
-    /// the store cannot grow without bound even with retention off.
-    static let maximumHistory = 5000
+    /// SPEC 5.3 caps the cache at 5,000 entries. History has no count cap:
+    /// SPEC 4.4 offers 「ずっと」 as a retention period, so only the retention
+    /// setting (or the user) removes rows.
     static let maximumCache = 5000
 
     let container: ModelContainer
@@ -20,6 +20,9 @@ final class TranslationStore {
     /// so the manager can say which file and where the log is. Nil when the
     /// store opened, or when memory was asked for.
     private(set) var unopenedLocation: URL?
+    /// The enabled glossary pairs, read once and kept until a glossary row
+    /// changes. Every translation and every overlay block asks for them.
+    private var enabledGlossaryMemo: [GlossaryPair]?
 
     init(location: URL? = nil, inMemory: Bool = false) {
         let made = Self.makeContainer(location: inMemory ? nil : (location ?? AppPaths.storeURL), inMemory: inMemory)
@@ -57,7 +60,14 @@ final class TranslationStore {
 
     func addHistory(_ item: HistoryItem) {
         context.insert(item)
-        trimHistory()
+        save()
+    }
+
+    /// Inserts several rows with one save (the overlay records a whole screen
+    /// of blocks at once).
+    func addHistoryBatch(_ items: [HistoryItem]) {
+        guard !items.isEmpty else { return }
+        for item in items { context.insert(item) }
         save()
     }
 
@@ -67,7 +77,7 @@ final class TranslationStore {
 
     /// Newest first, optionally filtered by a substring of the source or the
     /// translation (SPEC 4.4: 検索できる一覧). The filter runs in the store, so
-    /// it reaches every kept row (up to `maximumHistory`), not only the newest
+    /// it reaches every kept row, not only the newest
     /// `limit` of them.
     func history(search: String = "", limit: Int = 1000) -> [HistoryItem] {
         let needle = search.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -86,11 +96,20 @@ final class TranslationStore {
         save()
     }
 
-    func deleteAllHistory() {
-        let items = (try? context.fetch(FetchDescriptor<HistoryItem>())) ?? []
-        for item in items { context.delete(item) }
-        save()
-        AppLog.write("store: deleted \(items.count) history rows")
+    /// Returns false when the rows could not be read or the deletion could not
+    /// be saved, so the privacy control can say the data is still there.
+    @discardableResult
+    func deleteAllHistory() -> Bool {
+        do {
+            try context.delete(model: HistoryItem.self)
+            try context.save()
+            AppLog.write("store: deleted all history rows")
+            return true
+        } catch {
+            context.rollback()
+            AppLog.write("store: deleting history failed \(error)")
+            return false
+        }
     }
 
     /// Drops rows older than the retention setting (SPEC 5.3: 期間を過ぎたものは
@@ -105,16 +124,6 @@ final class TranslationStore {
         save()
         AppLog.write("store: pruned \(old.count) history rows older than \(days) days")
         return old.count
-    }
-
-    private func trimHistory() {
-        var descriptor = FetchDescriptor<HistoryItem>(sortBy: [SortDescriptor(\.date, order: .forward)])
-        let total = (try? context.fetchCount(descriptor)) ?? 0
-        guard total > Self.maximumHistory else { return }
-        descriptor.fetchLimit = total - Self.maximumHistory
-        guard let oldest = try? context.fetch(descriptor) else { return }
-        for item in oldest { context.delete(item) }
-        AppLog.write("store: trimmed \(oldest.count) history rows")
     }
 
     // MARK: cache
@@ -137,15 +146,62 @@ final class TranslationStore {
         save()
     }
 
+    /// Looks up many keys with one fetch and one save. Keys without an entry
+    /// are absent from the result.
+    func cachedBatch(keys: [String]) -> [String: String] {
+        let unique = Array(Set(keys))
+        guard !unique.isEmpty else { return [:] }
+        let descriptor = FetchDescriptor<CacheEntry>(predicate: #Predicate { unique.contains($0.key) })
+        guard let entries = try? context.fetch(descriptor), !entries.isEmpty else { return [:] }
+        let now = Date()
+        var result: [String: String] = [:]
+        for entry in entries {
+            entry.lastUsed = now
+            result[entry.key] = entry.target
+        }
+        save()
+        return result
+    }
+
+    /// Stores many translations with one fetch, one trim and one save. A later
+    /// entry for the same key wins.
+    func storeBatch(_ entries: [(key: String, target: String)]) {
+        guard !entries.isEmpty else { return }
+        let keys = Array(Set(entries.map(\.key)))
+        let descriptor = FetchDescriptor<CacheEntry>(predicate: #Predicate { keys.contains($0.key) })
+        var existing: [String: CacheEntry] = [:]
+        for entry in (try? context.fetch(descriptor)) ?? [] { existing[entry.key] = entry }
+        let now = Date()
+        for (key, target) in entries {
+            if let entry = existing[key] {
+                entry.target = target
+                entry.lastUsed = now
+            } else {
+                let entry = CacheEntry(key: key, target: target, lastUsed: now)
+                context.insert(entry)
+                existing[key] = entry
+            }
+        }
+        trimCache()
+        save()
+    }
+
     var cacheCount: Int {
         (try? context.fetchCount(FetchDescriptor<CacheEntry>())) ?? 0
     }
 
-    func deleteAllCache() {
-        let entries = (try? context.fetch(FetchDescriptor<CacheEntry>())) ?? []
-        for entry in entries { context.delete(entry) }
-        save()
-        AppLog.write("store: deleted \(entries.count) cache rows")
+    @discardableResult
+    func deleteAllCache() -> Bool {
+        do {
+            try context.delete(model: CacheEntry.self)
+            try context.save()
+            AppLog.write("store: deleted all cache rows")
+            return true
+        } catch {
+            context.rollback()
+            AppLog.write("store: deleting cache failed \(error)")
+            return false
+        }
     }
 
     private func entry(for key: String) -> CacheEntry? {
@@ -172,6 +228,7 @@ final class TranslationStore {
         let count = glossaryCount
         guard count == 0 else { return }
         for entry in GlossaryEntry.samples() { context.insert(entry) }
+        enabledGlossaryMemo = nil
         save()
         AppLog.write("store: seeded \(GlossaryEntry.samples().count) glossary samples (disabled)")
     }
@@ -189,13 +246,17 @@ final class TranslationStore {
 
     /// The enabled entries, in table order, as the pairs the prompt uses.
     func enabledGlossaryPairs() -> [GlossaryPair] {
-        glossary().filter(\.enabled).map(\.pair)
+        if let enabledGlossaryMemo { return enabledGlossaryMemo }
+        let pairs = glossary().filter(\.enabled).map(\.pair)
+        enabledGlossaryMemo = pairs
+        return pairs
     }
 
     func addGlossaryEntry(source: String, target: String, enabled: Bool = true) -> GlossaryEntry {
         let order = (glossary().map(\.sortOrder).max() ?? -1) + 1
         let entry = GlossaryEntry(source: source, target: target, enabled: enabled, sortOrder: order)
         context.insert(entry)
+        enabledGlossaryMemo = nil
         save()
         return entry
     }
@@ -211,12 +272,14 @@ final class TranslationStore {
             ))
             order += 1
         }
+        enabledGlossaryMemo = nil
         save()
         AppLog.write("store: imported \(rows.count) glossary rows")
     }
 
     func deleteGlossaryEntries(_ entries: [GlossaryEntry]) {
         for entry in entries { context.delete(entry) }
+        enabledGlossaryMemo = nil
         save()
     }
 
@@ -229,6 +292,7 @@ final class TranslationStore {
     /// Writes the table's new order (drag and drop in the glossary view).
     func reorderGlossary(_ entries: [GlossaryEntry]) {
         for (position, entry) in entries.enumerated() { entry.sortOrder = position }
+        enabledGlossaryMemo = nil
         save()
     }
 
@@ -255,6 +319,9 @@ final class TranslationStore {
     /// Flushes pending edits (the glossary table edits rows in place, and the
     /// PDF job's progress is written as it runs).
     func saveNow() {
+        // Glossary rows are edited in place and then saved through here, so
+        // the memo cannot tell whether one of them changed.
+        enabledGlossaryMemo = nil
         save()
     }
 

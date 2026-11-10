@@ -75,14 +75,4 @@ enum EngineWatchdog {
     static func clearPidFile() {
         try? FileManager.default.removeItem(at: AppPaths.watchdogPidFile)
     }
-
-    /// Waits up to `timeout` for the shell to write the server's pid.
-    static func waitForServerPid(timeout: TimeInterval = 3) -> pid_t? {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let pid = serverPid(), pid > 0 { return pid }
-            usleep(100_000)
-        }
-        return nil
-    }
 }

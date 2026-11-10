@@ -5,6 +5,19 @@ import Testing
 
 @Suite("Overlay text sizing")
 struct OverlayFitTests {
+    @Test("prefix fitting shapes at most eighteen prefixes")
+    func boundedPrefixMeasurement() {
+        var probes = 0
+        let count = OverlayTextFit.firstLineCount(
+            String(repeating: "a", count: 100_000), width: 100, size: 10, height: 1
+        ) { text, _, _ in
+            probes += 1
+            return text.count <= 37 ? 1 : 2
+        }
+        #expect(count == 37)
+        #expect(probes <= 18)
+    }
+
     @Test("the font size follows the original line height")
     func originalFontSize() {
         // A 20pt line is drawn at about 16.7pt.

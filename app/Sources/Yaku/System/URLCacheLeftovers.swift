@@ -18,16 +18,21 @@ enum URLCacheLeftovers {
     }
 
     /// Does nothing under `--data-dir`, which must not touch the user's files.
-    static func remove() {
-        guard !AppPaths.isUsingDataDirectory else { return }
+    /// Returns false when a leftover item exists and could not be removed.
+    @discardableResult
+    static func remove() -> Bool {
+        guard !AppPaths.isUsingDataDirectory else { return true }
         var removed = 0
+        var failed = 0
         for folder in folders {
             for name in names {
                 let url = folder.appendingPathComponent(name)
                 guard FileManager.default.fileExists(atPath: url.path) else { continue }
-                if (try? FileManager.default.removeItem(at: url)) != nil { removed += 1 }
+                if (try? FileManager.default.removeItem(at: url)) != nil { removed += 1 } else { failed += 1 }
             }
         }
         if removed > 0 { AppLog.write("url cache: removed \(removed) leftover item(s)") }
+        if failed > 0 { AppLog.write("url cache: could not remove \(failed) item(s)") }
+        return failed == 0
     }
 }

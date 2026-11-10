@@ -3,6 +3,9 @@ import Foundation
 public enum EngineError: Error, Equatable {
     case notHTTP
     case httpStatus(Int)
+    /// The response ended before `data: [DONE]`: the connection dropped or
+    /// the server stopped, so the text so far is not the whole answer.
+    case incomplete
 }
 
 /// Talks to one llama-server instance over localhost. The API key is generated
@@ -55,6 +58,22 @@ public struct EngineClient: Sendable {
         }
     }
 
+    /// Like `healthStatus`, but tells a closed port apart from a slow answer.
+    public func healthProbe(timeout: TimeInterval) async -> EngineHealthProbe {
+        var request = URLRequest(url: baseURL.appendingPathComponent("health"))
+        request.timeoutInterval = timeout
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard let status = (response as? HTTPURLResponse)?.statusCode else { return .timedOut }
+            return .status(status)
+        } catch let error as URLError where error.code == .cannotConnectToHost {
+            return .refused
+        } catch {
+            return .timedOut
+        }
+    }
+
     /// Streams `choices[0].text` pieces as they arrive. Cancelling the task
     /// closes the connection, which makes llama-server stop generating.
     public func stream(_ completion: CompletionRequest) -> AsyncThrowingStream<String, Error> {
@@ -101,13 +120,104 @@ public struct EngineClient: Sendable {
                     for event in parser.finish() {
                         if client.handle(event, continuation) { return }
                     }
-                    continuation.finish()
+                    if Task.isCancelled {
+                        continuation.finish()
+                    } else {
+                        continuation.finish(throwing: EngineError.incomplete)
+                    }
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// The engine's exact token count for a prompt (`POST /tokenize`), with
+    /// the BOS the server adds to a completion and PFML3's special tokens
+    /// parsed as single tokens, as `/v1/completions` does.
+    public func tokenCount(_ prompt: String, timeout: TimeInterval = 5) async throws -> Int {
+        try await tokenize(prompt, timeout: timeout).count
+    }
+
+    /// The token ids `tokenCount` counts.
+    public func tokenize(_ prompt: String, timeout: TimeInterval = 5) async throws -> [Int] {
+        var request = URLRequest(url: baseURL.appendingPathComponent("tokenize"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "content": prompt,
+            "add_special": true,
+            "parse_special": true,
+        ])
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw EngineError.notHTTP }
+        guard http.statusCode == 200 else { throw EngineError.httpStatus(http.statusCode) }
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tokens = object["tokens"] as? [Int] else { throw EngineError.notHTTP }
+        return tokens
+    }
+
+    /// Posts a ready `/v1/completions` body and streams the response bytes as
+    /// they come, one SSE line (or at most 16 KB) per piece. Used by the PDF
+    /// proxy, which hands the bytes to the worker unchanged. A status other
+    /// than 200 is thrown before any piece. With `expectsDone` (a streamed
+    /// completion), a body that ends without `data: [DONE]` throws
+    /// `EngineError.incomplete` after the bytes it did carry.
+    public func rawCompletion(body: Data, expectsDone: Bool) -> AsyncThrowingStream<Data, Error> {
+        let client = self
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var request = URLRequest(url: client.baseURL.appendingPathComponent("v1/completions"))
+                    request.httpMethod = "POST"
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.setValue("Bearer \(client.apiKey)", forHTTPHeaderField: "Authorization")
+                    request.httpBody = body
+                    request.timeoutInterval = 180
+                    let (bytes, response) = try await client.session.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse else { throw EngineError.notHTTP }
+                    guard http.statusCode == 200 else { throw EngineError.httpStatus(http.statusCode) }
+                    var chunk: [UInt8] = []
+                    chunk.reserveCapacity(1024)
+                    var sawDone = false
+                    let doneLine = Array("data: [DONE]".utf8)
+                    for try await byte in bytes {
+                        if Task.isCancelled { break }
+                        chunk.append(byte)
+                        guard byte == 0x0A || chunk.count >= 16 * 1024 else { continue }
+                        if expectsDone, !sawDone, Self.isLine(chunk, doneLine) { sawDone = true }
+                        continuation.yield(Data(chunk))
+                        chunk.removeAll(keepingCapacity: true)
+                    }
+                    if Task.isCancelled {
+                        continuation.finish()
+                        return
+                    }
+                    if !chunk.isEmpty {
+                        if expectsDone, !sawDone, Self.isLine(chunk, doneLine) { sawDone = true }
+                        continuation.yield(Data(chunk))
+                    }
+                    if expectsDone, !sawDone {
+                        continuation.finish(throwing: EngineError.incomplete)
+                    } else {
+                        continuation.finish()
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// True when `line` is `expected` followed only by `\r` / `\n`.
+    static func isLine(_ line: [UInt8], _ expected: [UInt8]) -> Bool {
+        var end = line.count
+        while end > 0, line[end - 1] == 0x0A || line[end - 1] == 0x0D { end -= 1 }
+        return end == expected.count && line[0..<end].elementsEqual(expected)
     }
 
     /// Returns true when the stream is finished.

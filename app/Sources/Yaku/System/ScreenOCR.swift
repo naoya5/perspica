@@ -10,6 +10,8 @@ import YakuCore
 /// itself reports normalised boxes with the origin at the bottom left, so the
 /// conversion happens here and nowhere else.
 enum ScreenOCR {
+    /// Keep 4K/5K captures from launching all 8/15 Vision requests at once.
+    static let maximumConcurrentTiles = 3
     enum OCRError: Error, Sendable {
         case failed(String)
 
@@ -56,14 +58,24 @@ enum ScreenOCR {
         guard tiles.count > 1 else { return [] }
 
         return try await withThrowingTaskGroup(of: [OCRLine].self) { group in
-            for tile in tiles {
-                guard let piece = image.cropping(to: tile) else { continue }
+            let workerCount = min(maximumConcurrentTiles, tiles.count)
+            for worker in 0..<workerCount {
                 group.addTask(priority: .userInitiated) {
-                    try recognize(in: piece, language: requested, offset: tile.origin)
+                    var lines: [OCRLine] = []
+                    for index in stride(from: worker, to: tiles.count, by: workerCount) {
+                        try Task.checkCancellation()
+                        let tile = tiles[index]
+                        guard let piece = image.cropping(to: tile) else { continue }
+                        lines += try recognize(in: piece, language: requested, offset: tile.origin)
+                    }
+                    return lines
                 }
             }
             var found: [[OCRLine]] = []
-            for try await lines in group { found.append(lines) }
+            while let lines = try await group.next() {
+                try Task.checkCancellation()
+                found.append(lines)
+            }
             return OCRTiling.merge(found)
         }
     }
@@ -92,6 +104,7 @@ enum ScreenOCR {
         } catch {
             throw OCRError.failed("\(error)")
         }
+        try Task.checkCancellation()
 
         let width = CGFloat(image.width)
         let height = CGFloat(image.height)

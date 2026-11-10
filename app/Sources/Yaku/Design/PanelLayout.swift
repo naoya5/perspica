@@ -31,8 +31,6 @@ enum PanelLayout {
     static let translationFontSize: CGFloat = 15
     /// SPEC 4.2: 行間 1.45 倍.
     static let translationLineSpacing: CGFloat = 15 * 0.45
-    /// Height of one line of the source field, including its own padding.
-    static let sourceLineHeight: CGFloat = 21
     /// The empty state's source field: about two lines, so the panel does not
     /// look like a blank face.
     static let emptySourceHeight: CGFloat = 56

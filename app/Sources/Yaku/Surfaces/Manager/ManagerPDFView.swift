@@ -196,6 +196,10 @@ struct ManagerPDFView: View {
             case .failed, .cancelled:
                 Button("もう一度") { pdf.retry(job) }
                     .controlSize(.small)
+                if job.jobState == .failed {
+                    Button("ログを見る") { NSWorkspace.shared.open(AppPaths.logsDirectory) }
+                        .controlSize(.small)
+                }
             }
         }
     }
@@ -251,7 +255,9 @@ struct ManagerPDFView: View {
         guard let provider = providers.first else { return false }
         _ = provider.loadObject(ofClass: URL.self) { url, _ in
             guard let url else { return }
-            Task { @MainActor in _ = await pdf.enqueue(url: url) }
+            Task { @MainActor in
+                _ = await (NSApp.delegate as? AppDelegate)?.enqueuePDF(url)
+            }
         }
         return true
     }

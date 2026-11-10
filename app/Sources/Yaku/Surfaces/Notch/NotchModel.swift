@@ -60,8 +60,6 @@ final class NotchModel {
 
     // MARK: geometry
 
-    var viewMode: NotchState { state }
-
     var islandSize: CGSize {
         switch state {
         case .closed:
@@ -184,7 +182,9 @@ final class NotchModel {
     func rejectDrop() {
         dropMessage = "PDF だけ対応しています"
         dropHover = false
-        withAnimation(.easeInOut(duration: 0.30)) { dropShake += 1 }
+        if !AppearanceOverrides.reduceMotion {
+            withAnimation(.easeInOut(duration: 0.30)) { dropShake += 1 }
+        }
         dropReturn?.cancel()
         dropReturn = Task {
             do {
