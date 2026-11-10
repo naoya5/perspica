@@ -2,7 +2,7 @@
 
 - 版: 1.0（2026-11-06）。このファイルが正本。実装・レビューはここに合わせ、変えるときは先にここを直す
 - 対象: macOS 26 以降 / Apple silicon。SwiftUI + AppKit
-- 前提にした試作: `lab/plamo-pdf-translate/notch-app/`（`swiftui/` を土台にする。`SPEC.md` はノッチ部分の詳しい見た目の元）
+- 前提にした試作: SwiftUI と GPUI で同じノッチの画面を作って比べた試作（このリポジトリには含まない）。SwiftUI が容量・メモリ・文字の質で上だったので土台にした
 - 名前: 2026-11-09 に Yaku から Perspica に改名した。変えたのは見える名前（`Perspica.app`、表示名、画面の文言、アイコン）だけ。バンドル ID `dev.naoya.yaku`、データとログの場所（`Yaku/`）、`Yaku.store`・`Yaku.lock`、Swift のモジュール名、実行ファイル名、署名の名前は Yaku のまま（許可とデータを引き継ぐため）
 - 用語: 「パネル」= メニューバーから開く小さな窓。「HUD」= 選んだ文のそばに出る訳の窓。「管理画面」= 通常の窓。「島」= ノッチに重ねる黒い形。「エンジン」= llama-server。「PDF ワーカー」= PDF を処理する Python の子プロセス
 
@@ -176,7 +176,7 @@ PFN の PLaMo 3 Translate を Mac の中だけで動かし、文・PDF・画面�
 
 初めて起動したとき、管理画面の大きさで 1 枚の案内の窓を出す（ページ送り、各ページの下に「続ける」）:
 1. ようこそ（この Mac の中で訳すことの説明）
-2. モデルの取得（0.8B を推す。ライセンスの表示と同意、取得の進み具合）。開発中は既存のファイルを選べる（`lab/plamo-pdf-translate/models/...gguf`）
+2. モデルの取得（0.8B を推す。ライセンスの表示と同意、取得の進み具合）。手元の GGUF を「既存のファイルを使う」で選べる。開発中は環境変数 `YAKU_DEV_MODEL` でも渡せる
 3. アクセシビリティの許可（F1 用。あとでもよい）
 4. メニューバーの場所の案内（アイコンを指す絵）と、3 つのショートカット
 画面収録の許可は、初めて ⌃⌥O を押したときに聞く。PDF ワーカーは、初めて PDF を落としたときに聞く。
@@ -304,7 +304,7 @@ PFN の PLaMo 3 Translate を Mac の中だけで動かし、文・PDF・画面�
 
 ### 8.2 PDF ワーカー
 - 中身: Python 3.12 + `pdf2zh-next==2.9.0` + `bitstring<5`（試作で確かめた組み合わせ。新しい bitstring だと起動できない）
-- 導入: 初めて PDF を受け取ったとき「PDF の翻訳には追加の部品（約 ___MB、取得に数分）が必要です」と聞き、`uv` で `~/Library/Application Support/Yaku/pdf-worker/` に入れる（大きさは M3 で測って文言に入れる）。開発中は `lab/plamo-pdf-translate/.venv` を使える
+- 導入: 初めて PDF を受け取ったとき「PDF の翻訳には追加の部品（約 ___MB、取得に数分）が必要です」と聞き、`uv` で `~/Library/Application Support/Yaku/pdf-worker/` に入れる（大きさは M3 で測って文言に入れる）。開発中は設定の「Python のパス」か `--pdf-python` で別の環境を使える
 - 起動: `pdf-worker/bin/python translate_pdf.py <入力> --output <出力フォルダ> [--pages] --engine-url <URL> --context <題名> --form <plain|polite> --glossary <JSON ファイル> [--qps 24] [--pool-max-workers 4] [--primary-font-family auto]`。API キーは引数ではなく環境変数 `YAKU_ENGINE_API_KEY` で渡す（プロセスの引数一覧に見えないようにするため）
   - `--qps`（既定 24）と `--pool-max-workers`（既定 4）: 律速はモデルではなく pdf2zh-next のレート制限なので上げた（M6。17 ページで 99.4 秒 → 57.7 秒、訳文は qps 3 と 422/422 行一致）
   - `--primary-font-family`（既定 `auto`）: 訳文の字体。`auto` は元の PDF のフォントから serif / sans-serif を選ぶ（`pdf_font_family.py`。M6 で訳文が明朝体に化けるバグを直した）
