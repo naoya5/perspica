@@ -404,8 +404,8 @@ final class OverlayController {
     /// One recognised block placed on the overlay, with its colours, its fitted
     /// font size and its weight.
     private struct Appearance: Sendable {
-        let background: RGBColor
-        let textColor: RGBColor
+        let background: YakuCore.RGBColor
+        let textColor: YakuCore.RGBColor
         let isBold: Bool
     }
 
