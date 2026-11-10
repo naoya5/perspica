@@ -2,6 +2,29 @@ import Foundation
 import Testing
 @testable import YakuCore
 
+@Suite("PDF progress coalescing")
+struct PDFProgressGateTests {
+    @Test("small updates accumulate against the last published value")
+    func accumulatedProgress() {
+        var gate = PDFProgressGate()
+        #expect(gate.accepts(value: 0, stage: "Translate"))
+        #expect(!gate.accepts(value: 0.004, stage: "Translate"))
+        #expect(!gate.accepts(value: 0.008, stage: "Translate"))
+        #expect(gate.accepts(value: 0.012, stage: "Translate"))
+        #expect(!gate.accepts(value: 0.013, stage: "Translate"))
+    }
+
+    @Test("stage changes and completion publish, invalid and duplicate values do not")
+    func stageAndCompletion() {
+        var gate = PDFProgressGate()
+        #expect(gate.accepts(value: 0.995, stage: "Translate"))
+        #expect(gate.accepts(value: 0.995, stage: "Save"))
+        #expect(gate.accepts(value: 1, stage: "Save"))
+        #expect(!gate.accepts(value: 1, stage: "Save"))
+        #expect(!gate.accepts(value: .nan, stage: "Save"))
+    }
+}
+
 @Suite("PDF output names")
 struct PDFOutputNameTests {
     @Test("the mono name is the original name plus .ja.pdf")

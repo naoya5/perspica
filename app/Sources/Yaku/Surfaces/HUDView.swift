@@ -42,7 +42,6 @@ struct HUDView: View {
     var actions = HUDActions()
 
     @State private var copied = false
-    @State private var reveal = TextRevealDriver()
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -60,13 +59,10 @@ struct HUDView: View {
         )
         .onAppear {
             model.contentHeight = desiredHeight
-            reveal.finish(to: coordinator.hud.translation.count)
         }
         .onChange(of: desiredHeight) { _, new in
-            withAnimation(.easeOut(duration: 0.16)) { model.contentHeight = new }
-        }
-        .onChange(of: coordinator.hud.translation) { _, new in
-            reveal.update(count: new.count)
+            if reduceMotion { model.contentHeight = new }
+            else { withAnimation(.easeOut(duration: 0.16)) { model.contentHeight = new } }
         }
         .copiedMark(count: coordinator.hud.copyCount, copied: $copied)
     }
@@ -160,11 +156,11 @@ struct HUDView: View {
             case .translating, .done:
                 ScrollViewReader { proxy in
                     ScrollView(.vertical) {
-                        Text(displayText)
-                            .font(.system(size: HUDLayout.fontSize))
-                            .lineSpacing(HUDLayout.lineSpacing)
-                            .textRenderer(FadeInTextRenderer(revealed: reveal.revealed))
-                            .textSelection(.enabled)
+                        StreamedTranslationText(
+                            state: coordinator.hud, visible: model.isVisible,
+                            showSource: coordinator.optionDown,
+                            fontSize: HUDLayout.fontSize, lineSpacing: HUDLayout.lineSpacing
+                        )
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .id("translation")
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
@@ -190,10 +186,6 @@ struct HUDView: View {
         )
     }
 
-    private var displayText: String {
-        coordinator.optionDown ? coordinator.hud.sourceText : coordinator.hud.translation
-    }
-
     private func failureView(_ failure: TranslationCoordinator.TranslationFailure) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -203,8 +195,17 @@ struct HUDView: View {
                 Text(failure.message)
                     .font(.system(size: 13))
                     .fixedSize(horizontal: false, vertical: true)
-                Button("もう一度") { coordinator.retryHUD() }
-                    .controlSize(.small)
+                HStack {
+                    if failure == .modelMissing {
+                        Button("モデルを取得") { WindowBridge.shared.openManager(page: .models) }
+                    } else {
+                        Button("もう一度") { coordinator.retryHUD() }
+                    }
+                    if failure.showsLogButton {
+                        Button("ログを見る") { NSWorkspace.shared.open(AppPaths.logsDirectory) }
+                    }
+                }
+                .controlSize(.small)
             }
             Spacer(minLength: 0)
         }
@@ -255,7 +256,9 @@ struct HUDView: View {
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .focusable()
         .help(help)
+        .accessibilityHint("Control と Tab で次の操作、Shift と Tab で前の操作")
         .accessibilityLabel(label)
     }
 }

@@ -9,6 +9,7 @@ struct OnboardingView: View {
     let initialPage: Int
 
     @State private var page = 0
+    private var accessibilityGranted: Bool { PermissionState.shared.accessibilityGranted }
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -176,14 +177,14 @@ struct OnboardingView: View {
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
-                    Image(systemName: AccessibilityPermission.isTrusted
+                    Image(systemName: accessibilityGranted
                           ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(AccessibilityPermission.isTrusted ? .green : .secondary)
-                    Text(AccessibilityPermission.isTrusted ? "許可されています" : "まだ許可されていません")
+                        .foregroundStyle(accessibilityGranted ? .green : .secondary)
+                    Text(accessibilityGranted ? "許可されています" : "まだ許可されていません")
                         .font(.system(size: 13))
                     Spacer()
                     Button("システム設定を開く") { AccessibilityPermission.openSettings() }
-                        .disabled(AccessibilityPermission.isTrusted)
+                        .disabled(accessibilityGranted)
                 }
                 Text("「システム設定 > プライバシーとセキュリティ > アクセシビリティ」で Perspica を入れます。画面収録の許可は、初めて ⌃⌥O を押したときに聞きます。")
                     .font(.system(size: 11))

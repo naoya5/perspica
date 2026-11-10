@@ -59,7 +59,7 @@ enum SelectionReader {
 
         // SPEC 10: fall back to ⌘C, wait at most 150ms for the pasteboard to
         // change, then put the old contents back.
-        if let text = copyFallback() {
+        if let text = copyFallback(from: focused) {
             let context = contextText(of: focused, frontApp: frontApp, windowTitle: windowTitle)
             AppLog.write("selection: ⌘C fallback read \(text.count) chars")
             return SelectionCapture(
@@ -82,6 +82,7 @@ enum SelectionReader {
     /// the element refuses, the translation goes through the pasteboard and a
     /// synthetic ⌘V, and the old clipboard contents are restored.
     static func replace(_ capture: SelectionCapture, with text: String) -> Bool {
+        guard isCurrentTarget(capture.element, appPID: capture.appPID) else { return false }
         let result = AXUIElementSetAttributeValue(
             capture.element,
             kAXSelectedTextAttribute as CFString,
@@ -92,7 +93,18 @@ enum SelectionReader {
             return true
         }
         AppLog.write("replace: kAXSelectedTextAttribute failed (\(result)); trying ⌘V")
-        return pasteFallback(text)
+        return pasteFallback(text, into: capture)
+    }
+
+    /// Never send a command or write into a stale capture after focus changed.
+    private static func isCurrentTarget(_ element: AXUIElement, appPID: pid_t) -> Bool {
+        guard AccessibilityPermission.isTrusted,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == appPID,
+              let focused = focusedElement(),
+              CFEqual(focused, element),
+              pid(of: focused) == appPID,
+              !isSecure(focused) else { return false }
+        return true
     }
 
     // MARK: accessibility
@@ -195,11 +207,29 @@ enum SelectionReader {
         return result == .success && settable.boolValue
     }
 
+    /// SPEC 5.3: password fields are never read. AppKit reports them by
+    /// role; web views and many other apps report a text field whose
+    /// subrole is `AXSecureTextField`, so both are checked.
+    /// The focused element can be a piece inside the field (a web view's
+    /// inner editor), so a few ancestors are checked too.
     private static func isSecure(_ element: AXUIElement) -> Bool {
+        let secure = kAXSecureTextFieldSubrole as String
+        var current: AXUIElement? = element
+        for _ in 0..<4 {
+            guard let candidate = current else { return false }
+            if stringAttribute(kAXRoleAttribute, of: candidate) == secure
+                || stringAttribute(kAXSubroleAttribute, of: candidate) == secure {
+                return true
+            }
+            current = parent(of: candidate)
+        }
+        return false
+    }
+
+    private static func stringAttribute(_ name: String, of element: AXUIElement) -> String? {
         var value: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value)
-        guard result == .success, let role = value as? String else { return false }
-        return role == "AXSecureTextField"
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
+        return value as? String
     }
 
     private static func pid(of element: AXUIElement) -> pid_t {
@@ -256,12 +286,13 @@ enum SelectionReader {
 
     // MARK: clipboard fallbacks
 
-    private static func copyFallback() -> String? {
+    private static func copyFallback(from element: AXUIElement) -> String? {
         let pasteboard = NSPasteboard.general
         let saved = snapshot(pasteboard)
         let before = pasteboard.changeCount
 
-        sendCommand(keyCode: 0x08) // C
+        guard isCurrentTarget(element, appPID: pid(of: element)),
+              sendCommand(keyCode: 0x08) else { return nil } // C
 
         var changed = false
         let deadline = Date().addingTimeInterval(0.15)
@@ -283,18 +314,48 @@ enum SelectionReader {
         return text
     }
 
-    private static func pasteFallback(_ text: String) -> Bool {
+    /// Pastes through the pasteboard. A posted ⌘V is not proof that the app
+    /// pasted, so success is reported only when the field visibly changed:
+    /// its value or its selection range. A field that exposes neither cannot
+    /// be confirmed and is reported as not replaced (the HUD stays open).
+    private static func pasteFallback(_ text: String, into capture: SelectionCapture) -> Bool {
+        let element = capture.element
+        guard isCurrentTarget(element, appPID: capture.appPID) else { return false }
         let pasteboard = NSPasteboard.general
         let saved = snapshot(pasteboard)
+        let before = valueText(of: element)
+        let rangeBefore = selectedRange(of: element)
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        guard pasteboard.setString(text, forType: .string) else {
+            restore(pasteboard, items: saved)
+            AppLog.write("replace: could not put the translation on the pasteboard")
+            return false
+        }
 
-        sendCommand(keyCode: 0x09) // V
+        guard isCurrentTarget(element, appPID: capture.appPID),
+              sendCommand(keyCode: 0x09) else { // V
+            restore(pasteboard, items: saved)
+            AppLog.write("replace: could not post ⌘V")
+            return false
+        }
         // Give the target app a moment to read the pasteboard before the old
         // contents go back.
         usleep(120_000)
+        let after = valueText(of: element)
+        let rangeAfter = selectedRange(of: element)
         restore(pasteboard, items: saved)
-        return true
+
+        var changed: Bool?
+        if let before, let after { changed = before != after }
+        if changed != true, let rangeBefore, let rangeAfter {
+            changed = rangeBefore.location != rangeAfter.location || rangeBefore.length != rangeAfter.length
+        }
+        guard let changed else {
+            AppLog.write("replace: ⌘V sent but the field exposes nothing to confirm it; not reported as replaced")
+            return false
+        }
+        AppLog.write("replace: ⌘V \(changed ? "changed" : "did not change") the field")
+        return changed
     }
 
     private static func snapshot(_ pasteboard: NSPasteboard) -> [NSPasteboardItem] {
@@ -316,16 +377,20 @@ enum SelectionReader {
         }
     }
 
-    private static func sendCommand(keyCode: CGKeyCode) {
-        guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
-        if let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true) {
-            down.flags = .maskCommand
-            down.post(tap: .cghidEventTap)
+    /// Posts ⌘ + key. False when the events could not be made, so nothing
+    /// was sent.
+    @discardableResult
+    private static func sendCommand(keyCode: CGKeyCode) -> Bool {
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+            return false
         }
-        if let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) {
-            up.flags = .maskCommand
-            up.post(tap: .cghidEventTap)
-        }
+        down.flags = .maskCommand
+        up.flags = .maskCommand
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+        return true
     }
 
     /// The mouse position converted into the same coordinate space as

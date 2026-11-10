@@ -248,7 +248,7 @@ private struct EngineSettingsTab: View {
 
             Section {
                 LabeledContent("状態", value: model.engineStatusText)
-                LabeledContent("待ち受け", value: model.engineMemoryText)
+                LabeledContent("メモリ", value: model.engineMemoryText)
                 HStack(spacing: Design.Space.s) {
                     Button("起動し直す") { Task { await model.engine.restart() } }
                     Button("止める") { Task { await model.engine.stop() } }
@@ -470,6 +470,7 @@ private struct PrivacySettingsTab: View {
     @Bindable var state: SettingsState
 
     @State private var cleared = false
+    @State private var clearFailed = false
 
     var body: some View {
         Form {
@@ -490,20 +491,26 @@ private struct PrivacySettingsTab: View {
             Section {
                 HStack(spacing: Design.Space.s) {
                     Button("履歴とキャッシュを消す", role: .destructive) {
-                        model.store.deleteAllHistory()
-                        model.store.deleteAllCache()
-                        URLCacheLeftovers.remove()
-                        PDFWorkerPaths.clearTranslationCache()
-                        AppLog.clearAll()
+                        let historyOK = model.store.deleteAllHistory()
+                        let cacheOK = model.store.deleteAllCache()
+                        let urlCacheOK = URLCacheLeftovers.remove()
+                        let pdfCacheOK = PDFWorkerPaths.clearTranslationCache()
+                        let logsOK = AppLog.clearAll()
                         model.reloadHistory()
                         model.selectedHistory = nil
-                        cleared = true
-                        AppLog.write("privacy: history, caches and logs cleared")
+                        cleared = historyOK && cacheOK && urlCacheOK && pdfCacheOK && logsOK
+                        clearFailed = !cleared
+                        AppLog.write(cleared ? "privacy: history, caches and logs cleared" : "privacy: some data could not be cleared")
                     }
                     if cleared {
                         Text("消しました")
                             .font(.system(size: Design.Font.caption))
                             .foregroundStyle(.secondary)
+                    }
+                    if clearFailed {
+                        Text("一部を消せませんでした。もう一度お試しください")
+                            .font(.system(size: Design.Font.caption))
+                            .foregroundStyle(.red)
                     }
                 }
             } header: {

@@ -9,6 +9,7 @@ struct NotchRootView: View {
     var onOpen: (_ dual: Bool) -> Void
     var onReveal: () -> Void
     var onShowLog: () -> Void
+    var onRetry: () -> Void
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -18,21 +19,28 @@ struct NotchRootView: View {
         .frame(width: 640, height: 520, alignment: .top)
     }
 
-    private var spring: Animation { .spring(response: 0.42, dampingFraction: 0.80) }
+    private var spring: Animation {
+        AppearanceOverrides.reduceMotion ? .easeOut(duration: 0.18) : .spring(response: 0.42, dampingFraction: 0.80)
+    }
 
     private var island: some View {
         let size = model.islandSize
         return ZStack(alignment: .top) {
             ZStack(alignment: .top) {
-                NotchShape(
-                    width: size.width,
-                    height: size.height,
-                    cornerRadius: model.cornerRadius,
-                    earRadius: model.earRadius
-                )
-                .fill(Color.black)
-                .contentShape(NotchShapeFit(cornerRadius: model.cornerRadius, earRadius: model.earRadius))
-                .onTapGesture { model.toggleExpanded() }
+                Button { model.toggleExpanded() } label: {
+                    NotchShape(
+                        width: size.width,
+                        height: size.height,
+                        cornerRadius: model.cornerRadius,
+                        earRadius: model.earRadius
+                    )
+                    .fill(Color.black)
+                    .contentShape(NotchShapeFit(cornerRadius: model.cornerRadius, earRadius: model.earRadius))
+                }
+                .buttonStyle(.plain)
+                .focusable()
+                .accessibilityLabel("PDF の詳細を開く・閉じる")
+                .help("PDF の詳細を開く・閉じる")
 
                 if model.expanded {
                     NotchBottomEdge(
@@ -49,8 +57,8 @@ struct NotchRootView: View {
             .clipShape(NotchShapeFit(cornerRadius: model.cornerRadius, earRadius: model.earRadius))
         }
         .frame(width: size.width, height: size.height, alignment: .top)
-        .animation(spring, value: model.islandSize)
-        .animation(spring, value: model.expanded)
+        .animation(AppearanceOverrides.reduceMotion ? nil : spring, value: model.islandSize)
+        .animation(AppearanceOverrides.reduceMotion ? nil : spring, value: model.expanded)
         .modifier(ShakeEffect(travel: 5, shakes: model.dropShake))
         // The island has no title of its own, so VoiceOver is given the state
         // as a name (SPEC 18). The expanded buttons keep their own names.
@@ -98,8 +106,8 @@ struct NotchRootView: View {
             }
         }
         .padding(16)
-        .scaleEffect(model.dropHover ? 1.02 : 1.0)
-        .animation(.spring(response: 0.30, dampingFraction: 0.8), value: model.dropHover)
+        .scaleEffect(model.dropHover && !AppearanceOverrides.reduceMotion ? 1.02 : 1.0)
+        .animation(spring, value: model.dropHover)
         .frame(width: model.islandSize.width, height: model.islandSize.height)
     }
 
@@ -244,6 +252,7 @@ struct NotchRootView: View {
                 .foregroundStyle(Color.white.opacity(0.65))
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
+                islandButton("もう一度") { onRetry() }
                 islandButton("ログを見る") { onShowLog() }
             }
         }
@@ -263,6 +272,7 @@ struct NotchRootView: View {
                 .background(Color.white.opacity(0.12), in: .capsule)
         }
         .buttonStyle(.plain)
+        .focusable()
     }
 }
 
@@ -277,7 +287,7 @@ private struct DonePop: ViewModifier {
         content
             .scaleEffect(popped ? 1.25 : 1.0)
             .task(id: active) {
-                guard active else {
+                guard active, !AppearanceOverrides.reduceMotion else {
                     popped = false
                     return
                 }

@@ -130,6 +130,15 @@ final class HUDController {
         showNotice(.permissionNeeded, autoHideAfter: nil)
     }
 
+    func refreshPermissions(accessibilityGranted: Bool) {
+        guard model.isVisible else { return }
+        if model.notice == .permissionNeeded, accessibilityGranted {
+            hide(reason: "accessibility permission granted")
+        } else if model.notice == nil, !accessibilityGranted {
+            showPermissionNeeded()
+        }
+    }
+
     private func showNotice(_ notice: HUDNotice, autoHideAfter: TimeInterval?) {
         noticeTask?.cancel()
         noticeTask = nil
@@ -178,10 +187,6 @@ final class HUDController {
         coordinator.openInPanel(source: source)
         hide(reason: "opened in panel")
         onOpenPanel?()
-    }
-
-    func toggleSourceDisplay() {
-        // The view reads `coordinator.optionDown`; nothing to do here.
     }
 
     // MARK: window
@@ -276,8 +281,8 @@ final class HUDController {
         if below - height >= minimum { return below }
 
         let selectionTop = primary - anchor.minY
-        let above = selectionTop + HUDLayout.gap
-        return min(above, screen.frame.maxY - height - HUDLayout.screenEdgeInset)
+        let above = selectionTop + HUDLayout.gap + height
+        return min(above, screen.frame.maxY - HUDLayout.screenEdgeInset)
     }
 
     private func screen(containing anchor: CGRect) -> NSScreen? {

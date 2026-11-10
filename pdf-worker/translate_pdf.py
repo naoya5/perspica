@@ -57,6 +57,8 @@ def clitranslator_command(args: argparse.Namespace) -> str:
         str(HERE / "paragraph_translator.py"),
         "--to", args.lang_out,
         "--engine-url", args.engine_url,
+        # Part of pdf2zh's cache key: do not reuse pre-chunking translations.
+        "--prompt-version", "2",
     ]
     if args.lang_in:
         parts += ["--from", args.lang_in]
@@ -153,6 +155,8 @@ async def run(args: argparse.Namespace) -> int:
     ]
     if args.pages:
         argv += ["--pages", args.pages]
+    if args.no_dual:
+        argv += ["--no-dual"]
     font_family = args.primary_font_family
     if font_family == "auto":
         font_family = chosen_font_family(pdf)
@@ -193,6 +197,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--engine-url", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--pages", default=None)
+    parser.add_argument("--no-dual", action="store_true")
     parser.add_argument("--lang-in", default="en")
     parser.add_argument("--lang-out", default="ja")
     parser.add_argument("--form", default=None, choices=["plain", "polite"])

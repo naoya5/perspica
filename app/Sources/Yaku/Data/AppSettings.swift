@@ -24,7 +24,6 @@ final class AppSettings {
     private var values: [String: Any] = [:]
 
     private enum Key {
-        static let launchAtLogin = "launchAtLogin"
         static let defaultTargetLanguage = "defaultTargetLanguage"
         static let defaultForm = "defaultForm"
         static let autoTranslate = "autoTranslate"
@@ -52,7 +51,7 @@ final class AppSettings {
         /// Only these keys are read back, so the store never picks up unrelated
         /// system defaults that happen to share a name.
         static let all: [String] = [
-            launchAtLogin, defaultTargetLanguage, defaultForm, autoTranslate, useNotch,
+            defaultTargetLanguage, defaultForm, autoTranslate, useNotch,
             selectionShortcut, panelShortcut, screenShortcut,
             engineIdleMinutes, selectedModelID, modelPath,
             pdfOutputSameFolder, pdfOutputFolder, pdfOpenWhenDone, pdfMakeDual, pdfPythonPath,
@@ -145,11 +144,6 @@ final class AppSettings {
     }
 
     // MARK: 一般
-
-    var launchAtLogin: Bool {
-        get { bool(Key.launchAtLogin) }
-        set { store(Key.launchAtLogin, newValue) }
-    }
 
     var defaultTargetLanguage: String {
         get { string(Key.defaultTargetLanguage) ?? "ja" }

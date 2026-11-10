@@ -25,6 +25,9 @@ public struct CompletionRequest: Sendable, Equatable {
     public var stream: Bool
     public var cachePrompt: Bool
     public var stop: [String]
+    /// What the prompt was built from, when it came from `PFML3.request`.
+    /// Not sent; `RequestBudget` uses it to trim optional sections.
+    public var parts: PromptParts?
 
     public init(
         prompt: String,

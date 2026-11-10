@@ -45,6 +45,8 @@ public enum TextInk {
     public static let inkContrast: Double = 0.24
     /// Below this many pixels the band is too small to read a size out of.
     public static let minimumBand: CGFloat = 4
+    /// Two endpoint probes and sixteen bisections, independent of text length.
+    public static let maximumWidthMeasurements = 18
 
     /// Whether a pixel counts as text ink against the box's background.
     ///
@@ -187,7 +189,7 @@ public enum TextInk {
         var wide: CGFloat = 512
         guard unitWidth(text, size: wide) >= ink, unitWidth(text, size: narrow) <= ink else { return nil }
         // 16 halvings of a 511-point span: 0.008 points.
-        for _ in 0..<16 {
+        for _ in 0..<(maximumWidthMeasurements - 2) {
             let middle = (narrow + wide) / 2
             if unitWidth(text, size: middle) < ink {
                 narrow = middle

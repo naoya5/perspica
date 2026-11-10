@@ -61,7 +61,9 @@ final class TranslationCoordinator {
         var target: String
     }
 
-    struct SurfaceState {
+    @MainActor
+    @Observable
+    final class SurfaceState {
         var phase: Phase = .empty
         var sourceText = ""
         var translation = ""
@@ -76,6 +78,11 @@ final class TranslationCoordinator {
         /// button or by the shortcut, so the view shows its brief copied mark
         /// either way (`copiedMark`).
         var copyCount = 0
+        var context: String?
+        var frontApp: String?
+        var manualPair: ManualPair?
+        var form: TranslationForm?
+        var contextSourceText = ""
     }
 
     // MARK: state
@@ -94,6 +101,11 @@ final class TranslationCoordinator {
     var autoTranslate: Bool {
         get { AppSettings.shared.autoTranslate }
         set { AppSettings.shared.autoTranslate = newValue }
+    }
+
+    var managerForm: TranslationForm {
+        get { manager.form ?? form }
+        set { manager.form = newValue }
     }
 
     /// True while ⌥ is held; the HUD shows the source instead of the result.
@@ -152,6 +164,10 @@ final class TranslationCoordinator {
 
     func panelTextChanged() {
         let trimmed = panel.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed != panel.contextSourceText {
+            panel.context = nil
+            panel.frontApp = nil
+        }
         if trimmed.isEmpty {
             autoTask?.cancel()
             autoTask = nil
@@ -181,7 +197,8 @@ final class TranslationCoordinator {
     func translatePanel(context: String? = nil, frontApp: String? = nil) {
         autoTask?.cancel()
         autoTask = nil
-        start(surface: .panel, text: panel.sourceText, context: context, frontApp: frontApp)
+        start(surface: .panel, text: panel.sourceText,
+              context: context ?? panel.context, frontApp: frontApp ?? panel.frontApp)
     }
 
     func retryPanel() {
@@ -203,6 +220,8 @@ final class TranslationCoordinator {
         autoTask?.cancel()
         autoTask = nil
         panel.sourceText = source
+        panel.context = hud.context
+        panel.frontApp = hud.frontApp
         panel.phase = .empty
         panel.translation = ""
         panel.elapsed = nil
@@ -220,12 +239,12 @@ final class TranslationCoordinator {
     func toggleFormAndRetranslateHUD() {
         setForm(form == .plain ? .polite : .plain)
         guard !hud.sourceText.isEmpty else { return }
-        translateHUD(text: hud.sourceText, context: nil, frontApp: nil)
+        translateHUD(text: hud.sourceText, context: hud.context, frontApp: hud.frontApp)
     }
 
     func retryHUD() {
         guard !hud.sourceText.isEmpty else { return }
-        translateHUD(text: hud.sourceText, context: nil, frontApp: nil)
+        translateHUD(text: hud.sourceText, context: hud.context, frontApp: hud.frontApp)
     }
 
     func dismissHUD() {
@@ -240,6 +259,8 @@ final class TranslationCoordinator {
         hud.elapsed = nil
         hud.sourceText = ""
         hud.usedCache = false
+        hud.context = nil
+        hud.frontApp = nil
     }
 
     // MARK: manager input (SPEC 4.4)
@@ -248,7 +269,7 @@ final class TranslationCoordinator {
     func translateManager() {
         managerAutoTask?.cancel()
         managerAutoTask = nil
-        start(surface: .manager, text: manager.sourceText, context: nil, frontApp: nil)
+        start(surface: .manager, text: manager.sourceText, context: manager.context, frontApp: manager.frontApp)
     }
 
     func retryManager() {
@@ -257,6 +278,10 @@ final class TranslationCoordinator {
 
     func managerTextChanged() {
         let trimmed = manager.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed != manager.contextSourceText {
+            manager.context = nil
+            manager.frontApp = nil
+        }
         if trimmed.isEmpty {
             managerAutoTask?.cancel()
             managerAutoTask = nil
@@ -296,8 +321,14 @@ final class TranslationCoordinator {
     }
 
     /// Choosing a language by hand remembers the pair (SPEC 5.1).
-    func setManualTarget(_ code: String, forSource source: String?) {
+    func setManualTarget(_ code: String, forSource source: String?, on surface: Surface = .panel) {
         let pair = ManualPair(source: source, target: code)
+        if surface == .manager {
+            manager.manualPair = pair
+            manager.targetLanguage = code
+            if !manager.sourceText.isEmpty { translateManager() }
+            return
+        }
         manualPair = pair
         let settings = AppSettings.shared
         settings.manualPairTarget = pair.target
@@ -309,30 +340,59 @@ final class TranslationCoordinator {
             translatePanel()
         }
         if !hud.sourceText.isEmpty {
-            translateHUD(text: hud.sourceText, context: nil, frontApp: nil)
+            translateHUD(text: hud.sourceText, context: hud.context, frontApp: hud.frontApp)
         }
     }
 
     /// The 「自動（原文を判定）」 menu entry: forget the manual pair.
-    func clearManualPair() {
+    func clearManualPair(on surface: Surface = .panel) {
+        if surface == .manager {
+            manager.manualPair = nil
+            let preferred = AppSettings.shared.defaultTargetLanguage
+            manager.targetLanguage = preferred != manager.sourceLanguage
+                ? preferred : LanguageDetector.defaultTarget(forSource: manager.sourceLanguage)
+            if !manager.sourceText.isEmpty { translateManager() }
+            return
+        }
         manualPair = nil
         let settings = AppSettings.shared
         settings.manualPairTarget = ""
         settings.manualPairSource = ""
         AppLog.write("language: manual pair cleared")
+        panel.targetLanguage = resolvedTarget(forSource: panel.sourceLanguage)
         if !panel.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            panel.targetLanguage = resolvedTarget(forSource: panel.sourceLanguage)
             translatePanel()
+        }
+        if !hud.sourceText.isEmpty {
+            retryHUD()
         }
     }
 
     /// ⌘D: swap the direction and the two texts. The new source is translated
     /// by the ordinary auto-translate debounce.
-    func swapLanguages() {
+    func swapLanguages(on surface: Surface = .panel) {
+        if surface == .manager {
+            let oldSource = manager.sourceLanguage ?? LanguageDetector.defaultTarget(forSource: manager.targetLanguage)
+            let oldTarget = manager.targetLanguage
+            if currentSurface == .manager {
+                cancelCurrent(reason: "manager swap", keeping: .manager)
+            }
+            manager.manualPair = ManualPair(source: oldTarget, target: oldSource)
+            let oldText = manager.sourceText
+            manager.sourceText = manager.translation
+            manager.translation = oldText
+            manager.sourceLanguage = oldTarget
+            manager.targetLanguage = oldSource
+            manager.phase = manager.translation.isEmpty ? .empty : .done
+            manager.elapsed = nil
+            return
+        }
         let oldSource = panel.sourceLanguage ?? LanguageDetector.defaultTarget(forSource: panel.targetLanguage)
         let oldTarget = panel.targetLanguage
 
-        cancelCurrent(reason: "swap", keeping: nil)
+        if currentSurface == .panel {
+            cancelCurrent(reason: "swap", keeping: .panel)
+        }
 
         let pair = ManualPair(source: oldTarget, target: oldSource)
         manualPair = pair
@@ -357,7 +417,31 @@ final class TranslationCoordinator {
         if let pair = manualPair, pair.source == nil || pair.source == source {
             return pair.target
         }
-        return LanguageDetector.defaultTarget(forSource: source)
+        let preferred = AppSettings.shared.defaultTargetLanguage
+        return preferred != source ? preferred : LanguageDetector.defaultTarget(forSource: source)
+    }
+
+    /// Transfer the current result without starting another request.
+    func openPanelInManager() {
+        managerAutoTask?.cancel()
+        managerAutoTask = nil
+        if currentSurface == .manager {
+            cancelCurrent(reason: "panel result transferred", keeping: .manager)
+        }
+        manager.sourceText = panel.sourceText
+        manager.translation = panel.translation
+        manager.sourceLanguage = panel.sourceLanguage
+        manager.targetLanguage = panel.targetLanguage
+        manager.manualPair = ManualPair(source: panel.sourceLanguage, target: panel.targetLanguage)
+        manager.elapsed = panel.elapsed
+        manager.form = panel.form ?? form
+        manager.context = panel.context
+        manager.frontApp = panel.frontApp
+        manager.contextSourceText = panel.contextSourceText
+        manager.usedCache = panel.usedCache
+        manager.phase = panel.translation.isEmpty ? .empty : .done
+        manager.scrollReset += 1
+        WindowBridge.shared.openManager(page: .translate)
     }
 
     // MARK: demo hooks
@@ -408,6 +492,9 @@ final class TranslationCoordinator {
         // Leave the previous translation on screen until the new one produces
         // its first character, so typing does not flash the empty state.
         mutate(surface) { state in
+            state.context = context
+            state.frontApp = frontApp
+            state.contextSourceText = trimmed
             state.elapsed = nil
             state.usedCache = false
             state.phase = engine.isRunning ? .translating : .preparing
@@ -463,27 +550,37 @@ final class TranslationCoordinator {
     ) async {
         let started = CFAbsoluteTimeGetCurrent()
 
-        let sourceLanguage = LanguageDetector.resolve(text: text, previous: lastSourceLanguage)
+        let sourceLanguage = LanguageDetector.resolve(
+            text: text, previous: state(for: surface).sourceLanguage ?? lastSourceLanguage
+        )
         if let sourceLanguage { lastSourceLanguage = sourceLanguage }
-        let target = resolvedTarget(forSource: sourceLanguage)
+        let target: String
+        if surface == .manager {
+            let preferred = AppSettings.shared.defaultTargetLanguage
+            let pair = manager.manualPair
+            target = pair.flatMap { $0.source == nil || $0.source == sourceLanguage ? $0.target : nil }
+                ?? (preferred != sourceLanguage ? preferred : LanguageDetector.defaultTarget(forSource: sourceLanguage))
+        } else {
+            target = resolvedTarget(forSource: sourceLanguage)
+        }
         let chunks = TextChunker.chunks(from: text)
         // SPEC 5.2: only the enabled glossary entries that appear in the source
         // are sent, and this applies to every entry point (panel, HUD, manager).
         let glossary = GlossaryFilter.relevant(store.enabledGlossaryPairs(), in: text)
-        let formValue: TranslationForm? = target == "ja" ? form : nil
+        let formValue: TranslationForm? = target == "ja" ? (surface == .manager ? managerForm : form) : nil
         let model = ModelStore.cacheKey()
 
         mutate(surface) { state in
             state.sourceLanguage = sourceLanguage
             state.targetLanguage = target
+            state.form = formValue
         }
         AppLog.write("translate start id=\(shortID(id)) surface=\(surface.rawValue) "
             + "chars=\(text.count) chunks=\(chunks.count) source=\(sourceLanguage ?? "?") "
             + "target=\(target) form=\(formValue?.rawValue ?? "-") context=\(context?.count ?? 0)ch "
             + "glossary=\(glossary.count) model=\(model)")
 
-        let cacheKey = chunks.count == 1
-            ? CacheKey.key(
+        let cacheKey = CacheKey.key(
                 source: text,
                 context: context,
                 glossary: glossary,
@@ -492,10 +589,9 @@ final class TranslationCoordinator {
                 form: formValue,
                 model: model
             )
-            : nil
 
         // A demo repeat must actually stream, so it ignores the cache.
-        if let cacheKey, !demoRepeat, let hit = store.cached(key: cacheKey) {
+        if !demoRepeat, let hit = store.cached(key: cacheKey) {
             guard currentID == id else { return }
             let elapsed = CFAbsoluteTimeGetCurrent() - started
             mutate(surface) { state in
@@ -510,7 +606,6 @@ final class TranslationCoordinator {
             return
         }
 
-        var attempt = 0
         while true {
             guard currentID == id else { return }
 
@@ -551,7 +646,7 @@ final class TranslationCoordinator {
                     state.elapsed = demoRepeat ? nil : elapsed
                 }
                 let final = state(for: surface).translation
-                if let cacheKey, !demoRepeat { store.store(key: cacheKey, target: final) }
+                if !demoRepeat { store.store(key: cacheKey, target: final) }
                 record(surface: surface, source: text, translation: final, sourceLanguage: sourceLanguage,
                        target: target, form: formValue, frontApp: frontApp, seconds: elapsed)
                 AppLog.write(String(format: "translate done id=%@ in %.3fs pairs=%d", shortID(id), elapsed, pairs.count))
@@ -571,20 +666,22 @@ final class TranslationCoordinator {
                     AppLog.write("translate cancelled id=\(shortID(id))")
                     return
                 }
-                // SPEC 7.1: if the engine died on its own, start it once more
-                // and retry; a second failure is reported.
-                if attempt == 0, !engine.isRunning {
-                    attempt += 1
-                    AppLog.write("translate: engine died mid-request id=\(shortID(id)); restarting once")
-                    engine.acknowledgeCrash()
-                    mutate(surface) { state in
-                        state.phase = .preparing
-                        state.translation = ""
-                    }
-                    continue
-                }
                 guard currentID == id else { return }
-                let failure: TranslationFailure = engine.isRunning ? .requestFailed : .engineStopped
+                // The shared engine stream has already made SPEC 7.1's one
+                // restart attempt. Do not multiply retries in the surface.
+                let failure: TranslationFailure
+                if let streamError = error as? EngineStreamError {
+                    switch streamError {
+                    case .startFailed:
+                        failure = engine.lastStartFailure == .modelMissing ? .modelMissing : .engineStartFailed
+                    case .engineStopped:
+                        failure = .engineStopped
+                    case .requestTooLarge:
+                        failure = .requestFailed
+                    }
+                } else {
+                    failure = .requestFailed
+                }
                 mutate(surface) { $0.phase = .failed(failure) }
                 AppLog.write("translate failed id=\(shortID(id)) \(error)")
                 return
@@ -610,12 +707,11 @@ final class TranslationCoordinator {
 
         for (index, chunk) in chunks.enumerated() {
             try Task.checkCancellation()
-            guard let client = engine.client else { throw TranslationFailure.engineStopped }
 
             // The glossary was narrowed against the whole text; narrow it again
             // per chunk so a chunk only carries the terms it contains.
             let chunkGlossary = GlossaryFilter.relevant(glossary, in: chunk.text)
-            let prompt = PFML3.prompt(
+            let request = PFML3.request(
                 source: chunk.text,
                 sourceLanguage: sourceLanguage,
                 targetLanguage: target,
@@ -624,7 +720,6 @@ final class TranslationCoordinator {
                 history: Array(pairs.suffix(PFML3.historyLimit)),
                 glossary: chunkGlossary
             )
-            let request = CompletionRequest(prompt: prompt, source: chunk.text)
             AppLog.write("translate chunk \(index + 1)/\(chunks.count) id=\(shortID(id)) "
                 + "chars=\(chunk.text.count) history=\(min(pairs.count, PFML3.historyLimit)) "
                 + "glossary=\(chunkGlossary.count)")
@@ -640,7 +735,7 @@ final class TranslationCoordinator {
             // text starts to appear as soon as the engine answers; later
             // pieces wait for the interval.
             var lastPublish = ContinuousClock.now - Self.publishInterval
-            for try await piece in client.stream(request) {
+            for try await piece in engine.stream(request, priority: .interactive) {
                 if !loggedFirstPiece, !piece.isEmpty {
                     loggedFirstPiece = true
                     AppLog.write(String(
@@ -677,11 +772,11 @@ final class TranslationCoordinator {
         }
     }
 
-    private func mutate(_ surface: Surface, _ body: (inout SurfaceState) -> Void) {
+    private func mutate(_ surface: Surface, _ body: (SurfaceState) -> Void) {
         switch surface {
-        case .hud: body(&hud)
-        case .manager: body(&manager)
-        default: body(&panel)
+        case .hud: body(hud)
+        case .manager: body(manager)
+        default: body(panel)
         }
     }
 

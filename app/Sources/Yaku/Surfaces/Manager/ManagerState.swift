@@ -55,11 +55,6 @@ final class ManagerState {
     static let shared = ManagerState()
 
     var section: ManagerSection = .translate
-    var historySearch = ""
-    /// The row selected in the history list, and the entry being edited in the
-    /// glossary table.
-    var historySelectionID: String?
-    var glossarySelectionID: String?
     /// Set by the history view's 「用語集に足す」 form.
     var glossaryDraftSource = ""
     var glossaryDraftTarget = ""

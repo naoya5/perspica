@@ -38,11 +38,19 @@ final class NotchHostingView: NSHostingView<NotchRootView> {
     // MARK: drop
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        hasFileURL(sender) ? .copy : []
+        guard hasFileURL(sender) else { return [] }
+        model?.dragNear(isOverIsland: true)
+        return .copy
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        hasFileURL(sender) ? .copy : []
+        guard hasFileURL(sender) else { return [] }
+        model?.dragNear(isOverIsland: true)
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        model?.dragLeftZone()
     }
 
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
@@ -54,8 +62,8 @@ final class NotchHostingView: NSHostingView<NotchRootView> {
             forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]
         ) as? [URL]) ?? []
-        guard let first = urls.first else { return false }
-        onDrop?(first)
+        guard !urls.isEmpty else { return false }
+        urls.forEach { onDrop?($0) }
         return true
     }
 
@@ -74,6 +82,7 @@ final class NotchController {
     var onDrop: ((URL) -> Void)?
     /// Called when a dropped file is not a PDF, so the caller can shake the panel too.
     var onReject: (() -> Void)?
+    var onRetry: (() -> Void)?
 
     private var panel: NotchPanel?
     private var hosting: NotchHostingView?
@@ -92,9 +101,11 @@ final class NotchController {
     /// states can still be photographed.
     func setUp(enabled: Bool, force: Bool = false) {
         guard enabled else {
+            tearDown()
             AppLog.write("notch: not used (setting is off)")
             return
         }
+        guard panel == nil else { return }
         guard let screen = Self.notchScreen() ?? (force ? NSScreen.main : nil) else {
             AppLog.write("notch: not used (no notch on any display)")
             return
@@ -106,10 +117,12 @@ final class NotchController {
             model: model,
             onOpen: { [weak self] dual in self?.openOutput(dual: dual) },
             onReveal: { [weak self] in self?.revealOutput() },
-            onShowLog: { NSWorkspace.shared.open(AppPaths.logsDirectory) }
+            onShowLog: { NSWorkspace.shared.open(AppPaths.logsDirectory) },
+            onRetry: { [weak self] in self?.onRetry?() }
         )
         let hosting = NotchHostingView(rootView: root)
         hosting.model = model
+        hosting.registerForDraggedTypes([.fileURL])
         hosting.onDrop = { [weak self] url in self?.acceptDrop(url) }
         hosting.frame = CGRect(origin: .zero, size: Self.windowSize)
 
@@ -196,6 +209,13 @@ final class NotchController {
     // MARK: monitors
 
     private func setUpMonitors() {
+        if let local = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDragged, .leftMouseUp, .leftMouseDown],
+            handler: { [weak self] event in
+                MainActor.assumeIsolated { self?.handleGlobal(event) }
+                return event
+            }
+        ) { monitors.append(local) }
         if let global = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDragged, .leftMouseUp, .leftMouseDown],
             handler: { [weak self] event in
@@ -245,14 +265,14 @@ final class NotchController {
     }
 
     private func updateDrag() {
+        let point = NSEvent.mouseLocation
+        guard dropZone().contains(point) else {
+            if model.state == .drop { model.dragLeftZone() }
+            return
+        }
         let types = NSPasteboard(name: .drag).types ?? []
         guard types.contains(.fileURL) else { return }
-        let point = NSEvent.mouseLocation
-        if dropZone().contains(point) {
-            model.dragNear(isOverIsland: islandRect().contains(point))
-        } else if model.state == .drop {
-            model.dragLeftZone()
-        }
+        model.dragNear(isOverIsland: islandRect().contains(point))
     }
 
     // MARK: drops

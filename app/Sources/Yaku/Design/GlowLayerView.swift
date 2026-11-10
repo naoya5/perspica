@@ -46,7 +46,6 @@ final class GlowLayerView: NSView {
     private var cycleSeconds: Double = 2.4
     private var reduceMotion = false
     private(set) var isGlowing = false
-    private var pulseAnimation: CABasicAnimation?
 
     private static let rotationKey = "yaku.glow.rotation"
     private static let pulseKey = "yaku.glow.pulse"
@@ -102,6 +101,7 @@ final class GlowLayerView: NSView {
     /// values are only read while it is on.
     func configure(active: Bool, cornerRadius: CGFloat, cycleSeconds: Double, reduceMotion: Bool) {
         let radiusChanged = cornerRadius != self.cornerRadius
+        let animationChanged = cycleSeconds != self.cycleSeconds || reduceMotion != self.reduceMotion
         self.cornerRadius = cornerRadius
         self.cycleSeconds = cycleSeconds
         self.reduceMotion = reduceMotion
@@ -109,7 +109,7 @@ final class GlowLayerView: NSView {
         if radiusChanged { needsLayout = true }
 
         guard active != isGlowing else {
-            if active { updateAnimations() }
+            if active && animationChanged { updateAnimations() }
             return
         }
         isGlowing = active
@@ -208,9 +208,4 @@ final class GlowLayerView: NSView {
         layer.add(animation, forKey: "yaku.glow.fade")
     }
 
-    /// Hides the view once the fade-out has finished.
-    func finishFadeOutIfIdle() {
-        guard !isGlowing, layer?.opacity == 0 else { return }
-        isHidden = true
-    }
 }

@@ -39,9 +39,6 @@ final class ManagerModel {
     var modelNote: String?
     /// The model whose licence is being shown; the download waits for consent.
     var licenseModel: TranslationModel?
-    var pendingDownload: TranslationModel?
-
-    private var pendingRestart = false
 
     init(store: TranslationStore, engine: EngineManager) {
         self.store = store
@@ -240,7 +237,7 @@ final class ManagerModel {
     }
 
     var engineMemoryText: String {
-        guard engine.isRunning, let port = engine.port else { return "—" }
-        return "ポート \(port)"
+        guard let bytes = engine.residentMemoryBytes else { return "—" }
+        return ByteCount.format(Int64(clamping: bytes))
     }
 }

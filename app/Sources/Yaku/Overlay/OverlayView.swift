@@ -37,7 +37,13 @@ final class OverlayContainerView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let superview else { return nil }
         let local = convert(point, from: superview)
-        guard model.hitRects.contains(where: { $0.contains(local) }) else { return nil }
+        // Notice buttons and the band must also work before any OCR result.
+        let notice: Bool
+        switch model.phase {
+        case .empty, .needsPermission, .failed: notice = true
+        default: notice = false
+        }
+        guard notice || model.hitRects.contains(where: { $0.contains(local) }) else { return nil }
         return super.hitTest(point)
     }
 
@@ -56,6 +62,9 @@ struct OverlayActions {
     var close: () -> Void = {}
     var toggleSource: () -> Void = {}
     var openSettings: () -> Void = {}
+    var openModels: () -> Void = {}
+    var openLogs: () -> Void = {}
+    var retry: () -> Void = {}
 }
 
 /// The overlay's content: one backing per translated block, the bottom band and
@@ -63,6 +72,7 @@ struct OverlayActions {
 struct OverlayRootView: View {
     @Bindable var model: OverlayModel
     var actions = OverlayActions()
+    @FocusState private var focusedBlock: Int?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -79,8 +89,20 @@ struct OverlayRootView: View {
 
             ForEach(model.blocks) { block in
                 if block.hasTranslation {
-                    OverlayBlockView(block: block, windowHeight: model.windowHeight, showSource: showsSource)
-                        .onTapGesture { actions.copyBlock(block.id) }
+                    Button {
+                        actions.copyBlock(block.id)
+                    } label: {
+                        OverlayBlockView(block: block, showSource: showsSource)
+                    }
+                        .buttonStyle(.plain)
+                        .focusable()
+                        .focused($focusedBlock, equals: block.id)
+                        .onKeyPress(.return) {
+                            actions.copyBlock(block.id)
+                            return .handled
+                        }
+                        .accessibilityHint("この訳文をコピー")
+                        .offset(x: block.frame.minX - 2, y: model.windowHeight - block.frame.maxY - 1)
                         // SwiftUI otherwise hands the blocks to VoiceOver in the
                         // order the translations arrived, which is not the order
                         // they are read in (measured: 0, 1, 4, 2, 3 for the
@@ -101,7 +123,16 @@ struct OverlayRootView: View {
                 )
             }
             if case .failed(let text) = model.phase {
-                message(text, systemImage: "exclamationmark.triangle.fill", button: nil)
+                if let failure = model.translationFailure {
+                    message(
+                        failure.message, systemImage: "exclamationmark.triangle.fill",
+                        button: failure == .modelMissing
+                            ? ("モデルを取得", actions.openModels) : ("もう一度", actions.retry),
+                        secondaryButton: failure.showsLogButton ? ("ログを見る", actions.openLogs) : nil
+                    )
+                } else {
+                    message(text, systemImage: "exclamationmark.triangle.fill", button: nil)
+                }
             }
 
             if model.phase == .reading {
@@ -115,6 +146,11 @@ struct OverlayRootView: View {
             band
         }
         .ignoresSafeArea()
+        .onChange(of: model.translatedCount) { _, count in
+            if count > 0, focusedBlock == nil {
+                focusedBlock = model.blocks.first(where: \.hasTranslation)?.id
+            }
+        }
     }
 
     private var showsSource: Bool { model.optionDown || model.showSource }
@@ -218,7 +254,8 @@ struct OverlayRootView: View {
     private func message(
         _ text: String,
         systemImage: String,
-        button: (String, () -> Void)?
+        button: (String, () -> Void)?,
+        secondaryButton: (String, () -> Void)? = nil
     ) -> some View {
         VStack(spacing: 12) {
             Image(systemName: systemImage)
@@ -229,8 +266,13 @@ struct OverlayRootView: View {
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
             if let button {
-                Button(button.0) { button.1() }
-                    .controlSize(.small)
+                HStack {
+                    Button(button.0) { button.1() }
+                    if let secondaryButton {
+                        Button(secondaryButton.0) { secondaryButton.1() }
+                    }
+                }
+                .controlSize(.small)
             }
         }
         .padding(.horizontal, 22)
@@ -246,7 +288,6 @@ struct OverlayRootView: View {
 /// the translation in the original's colour (SPEC 4.6 の 3).
 private struct OverlayBlockView: View {
     let block: OverlayBlock
-    let windowHeight: CGFloat
     let showSource: Bool
 
     @State private var visible = false
@@ -265,7 +306,6 @@ private struct OverlayBlockView: View {
     }
 
     var body: some View {
-        let top = windowHeight - block.frame.maxY
         // The backing covers the original text and grows downward when the
         // translation needs more room (SPEC 4.6 の 3). It never shrinks below
         // the block, and it always covers what was fitted into it, so a line is
@@ -284,8 +324,8 @@ private struct OverlayBlockView: View {
             .padding(.horizontal, 2)
             .padding(.vertical, 1)
             .background(block.background.color, in: .rect(cornerRadius: 4, style: .continuous))
+            .contentShape(Rectangle())
             .frame(width: width + 4, height: height + 2, alignment: .topLeading)
-            .offset(x: block.frame.minX - 2, y: top - 1)
             .opacity(visible ? 1 : 0)
             .onAppear {
                 withAnimation(.easeInOut(duration: 0.16)) { visible = true }

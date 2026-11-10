@@ -21,7 +21,6 @@ struct PanelRootView: View {
     @FocusState private var sourceFocused: Bool
     @Namespace private var formNamespace
     @State private var copied = false
-    @State private var reveal = TextRevealDriver()
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -44,14 +43,13 @@ struct PanelRootView: View {
             // SwiftUI window actions are captured for the AppKit side.
             WindowBridge.shared.adopt(openWindow: openWindow, openSettings: openSettings)
             model.contentHeight = desiredHeight
-            reveal.finish(to: coordinator.panel.translation.count)
         }
         .onChange(of: desiredHeight) { _, new in
             // While text is arriving the shape grows a line at a time; running
             // an animation for each of those steps restarts it constantly and
             // costs more than the growth is worth. The animation is kept for
             // the discrete changes (opening, a new phase, the error view).
-            if coordinator.panel.phase == .translating {
+            if coordinator.panel.phase == .translating || reduceMotion {
                 model.contentHeight = new
             } else {
                 withAnimation(.easeOut(duration: 0.16)) { model.contentHeight = new }
@@ -64,9 +62,6 @@ struct PanelRootView: View {
         .onChange(of: coordinator.panel.sourceText) { _, _ in
             guard model.isOpen else { return }
             coordinator.panelTextChanged()
-        }
-        .onChange(of: coordinator.panel.translation) { _, new in
-            reveal.update(count: new.count)
         }
         // On the root rather than on the button: the button leaves the tree
         // while a new translation runs, and its wait must not leave with it.
@@ -121,8 +116,13 @@ struct PanelRootView: View {
                 translationArea
             }
             bottomBar
-            if let job = pdfRowJob {
-                pdfRow(job)
+            if !pdfRowJobs.isEmpty {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(pdfRowJobs, id: \.id) { job in pdfRow(job) }
+                    }
+                }
+                .frame(height: pdfRowsHeight)
             }
             quickBar
         }
@@ -146,18 +146,21 @@ struct PanelRootView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(12)
+        .padding(16)
         .frame(width: PanelLayout.width, height: model.contentHeight)
-        .scaleEffect(model.dropHover ? 1.01 : 1.0)
+        .scaleEffect(model.dropHover && !reduceMotion ? 1.01 : 1.0)
         .animation(.snappy(duration: 0.25), value: model.dropHover)
     }
 
     // MARK: PDF row (SPEC 4.2 の 6)
 
-    /// The job the row shows: one being processed, else the one that just
-    /// finished, so 「開く」 stays reachable from the panel.
-    private var pdfRowJob: PDFJob? {
-        pdf.activeJob ?? pdf.recentlyFinished ?? pdf.recentlyFailed
+    /// Keep waiting jobs and failures visible alongside completed output.
+    private var pdfRowJobs: [PDFJob] {
+        pdf.jobs.filter { $0.jobState != .cancelled }
+    }
+
+    private var pdfRowsHeight: CGFloat {
+        CGFloat(min(pdfRowJobs.count, 3)) * PanelLayout.pdfRowHeight
     }
 
     private func pdfRow(_ job: PDFJob) -> some View {
@@ -206,6 +209,7 @@ struct PanelRootView: View {
                 rowButton("取り消し") { pdf.cancel(job) }
             case .failed:
                 rowButton("もう一度") { pdf.retry(job) }
+                rowButton("ログを見る") { NSWorkspace.shared.open(AppPaths.logsDirectory) }
             case .cancelled:
                 rowButton("もう一度") { pdf.retry(job) }
             }
@@ -225,6 +229,7 @@ struct PanelRootView: View {
         }
         .buttonStyle(.plain)
         .background(.quaternary, in: .capsule)
+        .focusable()
     }
 
     private var isEmptyState: Bool {
@@ -242,15 +247,13 @@ struct PanelRootView: View {
             height += translationHeight
         }
         height += PanelLayout.bottomBarHeight
-        if pdfRowJob != nil {
-            height += PanelLayout.pdfRowHeight
-        }
+        height += pdfRowsHeight
         height += PanelLayout.quickBarHeight
         return min(max(height, PanelLayout.minHeight), PanelLayout.maxHeight)
     }
 
     private var sourceFieldHeight: CGFloat {
-        if isEmptyState { return PanelLayout.emptySourceHeight }
+        if coordinator.panel.sourceText.isEmpty { return PanelLayout.emptySourceHeight }
         // Measuring the field's own frame would feed the constraint back into
         // itself, so the text is measured directly and clamped to 1...6 lines.
         let line = max(TextMetrics.lineHeight(
@@ -320,6 +323,7 @@ struct PanelRootView: View {
             - PanelLayout.dividerHeight
             - PanelLayout.bottomBarHeight
             - PanelLayout.quickBarHeight
+            - pdfRowsHeight
     }
 
     // MARK: top band
@@ -372,6 +376,7 @@ struct PanelRootView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("訳す言語を選ぶ")
+        .focusable()
         .accessibilityLabel("言語 \(LanguageCatalog.name(for: coordinator.panel.targetLanguage))")
     }
 
@@ -409,6 +414,7 @@ struct PanelRootView: View {
         }
         .buttonStyle(.plain)
         .glassEffect(selected ? .regular.interactive() : .identity, in: .capsule)
+        .focusable()
         .glassEffectID(value.rawValue, in: formNamespace)
         .help("\(title) で訳す")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -426,6 +432,7 @@ struct PanelRootView: View {
         }
         .buttonStyle(.plain)
         .help("開いたままにする（⌘P）")
+        .focusable()
         .accessibilityLabel("開いたままにする")
         .accessibilityAddTraits(model.isPinned ? [.isSelected] : [])
     }
@@ -433,7 +440,7 @@ struct PanelRootView: View {
     private var moreMenu: some View {
         Menu {
             Button("管理画面を開く（⌘N）") {
-                WindowBridge.shared.openManager()
+                coordinator.openPanelInManager()
             }
             Button("設定…") {
                 WindowBridge.shared.openSettingsWindow()
@@ -451,6 +458,7 @@ struct PanelRootView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("その他")
+        .focusable()
         .accessibilityLabel("その他")
     }
 
@@ -464,6 +472,7 @@ struct PanelRootView: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .focusable()
         .accessibilityLabel(help)
     }
 
@@ -489,11 +498,11 @@ struct PanelRootView: View {
 
     @ViewBuilder
     private var translationText: some View {
-        Text(coordinator.panel.translation)
-            .font(.system(size: PanelLayout.translationFontSize))
-            .lineSpacing(PanelLayout.translationLineSpacing)
-            .textRenderer(FadeInTextRenderer(revealed: reveal.revealed))
-            .textSelection(.enabled)
+        StreamedTranslationText(
+            state: coordinator.panel, visible: model.isOpen,
+            fontSize: PanelLayout.translationFontSize,
+            lineSpacing: PanelLayout.translationLineSpacing
+        )
     }
 
     private var translationArea: some View {
@@ -562,8 +571,13 @@ struct PanelRootView: View {
                     .font(.system(size: 13))
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
-                    Button("もう一度") { coordinator.retryPanel() }
-                        .controlSize(.small)
+                    if failure == .modelMissing {
+                        Button("モデルを取得") { WindowBridge.shared.openManager(page: .models) }
+                            .controlSize(.small)
+                    } else {
+                        Button("もう一度") { coordinator.retryPanel() }
+                            .controlSize(.small)
+                    }
                     if failure.showsLogButton {
                         Button("ログを見る") { NSWorkspace.shared.open(AppPaths.logsDirectory) }
                             .controlSize(.small)
@@ -590,7 +604,7 @@ struct PanelRootView: View {
                 if hasTranslation {
                     copyButton
                     iconButton("arrow.up.left.and.arrow.down.right", help: "管理画面で開く") {
-                        WindowBridge.shared.openManager()
+                        coordinator.openPanelInManager()
                     }
                 }
             }
@@ -600,7 +614,7 @@ struct PanelRootView: View {
     }
 
     private var hasTranslation: Bool {
-        !coordinator.panel.translation.isEmpty
+        coordinator.panel.phase == .translating || coordinator.panel.phase == .done
     }
 
     @ViewBuilder
@@ -625,14 +639,13 @@ struct PanelRootView: View {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .font(.system(size: 12))
                 .contentTransition(.symbolEffect(.replace))
-                .foregroundStyle(coordinator.panel.translation.isEmpty
-                    ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
+                .foregroundStyle(.secondary)
                 .frame(width: 20, height: 20)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .disabled(coordinator.panel.translation.isEmpty)
         .help("訳文をコピー（⌘⇧C）")
+        .focusable()
         .accessibilityLabel("訳文をコピー")
     }
 
@@ -677,6 +690,7 @@ struct PanelRootView: View {
         }
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .capsule)
+        .focusable()
         .help(shortcut.map { "\(title)（\($0)）" } ?? title)
         .accessibilityLabel(title)
     }

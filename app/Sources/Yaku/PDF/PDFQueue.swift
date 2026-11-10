@@ -37,6 +37,7 @@ final class PDFQueue {
     var onFinished: ((PDFJob) -> Void)?
     /// Called with the message when a file is turned away (SPEC 8.1).
     var onRejected: ((String) -> Void)?
+    var onNeedsWorker: ((Bool) -> Void)?
     /// Picks the target language for a detected source language. The app
     /// delegate wires this to the same rule the panel uses; without it the
     /// SPEC 5.1 default applies (Japanese to English, everything else to
@@ -57,8 +58,9 @@ final class PDFQueue {
     /// Files that arrived before the worker was installed (or while it was
     /// being installed), with their `--pages` ranges, in arrival order.
     private var pendingIntakes: [(accepted: PDFIntake.Accepted, pages: String?)] = []
-    private var lastDeliveredProgress = -1.0
-    private var lastDeliveredStage = ""
+    private var progressGate = PDFProgressGate()
+    private var makeDual = true
+    private var pendingRetries: [UUID] = []
 
     init(store: TranslationStore, engine: EngineManager) {
         self.store = store
@@ -147,9 +149,9 @@ final class PDFQueue {
 
     /// The user declined the install: the files that waited for it are let go.
     func discardPendingIntakes() {
-        guard !pendingIntakes.isEmpty else { return }
         AppLog.write("pdf: dropped \(pendingIntakes.count) file(s) waiting for the worker")
         pendingIntakes.removeAll()
+        pendingRetries.removeAll()
     }
 
     /// Called after the installer finishes successfully, to run every file
@@ -160,6 +162,11 @@ final class PDFQueue {
         for (accepted, pages) in waiting {
             let job = makeJob(from: accepted, pages: pages)
             AppLog.write("pdf: queued after install \(job.fileName)")
+        }
+        let retries = pendingRetries
+        pendingRetries.removeAll()
+        for id in retries {
+            if let job = jobs.first(where: { $0.id == id }) { retry(job) }
         }
         startNextIfIdle()
     }
@@ -204,8 +211,7 @@ final class PDFQueue {
 
         didFinish = false
         lastError = ""
-        lastDeliveredProgress = -1
-        lastDeliveredStage = ""
+        progressGate = PDFProgressGate()
         job.jobState = .running
         job.progress = 0
         job.stage = PDFStage.preparing
@@ -227,8 +233,18 @@ final class PDFQueue {
             finish(job, state: .cancelled, message: "")
             return
         }
-        guard let port = engine.port, let key = engine.apiKey, running else {
+        guard running else {
             finish(job, state: .failed, message: "翻訳エンジンを起動できませんでした")
+            return
+        }
+        let pdfEndpoint = await engine.ensurePDFEndpoint()
+        guard runningID == job.id else { return }
+        if cancelledJobID == job.id {
+            finish(job, state: .cancelled, message: "")
+            return
+        }
+        guard let endpoint = pdfEndpoint else {
+            finish(job, state: .failed, message: "PDF 翻訳の接続を準備できませんでした")
             return
         }
 
@@ -248,6 +264,7 @@ final class PDFQueue {
         }
 
         let settings = AppSettings.shared
+        makeDual = settings.pdfMakeDual
         let temporary = temporaryDirectory(for: job)
         try? FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
         tempDirectory = temporary
@@ -265,7 +282,7 @@ final class PDFQueue {
         var arguments = [
             script.path,
             input.path,
-            "--engine-url", "http://127.0.0.1:\(port)",
+            "--engine-url", endpoint.url.absoluteString,
             "--output", temporary.path,
             "--lang-in", source,
             "--lang-out", target,
@@ -276,6 +293,7 @@ final class PDFQueue {
         arguments += ["--context", accepted.title]
         if let glossaryPath { arguments += ["--glossary", glossaryPath] }
         if let pages = pagesByJob[job.id] { arguments += ["--pages", pages] }
+        if !makeDual { arguments += ["--no-dual"] }
 
         let process = PDFWorkerProcess()
         process.onEvent = { [weak self] event in self?.handle(event, job: job) }
@@ -288,7 +306,7 @@ final class PDFQueue {
             try process.start(
                 executable: python,
                 arguments: arguments,
-                environment: ["YAKU_ENGINE_API_KEY": key, "HOME": home.path]
+                environment: ["YAKU_ENGINE_API_KEY": endpoint.apiKey, "HOME": home.path]
             )
         } catch {
             worker = nil
@@ -318,14 +336,12 @@ final class PDFQueue {
         guard job.id == runningID else { return }
         switch event {
         case .progress(let value, let stage):
+            guard progressGate.accepts(value: value, stage: stage) else { return }
             job.progress = min(max(value, 0), 1)
             job.stage = stage
             // BabelDOC reports progress many times a second; the surfaces only
             // need a step change.
-            let changed = abs(job.progress - lastDeliveredProgress) >= 0.01 || stage != lastDeliveredStage
-            lastDeliveredProgress = job.progress
-            lastDeliveredStage = stage
-            if changed { onProgress?(job) }
+            onProgress?(job)
 
         case .done(let mono, let dual, let seconds):
             didFinish = true
@@ -333,7 +349,7 @@ final class PDFQueue {
                 monoPath: mono,
                 dualPath: dual,
                 input: inputURL(for: job) ?? URL(fileURLWithPath: job.fileName),
-                makeDual: AppSettings.shared.pdfMakeDual
+                makeDual: makeDual
             )
             job.seconds = seconds
             guard let monoURL = placed.mono else {
@@ -352,6 +368,12 @@ final class PDFQueue {
             }
             job.outputMonoPath = monoURL.path
             job.outputDualPath = placed.dual?.path ?? ""
+            if makeDual, placed.dual == nil {
+                let kept = tempDirectory?.path ?? ""
+                tempDirectory = nil
+                finish(job, state: .failed, message: "対訳 PDF を保存できませんでした。訳のみの PDF は \(monoURL.path)、残りの出力は \(kept) に残っています")
+                return
+            }
             finish(job, state: .done, message: "")
 
         case .error(let message):
@@ -360,8 +382,8 @@ final class PDFQueue {
     }
 
     private func handleExit(status: Int32, job: PDFJob) {
-        worker = nil
         guard job.id == runningID else { return }
+        worker = nil
         if didFinish { return }
         if cancelledJobID == job.id {
             finish(job, state: .cancelled, message: "")
@@ -435,8 +457,14 @@ final class PDFQueue {
     }
 
     func retry(_ job: PDFJob) {
-        guard !hasActiveJob || job.id == runningID else {
-            // Still queued behind another job.
+        guard job.id != runningID, job.jobState != .queued else { return }
+        if case .ready = PDFWorkerPaths.readiness {
+            // Queue behind any job already running.
+        } else {
+            if !pendingRetries.contains(job.id) { pendingRetries.append(job.id) }
+            if installer.phase != .running {
+                onNeedsWorker?(PDFWorkerPaths.readiness == .needsUpdate)
+            }
             return
         }
         job.jobState = .queued
