@@ -11,3 +11,6 @@ __pycache__/
 .briefs/
 docs/checks/
 context.md
+
+# Public PDFs used by the PDF tests (not redistributed).
+/fixtures/
