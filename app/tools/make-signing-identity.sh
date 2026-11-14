@@ -11,15 +11,19 @@
 # The identity lives in ~/Library/Keychains/yaku-dev.keychain-db, not the login
 # keychain: a key in the login keychain made codesign wait on an authorization
 # prompt that never appeared. The keychain password is random and stored in
-# ~/Library/Application Support/Yaku/dev-signing/pass (mode 600).
+# ~/Library/Application Support/Perspica/dev-signing/pass (mode 600).
 #
 # Running it again changes nothing if the identity already exists.
 set -eu
 
 NAME="Yaku Signing"
 KEYCHAIN="$HOME/Library/Keychains/yaku-dev.keychain-db"
-PASS_DIR="$HOME/Library/Application Support/Yaku/dev-signing"
+PASS_DIR="$HOME/Library/Application Support/Perspica/dev-signing"
 PASS_FILE="$PASS_DIR/pass"
+# Existing signing identities remain usable before the first app migration.
+if [ ! -f "$PASS_FILE" ] && [ -f "$HOME/Library/Application Support/Yaku/dev-signing/pass" ]; then
+    PASS_FILE="$HOME/Library/Application Support/Yaku/dev-signing/pass"
+fi
 
 if [ -f "$KEYCHAIN" ] && [ -f "$PASS_FILE" ] \
     && security find-identity -p codesigning "$KEYCHAIN" | grep -q "\"$NAME\""; then

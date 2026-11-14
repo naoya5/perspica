@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for the report. English or Japanese is fine.
-        Do not paste text, documents or screen pictures that you do not want to make public.
-        For a security problem, use the private form in SECURITY.md instead.
+        Reports are welcome in English or Japanese.
+        Do not paste text, documents or screenshots that you do not want to make public.
+        Report security problems privately using [SECURITY.md](https://github.com/naoya5/perspica/blob/main/SECURITY.md), not this form.
 
   - type: input
     id: commit
@@ -61,7 +61,7 @@ body:
     id: what
     attributes:
       label: What happened
-      description: What you did, what you expected, and what happened instead.
+      description: Describe what you did, what you expected, and what happened instead. Use test text or documents.
     validations:
       required: true
 
@@ -79,6 +79,6 @@ body:
     attributes:
       label: Log
       description: |
-        The relevant lines from ~/Library/Logs/Yaku/app.log (and engine.log or pdf.log for engine or PDF problems).
+        Relevant lines from ~/Library/Logs/Perspica/app.log (and engine.log or pdf.log for engine or PDF problems).
         Read them first and remove anything private.
       render: text

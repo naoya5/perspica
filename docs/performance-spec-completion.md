@@ -1,12 +1,16 @@
 # SPEC and performance completion audit
 
-Audit date: 2026-11-10. This report tracks every original audit bullet, splitting compound requirements and cross-referencing repeated findings.
+Audit date: 2026-11-10. This report records the audit at that date, not the current validation status.
+It tracks every original audit bullet, splits compound requirements and cross-references repeated findings.
+See the [Japanese README](../README.md) or [English README](../README.en.md) for current setup and migration guidance.
 
-**Not a macOS completion or performance claim.** All 72 original acceptance rows have individual source evidence below. Portable core tests and Python tests run on Linux; the actual macOS app has not been compiled or exercised. “Implemented, Mac unverified” means source evidence only, not a successful app build, UI proof, or measured speedup.
+**This is not evidence of macOS completion or performance.** All 72 original acceptance rows have individual source evidence below. Portable core tests and Python tests run on Linux; the actual macOS app has not been compiled or exercised. “Implemented, Mac unverified” means source evidence only, not a successful app build, verified UI behavior, or measured speedup.
 
 Owners: Engine (engine/data/security), UI (application/presentation), PDF (worker/queue), Overlay (screen/OCR). Joint rows require both caller and implementation.
 
-## Actual validation
+<a id="actual-validation"></a>
+
+## Validation recorded for this audit
 
 - From the repository root, `PYTHONPATH="$TEST_DEPS" python3 -m unittest discover -s pdf-worker/tests`: **37 passed, zero skipped, 3.092s**. `TEST_DEPS` names an isolated installation of `pymupdf==1.26.7`; covers generated PDF font classification, local HTTP/SSE/auth/keepalive/reconnect, truncated streams, chunking/context/bounds, and dual-setting forwarding through a PDF-library stand-in. Tokenizer cases cover actual-count contract, missing/busy endpoint fallback, authentication rejection, cutoff, cancellation and avoiding duplicate successful counts.
 - Earlier runs: system Python 27 discovered, 22 passed, five font tests skipped (pymupdf absent); isolated dependency suite 29 passed. Superseded for the current PDF snapshot by the dependency-complete run above.
@@ -48,6 +52,7 @@ These supplement the original inventory; they must not be omitted by claiming th
 ## Exhaustive acceptance inventory
 
 “PDF tests + Mac unverified” validates only the Python behavior named in the row. Native Swift queue behavior is never covered by those tests. “Perf source only” means the intended work reduction appears in source, with no measured benefit.
+
 ## 1. Original priority bug table
 
 | ID | Requirement | Owner | Status | Acceptance evidence |
@@ -154,7 +159,6 @@ Changes can be source-verified on Linux, but benefits remain **unmeasured** with
 
 The user's note about EngineClient byte-by-byte reads is explicitly **not** an evidenced CPU cause or a separate mandatory rewrite. Do not introduce an unrelated stream rewrite without evidence.
 
-
 ## Limits and remaining Mac verification
 
 The 4096 request limit applies to the full prompt plus reserved output. PDF tests exercise the proxy's authenticated `/tokenize` count contract with a stand-in, not the PLaMo tokenizer itself. A cheap UTF-8-byte bound plus BOS avoids counting small prompts; real counting avoids unnecessarily tiny chunks. Missing/busy tokenizers fall back conservatively. Chunks are subdivided to retain two complete preceding pairs whenever feasible; optional history/glossary/context may be removed only when necessary to fit. Source text is never silently truncated. PDF punctuation splitting approximates sentence boundaries with a standard-library regex, not exact NLTokenizer parity. Translation quality and parity require the real model.
@@ -168,15 +172,15 @@ swift test
 cd ..
 V=.agents/skills/verify-yaku/scripts/yaku-verify
 $V doctor
-$V begin spec-performance-audit
 $V build
+$V begin spec-performance-audit
 # Drive all feature recipes and the cases in the inventory above.
 $V end
 ```
 
 Build must have zero warnings. Real entry points needed: status icon, panel and notch direct drop; manager PDF drop and missing-worker acceptance/decline; Finder open; panel/HUD/manager translation; screen picker/capture; settings. Cover failure/retry/cancellation, concurrent requests, >5000 forever-history rows, long text cache reuse, clearing failures, foreground permission grant/revoke, and all keyboard controls.
 
-Run translating CPU at least three times and report the range, not one favorable number:
+Measure CPU during translation at least three times and report the range, not one favorable number.
 
 ```sh
 $V cpu translating 16 12 --demo-surface panel --demo-state translating --demo-pin --demo-quit-after 60
@@ -184,7 +188,8 @@ $V cpu translating 16 12 --demo-surface panel --demo-state translating --demo-pi
 
 Also measure hidden-panel streaming through a real single translation, not only the looping demo. Use Time Profiler to establish the effect of observation isolation and unchanged glow updates. Off-target dragging needs a real drag measurement. Inspect 4K/5K OCR task concurrency, accuracy and responsiveness after the cap.
 
-Run `app/tools/measure-targets.sh` with `YAKU_DEV_MODEL`, an unlocked Mac and isolated verification state. Check every SPEC 14 gate independently at its worst relevant case:
+Run `app/tools/measure-targets.sh` with `YAKU_DEV_MODEL`, an unlocked Mac and isolated verification state.
+Check every SPEC 14 gate independently at its worst relevant case.
 
 | Gate | Required result |
 |---|---|

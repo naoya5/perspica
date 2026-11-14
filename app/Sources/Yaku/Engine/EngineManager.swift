@@ -66,8 +66,6 @@ final class EngineManager {
 
     /// The four request slots every caller shares (SPEC 7.3).
     nonisolated let slots = EngineSlots(capacity: 4)
-    /// The loopback proxy the PDF worker talks to, made on first use.
-    private var pdfProxy: EngineProxy?
     /// Bumped every time the engine becomes ready, so a failed request can
     /// tell whether the engine it used is still the one serving.
     private(set) var generation: UInt64 = 0
@@ -238,130 +236,6 @@ final class EngineManager {
         AppLog.write("engine: died before a \(priority) request answered; starting it once more")
     }
 
-    /// The address and key the PDF worker uses (SPEC 7.3: PDF goes through
-    /// the same slots, at the lowest priority). The proxy starts the engine
-    /// per request, so this does not need the engine to be running.
-    func ensurePDFEndpoint() async -> (url: URL, apiKey: String)? {
-        if let pdfProxy, pdfProxy.port > 0 {
-            return (URL(string: "http://127.0.0.1:\(pdfProxy.port)")!, pdfProxy.apiKey)
-        }
-        let proxy = EngineProxy(apiKey: Self.randomAPIKey()) { [weak self] request in
-            guard let self else { return .error(status: 503, "engine unavailable") }
-            return await Self.handleProxy(request, engine: self)
-        }
-        do {
-            let port = try proxy.start()
-            pdfProxy = proxy
-            AppLog.write("engine: PDF proxy listening on 127.0.0.1:\(port)")
-            return (URL(string: "http://127.0.0.1:\(port)")!, proxy.apiKey)
-        } catch {
-            AppLog.write("engine: PDF proxy could not start (\(error))")
-            return nil
-        }
-    }
-
-    nonisolated private static func handleProxy(_ request: ProxyRequest, engine: EngineManager) async -> ProxyReply {
-        switch (request.method, request.path) {
-        case ("GET", "/health"):
-            // The proxy starts the engine for each request, so it is ready
-            // whenever it answers.
-            return .json(status: 200, ["status": "ok"])
-        case ("POST", "/v1/completions"):
-            break
-        case ("POST", "/tokenize"):
-            return await proxyTokenize(request, engine: engine)
-        case (_, "/health"), (_, "/v1/completions"), (_, "/tokenize"):
-            return .error(status: 405, "method not allowed")
-        default:
-            return .error(status: 404, "not found")
-        }
-        guard let object = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any],
-              object["prompt"] is String else {
-            return .error(status: 400, "a string prompt is required")
-        }
-        let streaming = (object["stream"] as? Bool) ?? false
-        let body = request.body
-        let stream = AsyncThrowingStream<Data, Error> { continuation in
-            let task = Task {
-                do {
-                    try await EngineRequestRunner.run(
-                        priority: .pdf,
-                        slots: engine.slots,
-                        ensureRunning: { await engine.ensureRunning() },
-                        isServing: { await engine.isServing($0) },
-                        open: {
-                            guard let current = await engine.currentClient() else {
-                                throw EngineStreamError.engineStopped
-                            }
-                            let (client, generation) = current
-                            let upstream = try await Self.fittedProxyBody(body, client: client)
-                            await engine.markUsed()
-                            return EngineAttempt(
-                                stream: client.rawCompletion(body: upstream, expectsDone: streaming),
-                                generation: generation
-                            )
-                        },
-                        onRestart: { await engine.noteRestart(.pdf) },
-                        yield: { _ = continuation.yield($0) }
-                    )
-                    await engine.markUsed()
-                    continuation.finish()
-                } catch EngineStreamError.requestTooLarge {
-                    continuation.finish(throwing: ProxyHTTPError(status: 413, message: "the request does not fit in 4096 tokens"))
-                } catch EngineStreamError.startFailed {
-                    continuation.finish(throwing: ProxyHTTPError(status: 503, message: "the engine could not be started"))
-                } catch EngineStreamError.engineStopped {
-                    continuation.finish(throwing: ProxyHTTPError(status: 503, message: "the engine stopped"))
-                } catch EngineError.httpStatus(let status) {
-                    continuation.finish(throwing: ProxyHTTPError(status: status, message: "engine answered \(status)"))
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
-        return ProxyReply(
-            status: 200,
-            contentType: streaming ? "text/event-stream" : "application/json",
-            body: stream
-        )
-    }
-
-    /// Lets the worker count a prompt exactly as `/v1/completions` will. It
-    /// takes no slot: tokenizing does not use one of the engine's sequences.
-    nonisolated private static func proxyTokenize(_ request: ProxyRequest, engine: EngineManager) async -> ProxyReply {
-        guard let object = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any],
-              let content = object["content"] as? String else {
-            return .error(status: 400, "a string content is required")
-        }
-        guard await engine.ensureRunning(), let client = await engine.client else {
-            return .error(status: 503, "the engine could not be started")
-        }
-        do {
-            let tokens = try await client.tokenize(content)
-            await engine.markUsed()
-            return .json(status: 200, ["count": tokens.count, "tokens": tokens])
-        } catch {
-            return .error(status: 503, "the engine could not tokenize")
-        }
-    }
-
-    /// The worker's body with `max_tokens` fitted into one slot and the
-    /// engine's alias as the model. Everything else is sent as it came.
-    nonisolated private static func fittedProxyBody(_ body: Data, client: EngineClient) async throws -> Data {
-        guard var object = try JSONSerialization.jsonObject(with: body) as? [String: Any],
-              let prompt = object["prompt"] as? String else {
-            throw ProxyHTTPError(status: 400, message: "a string prompt is required")
-        }
-        let asked = (object["max_tokens"] as? Int) ?? (object["n_predict"] as? Int) ?? CompletionRequest.maximumMaxTokens
-        let requested = CompletionRequest(prompt: prompt, maxTokens: max(1, min(asked, CompletionRequest.maximumMaxTokens)))
-        let fitted = try await RequestBudget.fit(requested) { try await client.tokenCount($0) }
-        object["max_tokens"] = fitted.maxTokens
-        object.removeValue(forKey: "n_predict")
-        object["model"] = modelAlias
-        return try JSONSerialization.data(withJSONObject: object)
-    }
-
     /// The running llama-server's memory as Activity Monitor shows it
     /// (`phys_footprint`), for the settings' engine status.
     var residentMemoryBytes: UInt64? {
@@ -405,8 +279,6 @@ final class EngineManager {
 
     /// Best-effort synchronous stop for `applicationWillTerminate`.
     func stopSynchronously() {
-        pdfProxy?.stop()
-        pdfProxy = nil
         idleTimer?.invalidate()
         idleTimer = nil
         stoppingIntentionally = true

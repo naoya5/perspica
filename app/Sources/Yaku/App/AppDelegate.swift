@@ -63,16 +63,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        AppLog.rotateIfNeeded()
-        AppLog.write("launch args=[\(Self.loggableLaunchArguments().joined(separator: " "))]")
-
         // SPEC 7.1: only one Yaku runs at a time. A second one exits at once,
         // before anything is set up, so it can never touch the engine record or
         // the store.
         guard SingleInstance.acquire() else {
-            print("Perspica はすでに動いています")
+            print("Perspica はすでに動いているか、起動に必要なロックを取得できません")
             exit(0)
         }
+
+        do {
+            try AppDataMigration.run()
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "以前のデータを移行できませんでした"
+            alert.informativeText = "データを上書きせずに起動を中止しました。Application Support の Yaku と Perspica フォルダのアクセス権と空き容量を確認してください。"
+            alert.addButton(withTitle: "閉じる")
+            alert.runModal()
+            exit(1)
+        }
+        AppLog.rotateIfNeeded()
+        AppLog.write("launch args=[\(Self.loggableLaunchArguments().joined(separator: " "))]")
 
         NSApp.setActivationPolicy(.accessory)
         installQuitHandler()
@@ -92,12 +102,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             engine.configure(idleSeconds: idle)
         } else {
             engine.configure(idleSeconds: settings.engineIdleSeconds)
-        }
-        // `--pdf-python` is the development escape hatch for the worker's
-        // interpreter (SPEC 8.2).
-        if let python = demo.pdfPython {
-            settings.pdfPythonPath = python
-            AppLog.write("pdf-worker: interpreter forced to \(python)")
         }
 
         // Headless translation run: no menu bar item, no panel.
@@ -784,9 +788,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: PDF (SPEC 8)
 
     private func setUpPDF() {
-        pdfQueue.onNeedsWorker = { [weak self] update in
-            self?.promptForWorkerInstall(update: update)
-        }
+        // The old worker's environment is hundreds of MB; deleting it must not hold up launch.
+        Task.detached(priority: .utility) { LegacyPDFWorker.remove() }
         PDFNotifications.shared.onOpen = { path in
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -911,81 +914,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The one path every entry point takes into the queue.
     @discardableResult
     func enqueuePDF(_ url: URL, pages: String? = nil) async -> PDFQueue.EnqueueResult {
-        let result = await pdfQueue.enqueue(url: url, pages: pages)
-        switch result {
-        case .needsWorker:
-            promptForWorkerInstall(update: false)
-        case .needsWorkerUpdate:
-            promptForWorkerInstall(update: true)
-        case .accepted, .waitingForWorker, .rejected:
-            break
-        }
-        return result
-    }
-
-    /// True while the install question is on screen, so a second file that
-    /// arrives meanwhile waits in the queue instead of asking again.
-    private var isAskingForWorkerInstall = false
-
-    /// SPEC 8.2 / 13: the first PDF asks before the extra parts are fetched.
-    /// `update` is the same question for an environment that has to be synced
-    /// to new requirements. The queue runs the waiting files when the
-    /// installer finishes, whichever surface started it.
-    private func promptForWorkerInstall(update: Bool) {
-        guard !isAskingForWorkerInstall, pdfQueue.installer.phase != .running else { return }
-        // A `--demo-pdf` run is scripted and unattended, so the question is
-        // treated as already answered; the Settings PDF tab keeps the button.
-        if demo.pdf != nil {
-            AppLog.write("pdf-worker: install question skipped (demo)")
-            Task { await pdfQueue.installer.install() }
-            return
-        }
-
-        isAskingForWorkerInstall = true
-        defer { isAskingForWorkerInstall = false }
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        if update {
-            alert.messageText = "PDF の翻訳に使う部品を更新します"
-            alert.informativeText = "新しい版の取得に数分かかります。"
-            alert.addButton(withTitle: "更新する")
-        } else {
-            alert.messageText = "PDF の翻訳には追加の部品が必要です"
-            alert.informativeText = "約 \(PDFWorkerInstaller.estimatedSizeText)、取得に数分かかります。"
-            alert.addButton(withTitle: "取得する")
-        }
-        alert.addButton(withTitle: "やめる")
-        AppLog.write("pdf-worker: prompting for \(update ? "sync" : "install")")
-        if alert.runModal() == .alertFirstButtonReturn {
-            Task { await pdfQueue.installer.install() }
-        } else {
-            AppLog.write("pdf-worker: install declined")
-            pdfQueue.discardPendingIntakes()
-        }
+        await pdfQueue.enqueue(url: url, pages: pages)
     }
 
     // MARK: demo surfaces
 
     /// `--demo-surface manager --demo-page pdf --demo-state …`: a row on the
-    /// manager's PDF page without running the worker.
+    /// manager's PDF page without running a job.
     private func applyManagerPDFDemo() {
         switch demo.state {
         case "done":
-            pdfQueue.applyDemoJob(state: .done, progress: 1, stage: "Save PDF")
-            // A failed row as well, with a long worker error, so the one-line
+            pdfQueue.applyDemoJob(state: .done, progress: 1, stage: PDFStage.writing)
+            // A failed row as well, with a long error, so the one-line
             // row and its 詳細 popover can be photographed.
             pdfQueue.applyDemoJob(
-                state: .failed, progress: 0.31, stage: "Translate Paragraphs",
+                state: .failed, progress: 0.31, stage: PDFStage.translating,
                 fileName: "manual.pdf", pageCount: 42,
-                errorMessage: "PDF を訳せませんでした: ModuleNotFoundError: "
-                    + "No module named 'babeldoc'（設定の「PDF」からワーカーを入れ直してください）"
+                errorMessage: "訳した PDF を保存できませんでした（試した場所: /Volumes/共有/資料/2026 年度/"
+                    + "マニュアル改訂版）。訳文は一時フォルダに残っています"
             )
         case "pdf-running", "running":
-            pdfQueue.applyDemoJob(state: .running, progress: 0.42, stage: "Translate Paragraphs")
+            pdfQueue.applyDemoJob(state: .running, progress: 0.42, stage: PDFStage.translating)
         case "failed":
-            pdfQueue.applyDemoJob(state: .failed, progress: 0.31, stage: "Translate Paragraphs")
+            pdfQueue.applyDemoJob(state: .failed, progress: 0.31, stage: PDFStage.translating)
         case "queued":
-            pdfQueue.applyDemoJob(state: .queued, progress: 0, stage: "Preparing")
+            pdfQueue.applyDemoJob(state: .queued, progress: 0, stage: PDFStage.preparing)
         default:
             break
         }
@@ -1010,13 +963,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setUpDemo() {
         let text = demo.text ?? DemoText.threeParagraphs
 
-        // SPEC 15: the accessibility looks and the installed PDF worker
-        // are shown through launch options, never by changing the Mac's own
-        // settings.
+        // SPEC 15: the accessibility looks are shown through launch options,
+        // never by changing the Mac's own settings.
         AppearanceOverrides.reduceMotionDemo = demo.reduceMotionDemo
         AppearanceOverrides.reduceTransparencyDemo = demo.reduceTransparencyDemo
         AppearanceOverrides.increaseContrastDemo = demo.increaseContrastDemo
-        PDFWorkerPaths.demoInstalled = demo.pdfWorkerDemoInstalled
 
         if demo.pin {
             model.isPinned = true
@@ -1218,14 +1169,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.pdfQueue.applyDemoJob(
                         state: .running,
                         progress: 0.42,
-                        stage: "Translate Paragraphs"
+                        stage: PDFStage.translating
                     )
                     self.openPanel(reason: "demo-surface")
                 }
             case "pdf-done":
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                     guard let self else { return }
-                    self.pdfQueue.applyDemoJob(state: .done, progress: 1, stage: "Save PDF")
+                    self.pdfQueue.applyDemoJob(state: .done, progress: 1, stage: PDFStage.writing)
                     self.openPanel(reason: "demo-surface")
                 }
             default:

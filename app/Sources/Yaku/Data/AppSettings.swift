@@ -4,7 +4,7 @@ import YakuCore
 
 /// The app's preferences, in one place (SPEC 4.4).
 ///
-/// Normally this is `UserDefaults.standard`. With `--data-dir` it becomes a
+/// Normally this is the `app.perspica` defaults suite. With `--data-dir` it becomes a
 /// JSON file inside that folder instead: a separate `UserDefaults` suite would
 /// write to `~/Library/Preferences`, which is outside the area a demo run is
 /// allowed to touch. Either way the value of every key lives in `values`, so
@@ -38,7 +38,6 @@ final class AppSettings {
         static let pdfOutputFolder = "pdfOutputFolder"
         static let pdfOpenWhenDone = "pdfOpenWhenDone"
         static let pdfMakeDual = "pdfMakeDual"
-        static let pdfPythonPath = "pdfPythonPath"
         static let overlayLanguage = "overlayLanguage"
         static let overlayMinScale = "overlayMinScale"
         static let keepHistory = "keepHistory"
@@ -54,7 +53,7 @@ final class AppSettings {
             defaultTargetLanguage, defaultForm, autoTranslate, useNotch,
             selectionShortcut, panelShortcut, screenShortcut,
             engineIdleMinutes, selectedModelID, modelPath,
-            pdfOutputSameFolder, pdfOutputFolder, pdfOpenWhenDone, pdfMakeDual, pdfPythonPath,
+            pdfOutputSameFolder, pdfOutputFolder, pdfOpenWhenDone, pdfMakeDual,
             overlayLanguage, overlayMinScale,
             keepHistory, historyRetentionDays,
             licenseConsent, hasSeenOnboarding,
@@ -84,8 +83,9 @@ final class AppSettings {
     private func load() {
         switch backend {
         case .userDefaults:
+            migrateLegacyDefaultsIfNeeded()
             for key in Key.all {
-                if let value = UserDefaults.standard.object(forKey: key) {
+                if let value = defaultsForApp.object(forKey: key) {
                     values[key] = value
                 }
             }
@@ -99,11 +99,36 @@ final class AppSettings {
         }
     }
 
+    private func migrateLegacyDefaultsIfNeeded() {
+        let defaults = UserDefaults.standard
+        let domain = "app.perspica"
+        let marker = "perspica.didMigrateYakuDefaults"
+        // Bare SwiftPM binaries have no bundle ID. Use the explicit app suite
+        // below rather than putting preferences in a process-name domain.
+        guard !defaultsForApp.bool(forKey: marker) else { return }
+        let current = defaults.persistentDomain(forName: domain) ?? [:]
+        let migrated = LegacyDataMigration.settings(
+            legacy: defaults.persistentDomain(forName: "dev.naoya.yaku") ?? [:],
+            current: current,
+            keys: Key.all,
+            oldSupport: AppPaths.legacySupportDirectory,
+            newSupport: AppPaths.standardSupportDirectory
+        )
+        for key in Key.all {
+            if let value = migrated[key] { defaultsForApp.set(value, forKey: key) }
+        }
+        defaultsForApp.set(true, forKey: marker)
+    }
+
+    private var defaultsForApp: UserDefaults {
+        UserDefaults(suiteName: "app.perspica")!
+    }
+
     private func store(_ key: String, _ value: Any) {
         values[key] = value
         switch backend {
         case .userDefaults:
-            UserDefaults.standard.set(value, forKey: key)
+            defaultsForApp.set(value, forKey: key)
         case .file(let url):
             let data = (try? JSONSerialization.data(withJSONObject: values, options: [.prettyPrinted]))
                 ?? Data()
@@ -115,7 +140,7 @@ final class AppSettings {
         values.removeValue(forKey: key)
         switch backend {
         case .userDefaults:
-            UserDefaults.standard.removeObject(forKey: key)
+            defaultsForApp.removeObject(forKey: key)
         case .file(let url):
             let data = (try? JSONSerialization.data(withJSONObject: values, options: [.prettyPrinted]))
                 ?? Data()
@@ -249,12 +274,6 @@ final class AppSettings {
         set { store(Key.pdfMakeDual, newValue) }
     }
 
-    /// The interpreter the PDF worker runs with; empty means the installed
-    /// environment (SPEC 8.2: 開発中は lab の .venv を使える).
-    var pdfPythonPath: String {
-        get { string(Key.pdfPythonPath) ?? "" }
-        set { store(Key.pdfPythonPath, newValue) }
-    }
 
     // MARK: 画面翻訳（表示だけの項目）
 
@@ -289,12 +308,14 @@ final class AppSettings {
     }
 
     func hasAcceptedLicense(for modelID: String) -> Bool {
-        licenseConsent.contains(modelID)
+        // Retain old entries, but never treat an earlier agreement as consent
+        // to the publisher's revised terms.
+        licenseConsent.contains("\(modelID)@\(ModelCatalog.licenseRevision)")
     }
 
     func acceptLicense(for modelID: String) {
         var consent = licenseConsent
-        consent.insert(modelID)
+        consent.insert("\(modelID)@\(ModelCatalog.licenseRevision)")
         licenseConsent = consent
     }
 

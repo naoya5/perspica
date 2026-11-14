@@ -12,10 +12,8 @@
 set -eu
 cd "$(dirname "$0")"
 
-# The app was called Yaku until 2026-11-09. Only the names people see moved to
-# Perspica: the bundle, its icon and its display name. The Swift product (and
-# so CFBundleExecutable), the bundle identifier, the data and log folders and
-# the signing identity keep the name Yaku, so permissions and data carry over.
+# Swift modules/executable and the development signing identity keep their
+# old names. The public bundle ID and storage paths use Perspica.
 APP_NAME=Perspica
 EXECUTABLE=Yaku
 LEGACY_APP_NAME=Yaku
@@ -24,7 +22,10 @@ APP="$BUILD_DIR/$APP_NAME.app"
 CONTENTS="$APP/Contents"
 
 KEYCHAIN="$HOME/Library/Keychains/yaku-dev.keychain-db"
-KEYCHAIN_PASSWORD_FILE="$HOME/Library/Application Support/Yaku/dev-signing/pass"
+KEYCHAIN_PASSWORD_FILE="$HOME/Library/Application Support/Perspica/dev-signing/pass"
+if [ ! -f "$KEYCHAIN_PASSWORD_FILE" ]; then
+    KEYCHAIN_PASSWORD_FILE="$HOME/Library/Application Support/Yaku/dev-signing/pass"
+fi
 IDENTITY="Yaku Signing"
 SIGN_TIMEOUT=30
 
@@ -37,6 +38,9 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$CONTENTS/Helpers"
 
 cp Resources/Info.plist "$CONTENTS/Info.plist"
 cp Resources/PLAMO-COMMUNITY-LICENSE-en.txt "$CONTENTS/Resources/PLAMO-COMMUNITY-LICENSE-en.txt"
+cp ../LICENSE "$CONTENTS/Resources/LICENSE"
+cp ../THIRD_PARTY_NOTICES.md "$CONTENTS/Resources/THIRD_PARTY_NOTICES.md"
+cp -R Resources/Licenses "$CONTENTS/Resources/Licenses"
 cp "$BIN_DIR/$EXECUTABLE" "$CONTENTS/MacOS/$EXECUTABLE"
 
 # The app icon. `Resources/Perspica.icon` is an Icon Composer document; actool
@@ -58,17 +62,6 @@ if [ -d Resources/$APP_NAME.icon ]; then
     rm "$CONTENTS/Resources/icon-info.plist"
     echo "icon: $(ls "$CONTENTS/Resources" | tr '\n' ' ')"
 fi
-
-# The PDF worker's scripts ride along so the app does not depend on the
-# checkout. The Python environment itself is installed on first use (SPEC 8.2).
-# Every `.py` the worker imports has to be here: the app runs the bundle's copy
-# (`PDFWorkerPaths.scriptsDirectory`), so a script left out is a script the user
-# does not get.
-mkdir -p "$CONTENTS/Resources/pdf-worker"
-for script in ../pdf-worker/*.py; do
-    cp "$script" "$CONTENTS/Resources/pdf-worker/$(basename "$script")"
-done
-cp ../pdf-worker/requirements.txt "$CONTENTS/Resources/pdf-worker/requirements.txt"
 
 # llama-server is bundled only when explicitly asked for; during development
 # the app falls back to /opt/homebrew/bin/llama-server.
@@ -112,8 +105,7 @@ if [ "${1:-}" = "install" ]; then
     rm -rf "$HOME/Applications/$APP_NAME.app"
     cp -R "$APP" "$HOME/Applications/$APP_NAME.app"
     echo "installed: $HOME/Applications/$APP_NAME.app"
-    # The bundle under its old name has the same identifier; two copies would
-    # leave Launch Services and the login item free to pick either one.
+    # Do not leave an obsolete Yaku app available to Launch Services.
     if [ -d "$HOME/Applications/$LEGACY_APP_NAME.app" ]; then
         rm -rf "$HOME/Applications/$LEGACY_APP_NAME.app"
         echo "removed the old bundle: $HOME/Applications/$LEGACY_APP_NAME.app"

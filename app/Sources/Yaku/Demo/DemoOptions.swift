@@ -57,9 +57,6 @@ struct DemoOptions {
     var pdf: String?
     /// `--pdf-pages <範囲>`: pages to translate, e.g. `1-3`.
     var pdfPages: String?
-    /// `--pdf-python <path>`: use this interpreter for the PDF worker instead
-    /// of the installed environment (SPEC 8.2, development).
-    var pdfPython: String?
     /// `--demo-translate-after <秒>`: start a panel translation this long after
     /// launch, so a PDF job and a panel translation really overlap (SPEC 7.3).
     var translateAfter: Double?
@@ -93,10 +90,6 @@ struct DemoOptions {
     /// `--demo-dump-blocks`: print the blocks read from `--demo-image` as JSON
     /// and exit, so the reading can be checked without a screen.
     var dumpBlocks = false
-    /// `--demo-pdf-worker installed`: report the PDF worker as installed, so the
-    /// settings tab's 導入済み state can be photographed without the download
-    /// (SPEC 15).
-    var pdfWorkerDemoInstalled = false
     /// `--demo-reduce-motion` / `--demo-reduce-transparency` /
     /// `--demo-increase-contrast`: draw the accessibility appearance without
     /// changing the system's own settings (SPEC 15).
@@ -143,7 +136,6 @@ struct DemoOptions {
             case "--demo-close-after": closeWindowsAfter = next().flatMap(Double.init)
             case "--demo-pdf": pdf = next()
             case "--pdf-pages": pdfPages = next()
-            case "--pdf-python": pdfPython = next()
             case "--demo-translate-after": translateAfter = next().flatMap(Double.init)
             case "--demo-cancel-after": cancelAfter = next().flatMap(Double.init)
             case "--demo-copy-at": copyAt = Self.parseTimes(next())
@@ -154,8 +146,6 @@ struct DemoOptions {
             case "--demo-image": demoImage = next()
             case "--demo-scale": demoScale = next().flatMap(Double.init)
             case "--demo-dump-blocks": dumpBlocks = true
-            case "--demo-pdf-worker":
-                pdfWorkerDemoInstalled = next() == "installed"
             case "--demo-reduce-motion": reduceMotionDemo = true
             case "--demo-reduce-transparency": reduceTransparencyDemo = true
             case "--demo-increase-contrast": increaseContrastDemo = true

@@ -146,13 +146,16 @@ struct OnboardingView: View {
                         .truncationMode(.middle)
                 }
 
-                Text("取得の前に PLaMo Community License を表示して同意を求めます。同意は覚えます。")
+                Text("取得前にPLaMo Community Licenseの全文を表示します。同意はモデルとライセンスの改訂日ごとに保存します。")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
+                Text("Built with PLaMo")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
         }
         .sheet(item: $model.licenseModel) { entry in
-            OnboardingLicenseSheet(model: model, entry: entry)
+            LicenseSheet(model: model, entry: entry)
         }
     }
 
@@ -298,67 +301,5 @@ struct OnboardingView: View {
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-}
-
-/// The licence gate on the onboarding page; the same terms as the manager's.
-private struct OnboardingLicenseSheet: View {
-    @Bindable var model: ManagerModel
-    let entry: TranslationModel
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("PLaMo Community License")
-                .font(.system(size: 15, weight: .semibold))
-            ScrollView {
-                Text(text)
-                    .font(.system(size: 11))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(height: 260)
-            .padding(8)
-            .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: 8, style: .continuous))
-            HStack {
-                Link("ライセンスの全文を開く",
-                     destination: URL(string: "https://plamo.preferredai.jp/info/plamo-community-license-en")!)
-                    .font(.system(size: 11))
-                Spacer()
-                Button("やめる") {
-                    model.licenseModel = nil
-                    dismiss()
-                }
-                Button("同意して取得する") {
-                    model.acceptLicense(for: entry)
-                    dismiss()
-                }
-                .buttonStyle(.glassProminent)
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(20)
-        .frame(width: 560)
-    }
-
-    private var text: String {
-        if let url = Bundle.main.url(forResource: "PLAMO-COMMUNITY-LICENSE-en", withExtension: "txt"),
-           let text = try? String(contentsOf: url, encoding: .utf8) {
-            return text
-        }
-        return """
-        PLaMo Community License Agreement（要点）
-
-        ・個人利用（学習・趣味）と学術利用は、事前の登録なしで無償です。
-        ・商用利用は、PFN の登録ページでの事前登録と、年間売上 10 億円以下という条件を
-          満たす場合だけ許可されます。
-        ・MODEL MATERIALS を第三者に渡すときは、本契約の写しを渡し、「Built with PLaMo」を
-          表示し、AI モデル名に「PLaMo」を含める必要があります。
-        ・出力は、モデルの出力であることを明示すれば公開できます。
-        ・モデルと出力は現状のまま提供され、PFN は保証しません。
-
-        全文: https://plamo.preferredai.jp/info/plamo-community-license-en
-        """
     }
 }

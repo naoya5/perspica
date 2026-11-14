@@ -34,7 +34,7 @@ export SCREEN_FRAMES
 capture_windows() {
     name=$1
     tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/yaku-shot.XXXXXX")
-    ids=$("$WINID" Yaku 2>/dev/null | awk -v screens="$SCREEN_FRAMES" '{
+    ids=$("$WINID" "${YAKU_WINDOW_OWNER:-Yaku}" 2>/dev/null | awk -v screens="$SCREEN_FRAMES" '{
         for (i = 1; i <= NF; i++) { split($i, a, "="); v[a[1]] = a[2] }
         if (v["onscreen"] != "true") next
         if (v["w"] == 500 && v["h"] == 500) next
@@ -73,7 +73,7 @@ export SCREEN_UNION
 # capture_windows picks it (most drawn pixels first). Used by capture_region.
 content_rect() {
     tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/yaku-rect.XXXXXX")
-    "$WINID" Yaku 2>/dev/null | awk -v screens="$SCREEN_FRAMES" '{
+    "$WINID" "${YAKU_WINDOW_OWNER:-Yaku}" 2>/dev/null | awk -v screens="$SCREEN_FRAMES" '{
         for (i = 1; i <= NF; i++) { split($i, a, "="); v[a[1]] = a[2] }
         if (v["onscreen"] != "true") next
         if (v["w"] == 500 && v["h"] == 500) next

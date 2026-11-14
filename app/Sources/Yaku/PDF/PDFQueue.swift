@@ -8,21 +8,13 @@ import YakuCore
 /// Everything the surfaces show about PDFs comes from here: the panel's
 /// 「作業中の PDF」 row, the menu bar icon's progress ring, the island, and the
 /// manager's list. The engine is held open for the whole job (SPEC 7.1). The
-/// worker translates up to four paragraphs at a time (`--pool-max-workers` in
-/// translate_pdf.py), which is the figure SPEC 7.3 measured against.
+/// native translator sends up to four paragraphs at a time, which is the
+/// figure SPEC 7.3 measured against.
 @MainActor
 @Observable
 final class PDFQueue {
     enum EnqueueResult {
         case accepted(PDFJob)
-        /// No worker yet: the caller should ask before installing (SPEC 8.2).
-        /// The file waits in `pendingIntakes` for the answer.
-        case needsWorker
-        /// The worker exists but its packages are behind the shipped
-        /// requirements; the file waits for the sync.
-        case needsWorkerUpdate
-        /// An install is already running; the file runs when it finishes.
-        case waitingForWorker
         case rejected(String)
     }
 
@@ -37,41 +29,31 @@ final class PDFQueue {
     var onFinished: ((PDFJob) -> Void)?
     /// Called with the message when a file is turned away (SPEC 8.1).
     var onRejected: ((String) -> Void)?
-    var onNeedsWorker: ((Bool) -> Void)?
     /// Picks the target language for a detected source language. The app
     /// delegate wires this to the same rule the panel uses; without it the
     /// SPEC 5.1 default applies (Japanese to English, everything else to
     /// Japanese).
     var resolveTarget: ((String) -> String)?
 
-    let installer = PDFWorkerInstaller()
-
     private let store: TranslationStore
     private let engine: EngineManager
 
-    private var worker: PDFWorkerProcess?
+    private var jobTask: Task<Void, Never>?
     private var tempDirectory: URL?
     private var pagesByJob: [UUID: String] = [:]
-    private var didFinish = false
-    private var lastError = ""
     private var cancelledJobID: UUID?
-    /// Files that arrived before the worker was installed (or while it was
-    /// being installed), with their `--pages` ranges, in arrival order.
-    private var pendingIntakes: [(accepted: PDFIntake.Accepted, pages: String?)] = []
     private var progressGate = PDFProgressGate()
     private var makeDual = true
-    private var pendingRetries: [UUID] = []
 
     init(store: TranslationStore, engine: EngineManager) {
         self.store = store
         self.engine = engine
         reload()
         closeJobsLeftByLastSession()
-        installer.onInstalled = { [weak self] in self?.runPendingIntakes() }
     }
 
     /// A job still marked running or queued at launch belongs to a session that
-    /// ended part-way (quit, crash). Its worker is gone, so without this it read
+    /// ended part-way (quit, crash). Its task is gone, so without this it read
     /// 「処理中」 forever; closing it as failed lets 「もう一度」 run it again.
     private func closeJobsLeftByLastSession() {
         let stale = jobs.filter { $0.jobState == .running || $0.jobState == .queued }
@@ -110,8 +92,7 @@ final class PDFQueue {
 
     // MARK: intake
 
-    /// Validates the file off the main actor, then queues it (or parks it
-    /// until the worker is installed).
+    /// Validates the file off the main actor, then queues it.
     @discardableResult
     func enqueue(url: URL, pages: String? = nil) async -> EnqueueResult {
         switch await PDFIntake.validateInBackground(url) {
@@ -121,54 +102,11 @@ final class PDFQueue {
             return .rejected(message)
 
         case .accepted(let accepted):
-            switch PDFWorkerPaths.readiness {
-            case .ready:
-                let job = makeJob(from: accepted, pages: pages)
-                AppLog.write("pdf: queued \(job.fileName) pages=\(job.pageCount)")
-                startNextIfIdle()
-                return .accepted(job)
-
-            case .needsInstall, .needsUpdate:
-                // The same file dropped again after a failed install replaces
-                // its earlier entry, so one install does not run it twice.
-                pendingIntakes.removeAll { $0.accepted.url == accepted.url }
-                pendingIntakes.append((accepted, pages))
-                if installer.phase == .running {
-                    AppLog.write("pdf: worker install running; \(url.lastPathComponent) waits")
-                    return .waitingForWorker
-                }
-                if PDFWorkerPaths.readiness == .needsUpdate {
-                    AppLog.write("pdf: worker needs a sync; asking")
-                    return .needsWorkerUpdate
-                }
-                AppLog.write("pdf: worker not installed; asking")
-                return .needsWorker
-            }
-        }
-    }
-
-    /// The user declined the install: the files that waited for it are let go.
-    func discardPendingIntakes() {
-        AppLog.write("pdf: dropped \(pendingIntakes.count) file(s) waiting for the worker")
-        pendingIntakes.removeAll()
-        pendingRetries.removeAll()
-    }
-
-    /// Called after the installer finishes successfully, to run every file
-    /// that was waiting for it, in the order they arrived (SPEC 8.2).
-    private func runPendingIntakes() {
-        let waiting = pendingIntakes
-        pendingIntakes.removeAll()
-        for (accepted, pages) in waiting {
             let job = makeJob(from: accepted, pages: pages)
-            AppLog.write("pdf: queued after install \(job.fileName)")
+            AppLog.write("pdf: queued \(job.fileName) pages=\(job.pageCount)")
+            startNextIfIdle()
+            return .accepted(job)
         }
-        let retries = pendingRetries
-        pendingRetries.removeAll()
-        for id in retries {
-            if let job = jobs.first(where: { $0.id == id }) { retry(job) }
-        }
-        startNextIfIdle()
     }
 
     private func makeJob(from accepted: PDFIntake.Accepted, pages: String?) -> PDFJob {
@@ -202,15 +140,7 @@ final class PDFQueue {
 
     private func start(_ job: PDFJob) async {
         guard runningID == job.id else { return }
-        guard let python = PDFWorkerPaths.pythonExecutable,
-              let script = PDFWorkerPaths.translateScript
-        else {
-            finish(job, state: .failed, message: "PDF ワーカーがありません")
-            return
-        }
 
-        didFinish = false
-        lastError = ""
         progressGate = PDFProgressGate()
         job.jobState = .running
         job.progress = 0
@@ -227,24 +157,14 @@ final class PDFQueue {
             engine.endPDFWork()
             return
         }
-        // 取り消し pressed while the engine was starting: there was no worker
-        // to signal, so the answer is read here.
+        // 取り消し pressed while the engine was starting: there was no job
+        // task to cancel, so the answer is read here.
         if cancelledJobID == job.id {
             finish(job, state: .cancelled, message: "")
             return
         }
         guard running else {
             finish(job, state: .failed, message: "翻訳エンジンを起動できませんでした")
-            return
-        }
-        let pdfEndpoint = await engine.ensurePDFEndpoint()
-        guard runningID == job.id else { return }
-        if cancelledJobID == job.id {
-            finish(job, state: .cancelled, message: "")
-            return
-        }
-        guard let endpoint = pdfEndpoint else {
-            finish(job, state: .failed, message: "PDF 翻訳の接続を準備できませんでした")
             return
         }
 
@@ -268,50 +188,102 @@ final class PDFQueue {
         let temporary = temporaryDirectory(for: job)
         try? FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
         tempDirectory = temporary
-        let home = PDFWorkerPaths.privateHomeDirectory
-        try? FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
-
-        let glossaryPath = writeGlossary(store.enabledGlossaryPairs(), into: temporary)
 
         // A scan has no text to read the language from; English is the most
-        // common case and what the worker assumed before detection existed.
+        // common case.
         let source = accepted.sourceLanguage ?? "en"
         let target = resolveTarget?(source) ?? LanguageDetector.defaultTarget(forSource: source)
         AppLog.write("pdf: \(job.fileName) \(source) -> \(target)\(accepted.sourceLanguage == nil ? " (no text to detect; assumed)" : "")")
 
-        var arguments = [
-            script.path,
-            input.path,
-            "--engine-url", endpoint.url.absoluteString,
-            "--output", temporary.path,
-            "--lang-in", source,
-            "--lang-out", target,
-        ]
-        if target == "ja" {
-            arguments += ["--form", settings.defaultForm.rawValue]
+        let base = input.deletingPathExtension().lastPathComponent
+        let mono = temporary.appendingPathComponent("\(base).\(target).pdf")
+        let dual = makeDual ? temporary.appendingPathComponent("\(base).\(target).dual.pdf") : nil
+        let options = NativePDFTranslator.Options(pages: pagesByJob[job.id].flatMap(PDFPageList.parse))
+        let translate = paragraphTranslator(
+            sourceLanguage: source,
+            target: target,
+            form: target == "ja" ? settings.defaultForm : nil,
+            context: accepted.title,
+            glossary: store.enabledGlossaryPairs()
+        )
+        let started = Date()
+        // The translator reports from its own tasks; the stream brings each
+        // report back to the main actor in order.
+        let (reports, reporter) = AsyncStream<(Double, String)>.makeStream()
+        Task { [weak self] in
+            for await (value, stage) in reports { self?.progressed(job, value: value, stage: stage) }
         }
-        arguments += ["--context", accepted.title]
-        if let glossaryPath { arguments += ["--glossary", glossaryPath] }
-        if let pages = pagesByJob[job.id] { arguments += ["--pages", pages] }
-        if !makeDual { arguments += ["--no-dual"] }
-
-        let process = PDFWorkerProcess()
-        process.onEvent = { [weak self] event in self?.handle(event, job: job) }
-        process.onExit = { [weak self] status in self?.handleExit(status: status, job: job) }
-        worker = process
-
-        do {
-            // pdf2zh and BabelDOC write under `$HOME/.cache`; the private home
-            // keeps that inside the app's data (see PDFWorkerPaths).
-            try process.start(
-                executable: python,
-                arguments: arguments,
-                environment: ["YAKU_ENGINE_API_KEY": endpoint.apiKey, "HOME": home.path]
-            )
-        } catch {
-            worker = nil
-            finish(job, state: .failed, message: "PDF ワーカーを起動できませんでした")
+        jobTask = Task { [weak self] in
+            defer { reporter.finish() }
+            do {
+                let result = try await NativePDFTranslator.translate(
+                    input: input, monoOutput: mono, dualOutput: dual, options: options,
+                    translate: translate,
+                    progress: { value, stage in reporter.yield((value, stage)) })
+                await MainActor.run { [weak self] in
+                    AppLog.write("pdf: \(result.paragraphs) paragraphs, \(result.unchanged) left as they were, \(result.formulaFallbacks) formula fallback(s)")
+                    self?.translated(job, mono: mono.path, dual: dual?.path ?? "",
+                                     seconds: Date().timeIntervalSince(started))
+                }
+            } catch {
+                await MainActor.run { [weak self] in self?.jobEnded(job, error: error) }
+            }
         }
+    }
+
+    /// Translates one paragraph the way the panel translates a long text:
+    /// sentence chunks with the previous pairs as history, at PDF priority.
+    private func paragraphTranslator(
+        sourceLanguage: String,
+        target: String,
+        form: TranslationForm?,
+        context: String,
+        glossary: [GlossaryPair]
+    ) -> NativePDFTranslator.Translate {
+        let engine = engine
+        return { text in
+            let chunks = TextChunker.chunks(from: text)
+            var finished: [String] = []
+            var pairs: [HistoryPair] = []
+            for chunk in chunks {
+                try Task.checkCancellation()
+                let request = PFML3.request(
+                    source: chunk.text,
+                    sourceLanguage: sourceLanguage,
+                    targetLanguage: target,
+                    form: form,
+                    context: context,
+                    history: Array(pairs.suffix(PFML3.historyLimit)),
+                    glossary: GlossaryFilter.relevant(glossary, in: chunk.text)
+                )
+                var buffer = ""
+                for try await piece in await engine.stream(request, priority: .pdf) {
+                    buffer += piece
+                }
+                let cleaned = TranslationCleanup.clean(buffer)
+                finished.append(cleaned)
+                pairs.append(HistoryPair(source: chunk.text, target: cleaned))
+            }
+            return TextChunker.join(finished, chunks: chunks)
+        }
+    }
+
+    private func jobEnded(_ job: PDFJob, error: Error) {
+        guard job.id == runningID else { return }
+        jobTask = nil
+        if cancelledJobID == job.id || error is CancellationError {
+            finish(job, state: .cancelled, message: "")
+            return
+        }
+        AppLog.write("pdf: \(job.fileName) failed: \(error)")
+        let message: String
+        switch error {
+        case NativePDFTranslator.Failure.encrypted: message = "パスワード付きの PDF は訳せません"
+        case NativePDFTranslator.Failure.unreadable: message = "PDF を読めませんでした"
+        case NativePDFTranslator.Failure.noText: message = "訳せる文字が見つかりませんでした（画像だけの PDF は訳せません）"
+        default: message = "PDF を訳せませんでした"
+        }
+        finish(job, state: .failed, message: message)
     }
 
     /// One folder per job, so a retry writes where the first run did and a
@@ -321,30 +293,18 @@ final class PDFQueue {
             .appendingPathComponent("Yaku-PDF-\(job.id.uuidString)", isDirectory: true)
     }
 
-    private func writeGlossary(_ pairs: [GlossaryPair], into directory: URL) -> String? {
-        guard !pairs.isEmpty else { return nil }
-        let rows = pairs.map { ["source": $0.source, "target": $0.target] }
-        guard let data = try? JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted]) else {
-            return nil
-        }
-        let url = directory.appendingPathComponent("glossary.json")
-        try? data.write(to: url)
-        return url.path
+    private func progressed(_ job: PDFJob, value: Double, stage: String) {
+        guard job.id == runningID, progressGate.accepts(value: value, stage: stage) else { return }
+        job.progress = min(max(value, 0), 1)
+        job.stage = stage
+        onProgress?(job)
     }
 
-    private func handle(_ event: PDFWorkerEvent, job: PDFJob) {
+    /// Moves the outputs next to the source (or the chosen folder) and ends the job.
+    private func translated(_ job: PDFJob, mono: String, dual: String, seconds: Double) {
         guard job.id == runningID else { return }
-        switch event {
-        case .progress(let value, let stage):
-            guard progressGate.accepts(value: value, stage: stage) else { return }
-            job.progress = min(max(value, 0), 1)
-            job.stage = stage
-            // BabelDOC reports progress many times a second; the surfaces only
-            // need a step change.
-            onProgress?(job)
-
-        case .done(let mono, let dual, let seconds):
-            didFinish = true
+        jobTask = nil
+        do {
             let placed = PDFOutputLocation.place(
                 monoPath: mono,
                 dualPath: dual,
@@ -354,8 +314,8 @@ final class PDFQueue {
             job.seconds = seconds
             guard let monoURL = placed.mono else {
                 // No folder took the file. The translation stays in the
-                // worker's folder, named in the message, until the job is
-                // retried or deleted.
+                // job's temporary folder, named in the message, until the job
+                // is retried or deleted.
                 let tried = placed.tried.map { $0.path }.joined(separator: "、")
                 let kept = tempDirectory?.path ?? ""
                 tempDirectory = nil
@@ -375,24 +335,7 @@ final class PDFQueue {
                 return
             }
             finish(job, state: .done, message: "")
-
-        case .error(let message):
-            lastError = message
         }
-    }
-
-    private func handleExit(status: Int32, job: PDFJob) {
-        guard job.id == runningID else { return }
-        worker = nil
-        if didFinish { return }
-        if cancelledJobID == job.id {
-            finish(job, state: .cancelled, message: "")
-            return
-        }
-        let message = lastError.isEmpty
-            ? "PDF を訳せませんでした（終了コード \(status)）"
-            : lastError
-        finish(job, state: .failed, message: message)
     }
 
     private func inputURL(for job: PDFJob) -> URL? {
@@ -443,13 +386,13 @@ final class PDFQueue {
 
     // MARK: actions
 
-    /// 取り消し: SIGTERM, then SIGKILL after three seconds (SPEC 8.2). While
-    /// the engine is still starting there is no worker yet; `start` reads
-    /// `cancelledJobID` after the engine answers.
+    /// 取り消し: cancels the job's task, which stops between paragraphs and
+    /// pages. While the engine is still starting there is no task yet; `start`
+    /// reads `cancelledJobID` after the engine answers.
     func cancel(_ job: PDFJob) {
         if job.id == runningID {
             cancelledJobID = job.id
-            Task { await worker?.terminate() }
+            jobTask?.cancel()
             return
         }
         guard job.jobState == .queued else { return }
@@ -458,15 +401,6 @@ final class PDFQueue {
 
     func retry(_ job: PDFJob) {
         guard job.id != runningID, job.jobState != .queued else { return }
-        if case .ready = PDFWorkerPaths.readiness {
-            // Queue behind any job already running.
-        } else {
-            if !pendingRetries.contains(job.id) { pendingRetries.append(job.id) }
-            if installer.phase != .running {
-                onNeedsWorker?(PDFWorkerPaths.readiness == .needsUpdate)
-            }
-            return
-        }
         job.jobState = .queued
         job.progress = 0
         job.stage = PDFStage.preparing
@@ -490,7 +424,7 @@ final class PDFQueue {
         recentlyFailed = nil
     }
 
-    /// `--demo-state`: puts a job row on screen without running the worker, so
+    /// `--demo-state`: puts a job row on screen without running a job, so
     /// the panel row and the manager list can be photographed (SPEC 15).
     @discardableResult
     func applyDemoJob(
@@ -526,8 +460,8 @@ final class PDFQueue {
 
     /// Used by `applicationWillTerminate`.
     func stopSynchronously() {
-        worker?.terminateSynchronously()
-        worker = nil
+        jobTask?.cancel()
+        jobTask = nil
         if runningID != nil { engine.endPDFWork() }
         cleanUpTemporary()
     }

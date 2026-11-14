@@ -103,7 +103,7 @@ struct ManagerWindowView: View {
 
     // MARK: store banner
 
-    /// Shown when `Yaku.store` could not be opened and the app is running on
+    /// Shown when `Perspica.store` could not be opened and the app is running on
     /// an in-memory store: history, cache and glossary edits made now are lost
     /// at quit, and the user should know rather than find an empty history.
     private func storeBanner(_ location: URL) -> some View {

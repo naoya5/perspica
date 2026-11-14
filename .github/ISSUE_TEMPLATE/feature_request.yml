@@ -5,7 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you. English or Japanese is fine. Please wait for a reply before you write code for a new feature.
+        Requests are welcome in English or Japanese.
+        Describe the problem and proposed behavior below. Please wait for a reply before writing code for a new feature.
 
   - type: textarea
     id: problem
@@ -19,7 +20,7 @@ body:
     id: idea
     attributes:
       label: Your idea
-      description: How should it work, from the user's side?
+      description: What should the user be able to do, and what should happen?
     validations:
       required: true
 
