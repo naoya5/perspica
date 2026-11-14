@@ -1,7 +1,7 @@
 # Code of Conduct
 
 Perspica follows the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
-It applies in every project space (issues, pull requests, reviews and discussions) and when you
+It applies in all project spaces (issues, pull requests, reviews and discussions) and when you
 represent the project elsewhere.
 
 ## In short
@@ -10,8 +10,8 @@ represent the project elsewhere.
   second language.
 - Give and accept feedback on the work, not on the person.
 - Do not harass, insult or demean anyone, and do not post sexual or violent content.
-- Do not publish anyone's private information, including translated text, documents or screen
-  pictures that are not yours to share.
+- Do not publish anyone's private information, including translated text, documents or screenshots
+  that are not yours to share.
 
 ## Reporting
 

@@ -2,4 +2,4 @@ blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
     url: https://github.com/naoya5/perspica/security/advisories/new
-    about: Please report security problems privately, not as a public issue.
+    about: Report vulnerabilities privately using this form. Do not include real documents or translated text.

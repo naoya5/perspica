@@ -15,7 +15,7 @@ This directory is the maintained source for verifying what a Yaku user can do. R
 
 - `$V doctor` prints `doctor: ready` (with `V=.agents/skills/verify-yaku/scripts/yaku-verify`).
 - `$V begin <run-name>` has run. It stopped the installed app and created the evidence folder.
-- Every instance uses the helper's scratch `--data-dir`. Never point a run at `~/Library/Application Support/Yaku`.
+- Every instance uses the helper's scratch `--data-dir`. Never point a run at the real `~/Library/Application Support/Perspica` or legacy `Yaku` folder.
 
 ## Driving conventions
 
@@ -27,5 +27,5 @@ This directory is the maintained source for verifying what a Yaku user can do. R
 
 - Report the feature, the entry point, the exact command and the artifact paths.
 - A visual change needs light and dark (`--appearance`), compared with the matching earlier milestone picture in `docs/checks/shots/`.
-- A behaviour change needs the log line that proves it, read from the run's `*.log`, not from the shared app log.
+- A behaviour change needs the log line that proves it, read from the run's evidence `*.log`.
 - A path you could not drive (hotkey, VoiceOver, permission prompts, a locked screen) is reported as not verified, with the reason.

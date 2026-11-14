@@ -1,192 +1,195 @@
 # Perspica
 
-Perspica is a menu-bar translator for macOS that runs entirely on your Mac. Select text anywhere and
-press a key, type into a panel, drop a PDF, or point it at text on the screen. Translation runs
-locally with [PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF), and
-the text never leaves the Mac.
+Perspicaは、Macの中だけで翻訳するメニューバー常駐アプリです。選択したテキスト、パネルに入力した文章、PDF、画面上の文字を翻訳できます。[PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF)をローカルで動かし、原文も訳文もMacの外には送りません。
 
-[日本語の README](README.ja.md) · Built with PLaMo
+[English](README.en.md) · Built with PLaMo
 
-> The app's interface is in Japanese. It translates between 53 languages, with Japanese and English
-> as the main pair.
+アプリの表示は日本語です。53言語に対応し、主な翻訳の組み合わせは日本語と英語です。
 
-## Contents
+初回はGitHubでソースコードだけを公開し、ビルド済みアプリの配布は後日に分けます。
+公開前の残りの作業は[タスク表](docs/release-tasks.md)にまとめています。
 
-- [Requirements](#requirements)
-- [Install](#install)
-- [Use](#use)
-- [Permissions](#permissions)
-- [Models](#models)
-- [Privacy](#privacy)
-- [Where data lives](#where-data-lives)
-- [Troubleshooting](#troubleshooting)
-- [Uninstall](#uninstall)
-- [Build from source](#build-from-source)
-- [Contributing](#contributing)
-- [License and credits](#license-and-credits)
+## 目次
 
-## Requirements
+- [必要なもの](#必要なもの)
+- [インストール](#インストール)
+- [使い方](#使い方)
+- [権限](#権限)
+- [モデル](#モデル)
+- [プライバシー](#プライバシー)
+- [データの保存先と旧版からの移行](#データの保存先と旧版からの移行)
+- [困ったとき](#困ったとき)
+- [アンインストール](#アンインストール)
+- [ソースからビルドする](#ソースからビルドする)
+- [開発への協力](#開発への協力)
+- [ライセンスと謝辞](#ライセンスと謝辞)
 
-| | |
+## 必要なもの
+
+| 項目 | 要件 |
 |---|---|
-| macOS | 26 or later |
-| Mac | Apple silicon. The engine runs on Metal. |
-| Xcode | 26 or later (Swift 6), to build the app |
-| [Homebrew](https://brew.sh) `llama.cpp` | Provides `llama-server`, the translation engine |
-| `uv` | Only for PDF translation; the app uses it to install the PDF worker |
+| macOS | 26以降 |
+| Mac | Appleシリコン。翻訳エンジンはMetalで動きます |
+| Xcode | 26以降（Swift 6）。アプリのビルドに使います |
+| [Homebrew](https://brew.sh)の`llama.cpp` | 翻訳エンジンの`llama-server`を提供します |
 
-There are no prebuilt downloads. You build the app from this repository, which takes a few minutes.
+ビルド済みの配布物はありません。このリポジトリからビルドします。数分かかります。
 
-## Install
+## インストール
 
 ```sh
-brew install llama.cpp uv
+brew install llama.cpp
 git clone https://github.com/naoya5/perspica.git
 cd perspica/app
-tools/make-signing-identity.sh   # once; keeps permissions across rebuilds
-./make-app.sh install            # builds, signs and copies ~/Applications/Perspica.app
+tools/make-signing-identity.sh   # 初回のみ。再ビルド時も同じ署名を使う
+./make-app.sh install            # ビルド・署名し、~/Applications/Perspica.app にコピー
 open ~/Applications/Perspica.app
 ```
 
-`make-signing-identity.sh` creates a self-signed code-signing identity in a keychain of its own.
-You can skip it; the app is then signed ad hoc, and macOS asks for its permissions again after every
-rebuild. The app is not notarized, so build it yourself rather than passing a copy to someone else.
+`make-signing-identity.sh`は、専用のキーチェーンに自己署名のコード署名用証明書を作ります。省略するとアドホック署名になり、ビルドし直すたびにmacOSの権限を設定し直す必要があります。
 
-On first launch a short onboarding walks you through downloading a model (see [Models](#models)).
+この手順は自分のMac向けのビルドです。アプリは公証していません。作成したアプリをほかの人へ配布する場合は、署名・公証の扱いと[配布時のライセンス条件](docs/release-licenses.md)を別途確認してください。
 
-## Use
+初回起動時の案内に沿って、翻訳モデルをダウンロードします。詳しくは[モデル](#モデル)を参照してください。旧Yakuから更新する場合は、[データの移行と権限の再設定](#データの保存先と旧版からの移行)も確認してください。
 
-Perspica lives in the menu bar.
+## 使い方
 
-| Where | Key | What it does |
+起動すると、メニューバーにアイコンが表示されます。
+
+| 操作する場所 | キー | 動作 |
 |---|---|---|
-| Anywhere | ⌃⌥J | Translate the selected text in a small window under the selection |
-| Anywhere | ⌃⌥K | Open or close the panel |
-| Anywhere | ⌃⌥O | Read the text on the screen and lay the translation over it |
-| Panel | ⌘↩ | Translate |
-| Panel | ⌘⇧C | Copy the translation |
-| Panel | ⌘D | Swap the languages |
-| Panel | ⌘O | Open a PDF |
-| Panel | ⌘P | Pin the panel open |
-| Panel | ⌘N | Open the manager window (history, glossary, models, PDF jobs) |
-| Panel, selection window | Esc | Close |
+| どのアプリでも | ⌃⌥J | 選択したテキストを翻訳し、選択範囲の下の小さなウィンドウに表示 |
+| どのアプリでも | ⌃⌥K | パネルを開く／閉じる |
+| どのアプリでも | ⌃⌥O | 画面上の文字を読み取り、元の位置に訳文を重ねる |
+| パネル | ⌘↩ | 翻訳する |
+| パネル | ⌘⇧C | 訳文をコピー |
+| パネル | ⌘D | 言語を入れ替える |
+| パネル | ⌘O | PDFを開く |
+| パネル | ⌘P | パネルを開いたままにする |
+| パネル | ⌘N | 管理画面（履歴・用語集・モデル・PDF）を開く |
+| パネル・選択文のウィンドウ | Esc | 閉じる |
 
-The three global keys can be changed in **Settings > ショートカット**. Drop a PDF on the menu bar
-icon, the panel, the manager window or the notch, or use Finder's **Open With**. The translated PDF
-keeps the original layout and is saved next to the original (or in `~/Downloads` if that folder is
-not writable).
+3つのグローバルショートカットは「設定 > ショートカット」で変更できます。
 
-## Permissions
+PDFは、メニューバーのアイコン、パネル、管理画面、ノッチへドラッグ&ドロップするか、Finderの「このアプリで開く」から渡します。訳したPDFは元のレイアウトを保ち、元のファイルと同じフォルダに保存します。そこに書き込めない場合は`~/Downloads`に保存します。
 
-Perspica asks for a permission right before the feature that needs it. If you decline, that feature
-shows why and a button that opens System Settings.
+## 権限
 
-| Feature | Permission |
+権限が必要な機能を初めて使う直前に、許可を求めます。許可しなかった場合は、その機能の画面に理由と「システム設定を開く」ボタンを表示します。
+
+| 機能 | 必要な権限 |
 |---|---|
-| ⌃⌥J (read and replace the selection) | Accessibility |
-| ⌃⌥O (capture the screen) | Screen Recording |
-| PDF finished notification | Notifications |
+| ⌃⌥J（選択したテキストの読み取り・置き換え） | アクセシビリティ |
+| ⌃⌥O（画面の撮影） | 画面収録 |
+| PDF翻訳の完了通知 | 通知 |
 
-## Models
+旧Yakuからの更新ではバンドルIDが変わるため、macOSの権限を設定し直してください。同じ署名証明書を使っていても、旧IDの許可は引き継がれません。
 
-Download a model in the manager window (**モデル**). Each download is checked against a SHA-256 hash
-before it is used.
+## モデル
 
-| Model | Download | Memory | Notes |
+管理画面の「モデル」からダウンロードします。ファイルのSHA-256ハッシュを確認してから使います。
+
+| モデル | ダウンロード容量 | メモリ使用量の目安 | 補足 |
 |---|---|---|---|
-| PLaMo 3 Translate 0.8B (Q4_K_M) | 0.57 GB | about 1.1 GB | The default. Fast. |
-| PLaMo 3 Translate 2B (Q4_K_M) | 1.81 GB | about 2.3 GB | |
-| PLaMo 3 Translate 8B (Q4_K_M) | 5.28 GB | about 5.8 GB | Best quality. On a 16 GB Mac, close other apps first. |
+| PLaMo 3 Translate 0.8B（Q4_K_M） | 0.57 GB | 約1.1 GB | 初期設定のモデル。高速 |
+| PLaMo 3 Translate 2B（Q4_K_M） | 1.81 GB | 約2.3 GB | |
+| PLaMo 3 Translate 8B（Q4_K_M） | 5.28 GB | 約5.8 GB | 最も高品質。16 GBのMacでは、ほかのアプリを閉じてから使ってください |
 
-The models are released by Preferred Networks under the
-[PLaMo Community License](https://plamo.preferredai.jp/info/plamo-community-license-en). The app
-shows a summary and asks you to agree before the first download. You can also point the app at a
-GGUF you already have (**モデル > 既存のファイルを使う**).
+モデルはPreferred Networksが[PLaMo Community License](https://plamo.preferredai.jp/info/plamo-community-license-en)で公開しています。初めてダウンロードする前に、アプリがライセンスの全文を表示し、同意を求めます。手元にあるGGUFファイルも「モデル > 既存のファイルを使う」から指定できます。
 
-The engine starts when you first translate and stops after 10 idle minutes (configurable), so the
-model does not stay in memory while you are not using it.
+エンジンは最初の翻訳時に起動し、10分間使わないと停止します。停止までの時間は設定で変更できます。停止後はモデルがメモリに残りません。
 
-## Privacy
+## プライバシー
 
-- Translation runs on your Mac. Source and translated text are not sent anywhere.
-- The app uses the network only to download a model from Hugging Face and, the first time you
-  translate a PDF, to install the PDF worker with `uv` (from PyPI) along with the fonts and layout
-  model it needs.
-- The engine listens only on `127.0.0.1` and requires a random key that changes every launch.
-- History and the translation caches stay on your Mac. Turn history off in **Settings > プライバシー**.
-- Logs record what the app did and how long it took, not what you translated. Development runs
-  started with `--data-dir` also log text, for debugging; set `YAKU_LOG_CONTENT=0` to turn that off.
-- **Settings > プライバシー > 履歴とキャッシュを消す** erases history, both translation caches (the
-  app's and the PDF worker's) and the logs.
-- Builds before 2026-11-10 let the PDF worker keep a cache in `~/.cache/pdf2zh_next`. If you do not
-  use pdf2zh-next on its own, delete that folder.
+翻訳はMacの中で行います。原文も訳文も外部へ送信しません。ネットワークを使うのは、Hugging Faceからのモデルのダウンロードだけです。PDFもアプリの中で翻訳し、追加の部品は取得しません。
 
-## Where data lives
+エンジンは`127.0.0.1`だけで待ち受け、起動ごとに変わるランダムなキーで認証します。履歴と翻訳キャッシュもMac内に保存します。履歴の保存は「設定 > プライバシー」でオフにできます。
 
-| What | Where |
+通常のログには処理内容と所要時間を記録し、原文や訳文は記録しません。ただし、`--data-dir`を付けた開発用の起動では、調査のためにテキストも記録します。`YAKU_LOG_CONTENT=0`で無効にできます。
+
+「設定 > プライバシー > 履歴とキャッシュを消す」で、履歴、翻訳キャッシュ、ログを削除します。
+
+2026-11-13までのビルドは、PDF翻訳にPythonのPDFワーカーを使っていました。アプリは起動時に、その残りのファイル（`Perspica/pdf-worker`と`Perspica/pdf-worker-home`）を削除します。2026-11-10より前のビルドは、翻訳キャッシュを`~/.cache/pdf2zh_next`にも残していました。pdf2zh-nextを単独で使っていなければ、このフォルダを削除してください。
+
+## データの保存先と旧版からの移行
+
+| 内容 | 保存先 |
 |---|---|
-| Models, the PDF worker, history and cache | `~/Library/Application Support/Yaku/` |
-| Logs | `~/Library/Logs/Yaku/` (`app.log`, `engine.log`, `pdf.log`) |
-| Settings | `defaults read dev.naoya.yaku` |
-| Translated PDFs | Next to the original |
+| モデル・履歴・翻訳キャッシュ | `~/Library/Application Support/Perspica/` |
+| 履歴などのデータベース | 上記フォルダ内の`Perspica.store` |
+| ログ | `~/Library/Logs/Perspica/`（`app.log`・`engine.log`） |
+| 設定 | `defaults read app.perspica` |
+| macOSのアプリ用キャッシュ（作成された場合） | `~/Library/Caches/app.perspica/` |
+| 翻訳済みPDF | 元のファイルと同じフォルダ（書き込めなければ`~/Downloads`） |
 
-## Troubleshooting
+現在のバンドルIDは`app.perspica`、単一起動のロック名は`Perspica.lock`です。
 
-| Problem | Try |
+旧称はYakuです。通常の起動時に、旧`~/Library/Application Support/Yaku/`のデータと`~/Library/Logs/Yaku/`のログを新しい保存先へ移します。移行の記録をディスクに残すため、中断しても次の通常起動で再開します。新しい保存先に同名のファイルがあれば新しい側を優先し、競合した旧ファイルはそのまま残します。ストアとその付随ファイルも新しい名前に変えます。
+
+旧`dev.naoya.yaku`の既知の設定項目は一度だけコピーし、新しい設定に値があれば上書きしません。アプリが管理するパスは新しい保存先に書き換えます。旧設定はバックアップとして残します。
+
+旧PDFワーカーのPython環境は移動できないため、旧`Yaku/`フォルダにバックアップとして残します。今のPDF翻訳はこの環境を使いません。
+
+既存の`Yaku.lock`がある場合は、旧版との同時起動を防ぐために併用します。新規インストールでは旧Yakuのフォルダを作りません。バンドルIDの変更に伴い、アクセシビリティや画面収録などの権限は再設定が必要です。
+
+`--data-dir`を指定した開発・検証用の起動では、実データや実設定の移行を行いません。ログも実利用の保存先と分け、指定先の`logs/`へ保存します。
+
+Swiftのモジュール名と実行ファイル名（`Yaku`・`YakuCore`）、環境変数`YAKU_DEV_MODEL`、検証スキル`verify-yaku`は旧名のままです。
+
+## 困ったとき
+
+| 症状 | 確認すること |
 |---|---|
-| The engine cannot be found | `brew install llama.cpp`. The app looks for `llama-server` in `/opt/homebrew/bin`, `/usr/local/bin` and `~/.local/bin`. |
-| PDF setup fails with 「uv が見つかりません」 | `brew install uv`, then drop the PDF again. |
-| ⌃⌥J does nothing | Check **System Settings > Privacy & Security > Accessibility**. After an ad hoc rebuild, remove Perspica there and add it again. |
-| A global key clashes with another app | Change it in **Settings > ショートカット**. |
-| Anything else | Read `~/Library/Logs/Yaku/app.log`, then open an issue. |
+| エンジンが見つからない | `brew install llama.cpp`を実行してください。アプリは`/opt/homebrew/bin`、`/usr/local/bin`、`~/.local/bin`から`llama-server`を探します |
+| ⌃⌥Jで何も起きない | 「システム設定 > プライバシーとセキュリティ > アクセシビリティ」を確認してください。旧Yakuからの更新やアドホック署名での再ビルド後は、一度登録を外して追加し直してください |
+| ほかのアプリとショートカットが重なる | 「設定 > ショートカット」で変更してください |
+| そのほかの問題 | `~/Library/Logs/Perspica/app.log`を確認し、[不具合を報告](https://github.com/naoya5/perspica/issues/new/choose)してください。添付するログから私的な情報を除いてください |
 
-## Uninstall
+## アンインストール
 
-1. Quit Perspica from the menu bar menu.
-2. Delete `~/Applications/Perspica.app`.
-3. To remove models, history, logs and settings as well:
+1. メニューバーのメニューからPerspicaを終了します。
+2. `~/Applications/Perspica.app`を削除します。
+3. モデル・履歴・ログ・設定も削除する場合は、次のコマンドを実行します。この操作は取り消せません。
 
    ```sh
-   rm -rf ~/Library/Application\ Support/Yaku ~/Library/Logs/Yaku
-   defaults delete dev.naoya.yaku
+   rm -rf "$HOME/Library/Application Support/Perspica" "$HOME/Library/Logs/Perspica" \
+     "$HOME/Library/Caches/app.perspica"
+   defaults delete app.perspica
    ```
 
-4. If you granted Accessibility or Screen Recording, remove Perspica from
-   **System Settings > Privacy & Security**.
+4. アクセシビリティや画面収録を許可していた場合は、「システム設定 > プライバシーとセキュリティ」からPerspicaを外します。
 
-## Build from source
+上の操作では、旧Yakuの設定、旧PDFワーカー環境、移行時に競合して残ったファイルは削除しません。これらが不要になった場合は、旧`~/Library/Application Support/Yaku/`と`~/Library/Logs/Yaku/`の内容を確認してから削除してください。旧設定は`defaults delete dev.naoya.yaku`で削除できます。
+
+## ソースからビルドする
+
+リポジトリのルートから実行します。
 
 ```sh
 cd app
-swift build          # debug build, 0 warnings expected
-swift test           # unit tests
-./make-app.sh        # build/Perspica.app without installing
+swift build          # デバッグビルド。警告は0件
+swift test           # 単体テスト
+./make-app.sh        # インストールせずに build/Perspica.app を作る
+cd ..
 ```
 
-[AGENTS.md](AGENTS.md) describes the code layout and the rules every change keeps.
-[SPEC.md](SPEC.md) is the full design specification (in Japanese). For development runs that must
-not touch your real data, start the binary with `--data-dir`, and give it a model with
-`YAKU_DEV_MODEL`:
+コードの構成と開発時のルールは[AGENTS.md](AGENTS.md)、設計仕様は[SPEC.md](SPEC.md)にあります。実データに触れずに試す場合は、`--data-dir`で保存先を分け、`YAKU_DEV_MODEL`でモデルを指定します。
 
 ```sh
 YAKU_DEV_MODEL=/path/to/model.gguf \
   app/build/Perspica.app/Contents/MacOS/Yaku --data-dir "$TMPDIR/perspica-demo" --demo-surface panel
 ```
 
-## Contributing
+## 開発への協力
 
-Bug reports and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Report security
-problems privately as described in [SECURITY.md](SECURITY.md).
+不具合の報告とプルリクエストを歓迎します。手順は[CONTRIBUTING.md](CONTRIBUTING.md)を参照してください。セキュリティの問題は、[SECURITY.md](SECURITY.md)の手順で非公開で報告してください。
 
-## License and credits
+## ライセンスと謝辞
 
-Perspica is released under the [MIT License](LICENSE).
+Perspicaのコードは[MITライセンス](LICENSE)です。PDF翻訳もSwiftとAppleの標準フレームワークだけで実装しており、AGPLなどのPDFライブラリは使っていません。翻訳モデルとエンジンには、それぞれ元のライセンスが適用されます。
 
-- Translation model: PLaMo 3 Translate by Preferred Networks, under the PLaMo Community License.
-  Built with PLaMo.
-- Engine: [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), installed separately with
-  Homebrew.
-- PDF translation: [pdf2zh-next](https://github.com/PDFMathTranslate/PDFMathTranslate-next) and
-  [BabelDOC](https://github.com/funstory-ai/BabelDOC), with PyMuPDF; all three are AGPL-3.0. They
-  are not part of this repository. The app installs them on your Mac the first time you translate a
-  PDF and runs them in a separate process.
+公開前の確認は未完了です。[公開までのタスク](docs/release-tasks.md)、[配布物とソースの対応](docs/source-distribution-scope.md)、[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[配布時のライセンス確認事項](docs/release-licenses.md)を参照してください。
+
+- 翻訳モデル: Preferred NetworksのPLaMo 3 Translate（PLaMo Community License）。Built with PLaMo。
+- エンジン: [llama.cpp](https://github.com/ggml-org/llama.cpp)（MIT）。Homebrewで別途インストールします。
+- PDF翻訳: Perspica自身のSwiftコード（Core Graphics、Core Text、PDFKit）。訳したPDFには、macOSに含まれるヒラギノフォントのサブセットを埋め込みます。
