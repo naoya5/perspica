@@ -218,5 +218,5 @@ struct ShortcutRow: View {
 }
 
 extension Notification.Name {
-    static let yakuShortcutsChanged = Notification.Name("dev.naoya.yaku.shortcutsChanged")
+    static let yakuShortcutsChanged = Notification.Name("app.perspica.shortcutsChanged")
 }

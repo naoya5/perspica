@@ -13,7 +13,10 @@ enum URLCacheLeftovers {
         guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
             return []
         }
-        let owners = Set([Bundle.main.bundleIdentifier, ProcessInfo.processInfo.processName].compactMap { $0 })
+        let owners = Set([
+            Bundle.main.bundleIdentifier, ProcessInfo.processInfo.processName,
+            "app.perspica", "dev.naoya.yaku", "Yaku",
+        ].compactMap { $0 })
         return owners.map { caches.appendingPathComponent($0) }
     }
 

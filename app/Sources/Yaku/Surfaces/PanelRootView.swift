@@ -176,7 +176,7 @@ struct PanelRootView: View {
                     .truncationMode(.middle)
                 switch job.jobState {
                 case .running, .queued:
-                    Text(job.jobState == .queued ? "順番待ち" : PDFStage.japaneseName(for: job.stage))
+                    Text(job.jobState == .queued ? "順番待ち" : PDFStage.displayName(for: job.stage))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                     ProgressThinBar(value: job.progress)

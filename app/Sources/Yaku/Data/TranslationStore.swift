@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 import YakuCore
 
-/// The SwiftData store at `~/Library/Application Support/Yaku/Yaku.store`
+/// The SwiftData store at `~/Library/Application Support/Perspica/Perspica.store`
 /// (SPEC 11). Everything runs on the main actor: the app writes at most a
 /// couple of rows per translation, so a background context would only add
 /// failure modes.

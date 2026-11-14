@@ -1,10 +1,10 @@
 import Foundation
 
-/// Finds a command-line tool the app depends on (`llama-server`, `uv`).
+/// Finds a command-line tool the app depends on (`llama-server`).
 ///
 /// An app opened from Finder does not inherit the shell's `PATH`, so the
 /// usual install locations are searched in order: Homebrew on Apple silicon,
-/// Homebrew on Intel and other `/usr/local` installs, then uv's own installer.
+/// Homebrew on Intel and other `/usr/local` installs, then `~/.local/bin`.
 enum ExecutableLocator {
     static let searchDirectories: [String] = [
         "/opt/homebrew/bin",

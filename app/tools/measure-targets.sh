@@ -2,7 +2,7 @@
 # Measure every target in SPEC 14 (size, idle and translating CPU, memory,
 # engine start, latency, PDF time) against the release build.
 #
-#   YAKU_DEV_MODEL=/path/to/model.gguf tools/measure-targets.sh [worker-python]
+#   YAKU_DEV_MODEL=/path/to/model.gguf tools/measure-targets.sh
 #
 # Every run uses a scratch --data-dir, so the app has no settings or downloads
 # there and needs YAKU_DEV_MODEL for the model. Stop the installed app first
@@ -26,7 +26,7 @@ BIN=.build/arm64-apple-macosx/release/Yaku
 # Demo runs write history and PDF jobs; keep them out of the real store.
 DATADIR=${DATADIR:-${TMPDIR:-/tmp}/yaku-demo-data}
 mkdir -p "$DATADIR"
-LOGFILE="$HOME/Library/Logs/Yaku/app.log"
+LOGFILE="$DATADIR/logs/app.log"
 
 find_pid() {
     ps -Ao pid,command | grep "release/Yaku" | grep -v grep | awk '{print $1}' | head -1
@@ -117,26 +117,18 @@ echo
 echo "=== 8. PDF, 15 pages (SPEC 14 の最後の行) ==="
 # The whole document, so **no `--pdf-pages`**. That option is a page *list*
 # ("1,2,1-,-3,3-5"), so `--pdf-pages 15` means page 15 only and finishes in
-# about 12s; the 15-page row needs every page. Point PDF at the paper and give
-# the worker's interpreter as the first argument:
+# a few seconds; the 15-page row needs every page. Point PDF at the paper:
 #
-#   PDF=…/attention.pdf tools/measure-targets.sh <worker-python>
-#
-# Without an argument it falls back to the installed worker, or to
-# $YAKU_PDF_PYTHON while the worker has not been installed yet.
+#   PDF=…/attention.pdf tools/measure-targets.sh
 PDF=${PDF:-${TMPDIR:-/tmp}/yaku-m3-attention/attention.pdf}
-PYTHON=${1:-${YAKU_PDF_PYTHON:-}}
-PY_ARGS=${PYTHON:+--pdf-python "$PYTHON"}
 if [ ! -f "$PDF" ]; then
     echo "  skipped: $PDF not found (set PDF=<path to the paper>)"
 else
     start=$(wc -l < "$LOGFILE")
-    # shellcheck disable=SC2086
-    "$BIN" --data-dir "$DATADIR" $PY_ARGS --demo-pdf "$PDF" --demo-quit-after 600 \
+    "$BIN" --data-dir "$DATADIR" --demo-pdf "$PDF" --demo-quit-after 600 \
         >/dev/null 2>&1 &
     shell_pid=$!
-    # The job's own line has the time (`total_seconds` from BabelDOC), and it
-    # arrives whether or not the run ends in `done` or `failed`.
+    # The job's own `pdf: done … in Xs` line has the time.
     waited=0
     line=""
     while [ "$waited" -lt 600 ]; do
@@ -154,8 +146,4 @@ else
     pid=$(find_pid)
     kill "$pid" 2>/dev/null || true
     wait "$shell_pid" 2>/dev/null || true
-    sleep 3
-    # The app stops the worker on the way out; make sure nothing is left.
-    left=$(ps -Ao pid,command | grep "translate_pdf.py" | grep -v grep | awk '{print $1}' | head -1 || true)
-    [ -z "$left" ] || echo "  warning: worker $left still running"
 fi

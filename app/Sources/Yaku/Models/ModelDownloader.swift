@@ -140,7 +140,7 @@ final class ModelDownloader: NSObject {
         super.init()
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 1
-        queue.name = "dev.naoya.yaku.model-download"
+        queue.name = "app.perspica.model-download"
         let configuration = URLSessionConfiguration.ephemeral
         configuration.waitsForConnectivity = false
         configuration.timeoutIntervalForRequest = 60

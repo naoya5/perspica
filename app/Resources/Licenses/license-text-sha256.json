@@ -1,0 +1,17 @@
+{
+  "reviewed": "2026-11-13",
+  "algorithm": "SHA-256",
+  "scope": "Local copied legal texts, not original HTTP response bytes or runtime artifacts.",
+  "files": [
+    {
+      "path": "Licenses/llama.cpp-0.7.0-LICENSE.txt",
+      "bytes": 1078,
+      "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+    },
+    {
+      "path": "PLAMO-COMMUNITY-LICENSE-en.txt",
+      "bytes": 9509,
+      "sha256": "60b64f90cad7fb7f66b473842e680e3292343309698167b86725cc8a59b948f8"
+    }
+  ]
+}

@@ -4,8 +4,8 @@ import YakuCore
 /// Every path the app writes to, all under the user's Library.
 ///
 /// `--data-dir <folder>` replaces the Application Support directory with the
-/// given folder (SPEC 15: 初めてのユーザーとして試すため). The logs stay where
-/// they are so a demo run is still visible in `~/Library/Logs/Yaku`.
+/// given folder (SPEC 15). Logs also stay inside that folder, so a demo
+/// never reads, migrates or clears the user's real logs.
 enum AppPaths {
     /// `--data-dir` is read from the command line directly, so every path is
     /// already correct the first time it is asked for.
@@ -22,7 +22,15 @@ enum AppPaths {
     static var standardSupportDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return ensure(base.appendingPathComponent("Yaku"))
+        return ensure(base.appendingPathComponent("Perspica"))
+    }
+
+    static var legacySupportDirectory: URL {
+        standardSupportDirectory.deletingLastPathComponent().appendingPathComponent("Yaku")
+    }
+
+    static var legacyLogsDirectory: URL {
+        libraryDirectory.appendingPathComponent("Logs/Yaku")
     }
 
     static var supportDirectory: URL {
@@ -31,18 +39,23 @@ enum AppPaths {
     }
 
     static var logsDirectory: URL {
+        if let overrideSupport { return ensure(overrideSupport.appendingPathComponent("logs")) }
+        return ensure(libraryDirectory.appendingPathComponent("Logs/Perspica"))
+    }
+
+    private static var libraryDirectory: URL {
         let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library")
-        return ensure(base.appendingPathComponent("Logs/Yaku"))
+        return base
     }
 
     static var enginePIDFile: URL { supportDirectory.appendingPathComponent("engine.pid") }
-    static var storeURL: URL { supportDirectory.appendingPathComponent("Yaku.store") }
+    static var storeURL: URL { supportDirectory.appendingPathComponent("Perspica.store") }
     static var modelsDirectory: URL { ensure(supportDirectory.appendingPathComponent("models")) }
     /// Only one Yaku runs at a time (SPEC 7.1). The lock is deliberately in the
     /// standard folder even under `--data-dir`, so two demo runs cannot both be
     /// up at once.
-    static var lockFile: URL { standardSupportDirectory.appendingPathComponent("Yaku.lock") }
+    static var lockFile: URL { standardSupportDirectory.appendingPathComponent("Perspica.lock") }
     /// The shell script the watchdog runs (SPEC 7.1).
     static var watchdogScript: URL { supportDirectory.appendingPathComponent("engine-watchdog.sh") }
     /// Where the watchdog writes the llama-server pid it started.
@@ -108,8 +121,8 @@ enum AppLog {
         for url in allLogs { rotateLocked(url) }
     }
 
-    /// Rotates one log if it is over the limit. The engine and the PDF worker
-    /// call this before they open their log for a new child process.
+    /// Rotates one log if it is over the limit. The engine calls this before
+    /// it opens its log for a new child process.
     static func rotateIfNeeded(_ url: URL) {
         lock.lock()
         defer { lock.unlock() }

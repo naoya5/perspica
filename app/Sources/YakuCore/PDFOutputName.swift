@@ -2,10 +2,9 @@ import Foundation
 
 /// The names the finished PDFs get (SPEC 8.3).
 ///
-/// BabelDOC writes `attention.no_watermark.ja.mono.pdf` and
-/// `attention.no_watermark.ja.dual.pdf`; the app renames them to
-/// `attention.ja.pdf` and `attention.ja.対訳.pdf`, and adds ` (2)` when the
-/// name is already taken.
+/// The translator writes into a temporary folder; the app names the results
+/// `attention.ja.pdf` and `attention.ja.対訳.pdf` next to the source, and adds
+/// ` (2)` when the name is already taken.
 public enum PDFOutputName {
     /// `<元の名前>.ja.pdf`
     public static func mono(forInput fileName: String) -> String {

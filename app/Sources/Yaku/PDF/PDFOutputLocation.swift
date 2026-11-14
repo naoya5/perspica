@@ -32,7 +32,7 @@ enum PDFOutputLocation {
         let tried: [URL]
     }
 
-    /// Renames what BabelDOC wrote (`….no_watermark.ja.mono.pdf`) to
+    /// Moves what the translator wrote into its temporary folder to
     /// `<元>.ja.pdf` / `<元>.ja.対訳.pdf`, adding ` (2)` when taken. The first
     /// folder that takes the translated PDF also gets the side-by-side one.
     /// `mono == nil` means no folder took it; the source files are untouched.

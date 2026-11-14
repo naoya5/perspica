@@ -77,6 +77,13 @@ public struct TranslationModel: Sendable, Identifiable, Equatable {
 /// The three models the manager offers (SPEC 7.5). All are Q4_K_M GGUF, which
 /// is what llama.cpp runs well on this Mac and what the model card recommends.
 public enum ModelCatalog {
+    /// Revision of the publisher's terms shown by the download gate.
+    /// A consent to an earlier revision must not accept new terms silently.
+    public static let licenseRevision = "2026-11-09"
+    public static let licenseURL = URL(
+        string: "https://plamo.preferredai.jp/info/plamo-community-license-en"
+    )!
+
     public static let models: [TranslationModel] = [
         TranslationModel(
             id: "0.8b",
