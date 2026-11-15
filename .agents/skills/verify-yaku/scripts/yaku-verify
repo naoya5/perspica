@@ -143,6 +143,12 @@ cmd_build() {
     swift build -c release > "${TMPDIR:-/tmp}/yaku-verify-build.log" 2>&1 \
         || { grep -E 'error:' "${TMPDIR:-/tmp}/yaku-verify-build.log" | head -20; die "build failed"; }
     grep -E 'warning:' "${TMPDIR:-/tmp}/yaku-verify-build.log" | grep -v 'org.swift.swiftpm' | head -20 || true
+    # Polly's poses live in an asset catalog. The bare release binary reads
+    # Assets.car from its own folder (make-app.sh puts it in the bundle), so
+    # compile it there, or every shot silently loses the mascot.
+    xcrun actool "$APP_DIR/Resources/Polly.xcassets" --compile "$(dirname "$BIN")" \
+        --platform macosx --minimum-deployment-target 26.0 \
+        --output-format human-readable-text > /dev/null || die "actool failed on Resources/Polly.xcassets"
     private_dir "$TOOLS_DIR"
     [ -x "$WINID" ] || swiftc -O tools/winid.swift -o "$WINID"
     [ -x "$OPAQUE" ] || swiftc -O tools/opaque.swift -o "$OPAQUE"

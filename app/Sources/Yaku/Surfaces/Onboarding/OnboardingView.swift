@@ -77,6 +77,7 @@ struct OnboardingView: View {
     private var welcomePage: some View {
         pageLayout(
             systemImage: "character.bubble",
+            mascot: .wave,
             title: "Perspica へようこそ",
             message: "選んだ文、入力した文、PDF、画面の文字を、この Mac の中だけで訳します。"
         ) {
@@ -201,6 +202,7 @@ struct OnboardingView: View {
     private var menuBarPage: some View {
         pageLayout(
             systemImage: "menubar.rectangle",
+            mascot: .point,
             title: "メニューバーから使う",
             message: "画面の右上のアイコンが Perspica です。クリックでパネルが開きます。"
         ) {
@@ -260,6 +262,7 @@ struct OnboardingView: View {
 
     private func pageLayout<Content: View>(
         systemImage: String,
+        mascot: PollyPose? = nil,
         title: String,
         message: String,
         @ViewBuilder content: @escaping () -> Content
@@ -269,21 +272,30 @@ struct OnboardingView: View {
         // still let a taller page scroll.
         GeometryReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 12) {
-                        Image(systemName: systemImage)
-                            .font(.system(size: 26, weight: .light))
-                            .foregroundStyle(Color.accentColor)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(title)
-                                .font(.system(size: 19, weight: .semibold))
-                            Text(message)
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                HStack(alignment: .center, spacing: 28) {
+                    // Polly stands beside the first and the last page (SPEC 6.6).
+                    if let mascot {
+                        PollyImage(pose: mascot)
+                            .frame(width: 190, height: 190)
                     }
-                    content()
+                    VStack(alignment: .leading, spacing: 18) {
+                        HStack(spacing: 12) {
+                            if mascot == nil {
+                                Image(systemName: systemImage)
+                                    .font(.system(size: 26, weight: .light))
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(title)
+                                    .font(.system(size: 19, weight: .semibold))
+                                Text(message)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        content()
+                    }
                 }
                 .padding(28)
                 .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .center)

@@ -1,0 +1,12 @@
+{
+  "name": "perspica-movie",
+  "private": true,
+  "type": "module",
+  "description": "Renders the Perspica marketing movie from movie.html, frame by frame.",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.50.0"
+  }
+}

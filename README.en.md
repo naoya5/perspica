@@ -5,7 +5,7 @@ press a key, type into a panel, drop a PDF, or point it at text on the screen. T
 locally with [PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF), and
 the text never leaves the Mac.
 
-[日本語](README.md) · Built with PLaMo
+[日本語](README.md) · [Website](https://naoya5.github.io/perspica/) · Built with PLaMo
 
 > The app's interface is in Japanese. It translates between 53 languages, with Japanese and English
 > as the main pair.

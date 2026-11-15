@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Perspica movie</title>
+<!--
+  The Perspica marketing movie, 1920x1080.
+
+  Every element's state is a pure function of the time passed to `seek(t)`, so
+  `render.mjs` can ask for any frame in any order and always get the same
+  picture. Nothing here uses CSS animations, timers or the wall clock.
+
+  The same timeline also lists the sounds: every motion that should be heard
+  calls `cue(...)` where its time is defined, and `score.mjs` plays `CUES`.
+
+  Open this file in a browser to preview the picture: it plays in real time
+  and the arrow keys step through it.
+-->
+<style>
+  /* The same heading font as the page (marketing/fonts/subset.sh). */
+  @font-face { font-family: "Shippori Mincho"; src: url("../../site/assets/fonts/ShipporiMincho-Bold.woff2") format("woff2"); font-weight: 700; }
+  @font-face { font-family: "Shippori Mincho"; src: url("../../site/assets/fonts/ShipporiMincho-ExtraBold.woff2") format("woff2"); font-weight: 800; }
+  :root {
+    --display: "Shippori Mincho", "Hiragino Mincho ProN", serif;
+    --ink: #111111;
+    --ink-2: #555555;
+    --sheet: #f6f7f9;
+    --sans: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  #stage {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    font-family: var(--sans);
+    color: var(--ink);
+    background: #ffffff;
+    -webkit-font-smoothing: antialiased;
+  }
+  .bloom { display: none; }
+  .bloom.iris { background: radial-gradient(closest-side, rgb(107 140 255 / 0.34), transparent); }
+  .bloom.rose { background: radial-gradient(closest-side, rgb(255 138 160 / 0.3), transparent); }
+  /* The film ends on one flat field of the highlighter colour. */
+  #night { position: absolute; inset: 0; background: #ffe14a; }
+  #grain {
+    position: absolute; inset: 0; opacity: 0; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .scene { position: absolute; inset: 0; transform-origin: 50% 50%; }
+  img { display: block; }
+
+  /* Left column of the four feature scenes: the keys, then what they do. */
+  .say { position: absolute; left: 120px; top: 0; bottom: 0; width: 560px; display: flex; flex-direction: column; justify-content: center; }
+  .keys { display: flex; gap: 14px; margin-bottom: 44px; }
+  .key {
+    display: grid; place-items: center;
+    width: 92px; height: 92px;
+    font-size: 44px; line-height: 1;
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 0 0 1.5px rgb(20 22 27 / 0.12), 0 6px 0 rgb(20 22 27 / 0.14), 0 18px 30px rgb(20 22 27 / 0.14);
+  }
+  .key.wide { width: auto; padding: 0 30px; font-size: 32px; border: 2.5px dashed var(--ink-2); box-shadow: none; background: transparent; }
+  .say h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 68px; line-height: 1.32; font-feature-settings: "palt"; }
+  .say p { margin: 28px 0 0; font-size: 30px; line-height: 1.7; color: var(--ink-2); }
+
+  /* The panel and the HUD are captures of the app's own windows, cut at the
+     edge of the glass. Only the shadow under them is drawn here. */
+  .glass {
+    position: absolute;
+    box-shadow: 0 0 0 0.5px rgb(20 22 27 / 0.2), 0 40px 80px rgb(20 22 27 / 0.3), 0 6px 16px rgb(20 22 27 / 0.12);
+    overflow: hidden;
+  }
+  .glass img { width: 100%; }
+
+  /* The app's "processing" light (SPEC 6.5): an angular gradient on the rim. */
+  .glow { position: absolute; padding: 4px; border-radius: inherit;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude; }
+  .halo { position: absolute; filter: blur(28px); }
+
+  .card { position: absolute; background: #fff; border-radius: 22px; box-shadow: 0 0 0 1.5px #111, 0 30px 60px -30px rgb(17 17 17 / 0.3); overflow: hidden; }
+
+  /* ---- opening: the page and the glasses ---- */
+  #sheet { left: 180px; top: 171px; width: 1560px; height: 738px; background: var(--sheet); border-radius: 34px; }
+  #sheet img { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #sheet .light { position: absolute; inset: 0; background: radial-gradient(60% 90% at 18% 0%, rgb(255 255 255 / 0.35), transparent 60%), linear-gradient(180deg, transparent 55%, rgb(20 22 27 / 0.05)); }
+  #glasses { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+  #glasses > * { position: absolute; }
+  #glasses svg { overflow: visible; }
+  .caustic { display: none; }
+  .caustic.iris { background: radial-gradient(circle, rgb(107 140 255 / 0.5), rgb(107 140 255 / 0.18) 62%, transparent 72%); }
+  .caustic.rose { background: radial-gradient(circle, rgb(255 138 160 / 0.5), rgb(255 138 160 / 0.18) 62%, transparent 72%); }
+  .lens { border-radius: 50%; overflow: hidden; background: var(--sheet); }
+  .lens .upright { position: absolute; inset: 0; }
+  .lens img { position: absolute; max-width: none; }
+  .lens .rim-view { position: absolute; inset: 0; border-radius: 50%;
+    -webkit-mask-image: radial-gradient(circle, transparent 79%, #000 90%); mask-image: radial-gradient(circle, transparent 79%, #000 90%);
+    filter: blur(0.6px) saturate(1.2); }
+  .lens .glaze { position: absolute; inset: 0; border-radius: 50%; }
+  .lens.iris .glaze { background:
+    radial-gradient(34% 20% at 28% 15%, rgb(255 255 255 / 0.5), transparent 70%),
+    radial-gradient(50% 26% at 72% 92%, rgb(255 255 255 / 0.16), transparent 70%),
+    linear-gradient(transparent, transparent); }
+  .lens.rose .glaze { background:
+    radial-gradient(34% 20% at 28% 15%, rgb(255 255 255 / 0.5), transparent 70%),
+    radial-gradient(50% 26% at 72% 92%, rgb(255 255 255 / 0.16), transparent 70%),
+    linear-gradient(transparent, transparent); }
+
+  /* ---- Polly, the mascot: one picture per pose, cross-faded by seek(t) ---- */
+  .polly { position: absolute; transform-origin: 50% 98%; }
+  .polly img { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
+  #titlePolly { position: relative; width: 340px; height: 340px; margin-bottom: 6px; }
+  .guide { left: 100px; bottom: 44px; width: 250px; height: 250px; }
+
+  /* ---- title and end ---- */
+  .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .name { font-family: var(--display); font-weight: 800; font-size: 128px; line-height: 1.1; }
+  .tag { font-family: var(--display); font-weight: 700; font-size: 58px; margin-top: 26px; font-feature-settings: "palt"; }
+  #end { color: #111; }
+  #end .line { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 84px; font-feature-settings: "palt"; }
+  #end .url { font-size: 38px; margin-top: 40px; color: #111; letter-spacing: 0.01em; }
+  #end .built { font-size: 26px; margin-top: 22px; color: #444; }
+
+  /* ---- select ---- */
+  #doc { left: 800px; top: 220px; width: 1000px; height: 520px; padding: 70px 76px; }
+  #doc p { position: relative; margin: 0; font-size: 40px; line-height: 1.62; letter-spacing: -0.01em; }
+  #caret { position: absolute; width: 3px; height: 50px; margin: 8px 0 0 -1px; background: var(--ink); border-radius: 2px; }
+  #hud { left: 876px; top: 578px; width: 728px; height: 125.7px; border-radius: 30px; }
+
+  /* ---- panel ---- */
+  #panel { left: 870px; top: 290px; width: 836px; height: 497.8px; border-radius: 48px; }
+
+  /* ---- screen ---- */
+  #screen { left: 760px; top: 280px; width: 1100px; height: 520.4px; background: var(--sheet); }
+  #screen img { position: absolute; left: 0; top: 0; width: 1100px; height: 520.4px; }
+
+  /* ---- pdf ---- */
+  .page { position: absolute; top: 172px; left: 0; width: 520px; height: 736px; background: #fff; border-radius: 8px; box-shadow: 0 0 0 1px rgb(20 22 27 / 0.08), 0 40px 80px -24px rgb(20 22 27 / 0.4); }
+  .page img { width: 100%; height: 100%; border-radius: 8px; }
+  .page span { position: absolute; left: 0; right: 0; top: 100%; margin-top: 18px; text-align: center; font-size: 26px; color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bloom iris" id="bloomIris"></div>
+  <div class="bloom rose" id="bloomRose"></div>
+  <div id="night"></div>
+
+  <section class="scene" id="open">
+    <div class="card" id="sheet">
+      <img src="../../site/assets/shots/page-en.png" alt="">
+      <img id="sheetJa" src="../../site/assets/shots/page-ja.png" alt="">
+      <div class="light"></div>
+    </div>
+    <div id="glasses">
+      <svg data-part="shadow" viewBox="-262 -112 524 224">
+        <g fill="none" stroke="#14161b" stroke-linecap="round">
+          <circle cx="-118" cy="0" r="100" stroke-width="9"/><circle cx="118" cy="0" r="100" stroke-width="9"/>
+          <path d="M-22 -34 Q0 -60 22 -34" stroke-width="8"/>
+          <path d="M-214 -30 L-256 -66" stroke-width="8"/><path d="M214 -30 L256 -66" stroke-width="8"/>
+        </g>
+      </svg>
+      <div class="caustic iris" data-part="caustic" data-side="-1"></div>
+      <div class="caustic rose" data-part="caustic" data-side="1"></div>
+      <div class="lens iris" data-part="lens" data-side="-1">
+        <div class="upright">
+          <img class="view" src="../../site/assets/shots/page-ja.png" alt="">
+          <div class="rim-view"><img class="view edge" src="../../site/assets/shots/page-ja.png" alt=""></div>
+        </div>
+        <div class="glaze"></div>
+      </div>
+      <div class="lens rose" data-part="lens" data-side="1">
+        <div class="upright">
+          <img class="view" src="../../site/assets/shots/page-ja.png" alt="">
+          <div class="rim-view"><img class="view edge" src="../../site/assets/shots/page-ja.png" alt=""></div>
+        </div>
+        <div class="glaze"></div>
+      </div>
+      <svg data-part="frame" viewBox="-262 -112 524 224">
+        <defs>
+          <linearGradient id="metal" x1="0" y1="0" x2="0.35" y2="1">
+            <stop offset="0" stop-color="#6f6f6f"/><stop offset="0.28" stop-color="#1e1e1e"/>
+            <stop offset="0.7" stop-color="#0c0c0c"/><stop offset="1" stop-color="#474747"/>
+          </linearGradient>
+          <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#fff" stop-opacity="0.9"/><stop offset="0.5" stop-color="#fff" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <g fill="none" stroke="url(#metal)" stroke-linecap="round">
+          <circle cx="-118" cy="0" r="100" stroke-width="8"/><circle cx="118" cy="0" r="100" stroke-width="8"/>
+          <path d="M-22 -34 Q0 -60 22 -34" stroke-width="7"/>
+          <path d="M-214 -30 L-256 -66" stroke-width="7"/><path d="M214 -30 L256 -66" stroke-width="7"/>
+        </g>
+        <g fill="none" stroke="url(#shine)" stroke-width="1.6" stroke-linecap="round">
+          <path d="M-205 -42 A 97 97 0 0 1 -40 -58"/><path d="M31 -42 A 97 97 0 0 1 196 -58"/>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <section class="scene" id="title">
+    <div class="center">
+      <div class="polly" id="titlePolly"><img data-pose="wave" src="polly/wave.png" alt=""></div>
+      <div class="name" id="titleName">Perspica</div>
+      <div class="tag" id="titleTag">訳すのは、この Mac の中だけ。</div>
+    </div>
+  </section>
+
+  <section class="scene" id="select">
+    <div class="say">
+      <div class="keys"><span class="key">⌃</span><span class="key">⌥</span><span class="key">J</span></div>
+      <h2>選んで、<br>キーを押す。</h2>
+      <p>訳は、選んだ文のすぐ下に。</p>
+    </div>
+    <div class="polly guide"><img data-pose="idle" src="polly/idle.png" alt=""><img data-pose="think" src="polly/think.png" alt=""><img data-pose="point" src="polly/point.png" alt=""></div>
+    <div class="card" id="doc">
+      <p>When the model is this close, privacy stops being a promise in a policy document. <span id="sel">Privacy becomes a property of the design.</span><span id="caret"></span></p>
+    </div>
+    <div class="halo" id="hudHalo"></div>
+    <div class="glass" id="hud"><img src="../../site/assets/shots/hud-glass.png" alt=""></div>
+    <div class="glow" id="hudGlow"></div>
+  </section>
+
+  <section class="scene" id="panelScene">
+    <div class="say">
+      <div class="keys"><span class="key">⌃</span><span class="key">⌥</span><span class="key">K</span></div>
+      <h2>パネルに、<br>打ち込む。</h2>
+      <p>メニューバーから、いつでも。</p>
+    </div>
+    <div class="polly guide"><img data-pose="idle" src="polly/idle.png" alt=""><img data-pose="think" src="polly/think.png" alt=""><img data-pose="point" src="polly/point.png" alt=""></div>
+    <div class="halo" id="panelHalo"></div>
+    <div class="glass" id="panel"><img src="../../site/assets/shots/panel-glass.png" alt=""></div>
+    <div class="glow" id="panelGlow"></div>
+  </section>
+
+  <section class="scene" id="screenScene">
+    <div class="say">
+      <div class="keys"><span class="key">⌃</span><span class="key">⌥</span><span class="key">O</span></div>
+      <h2>画面の文字に、<br>訳を重ねる。</h2>
+      <p>読み取って、元の位置に。</p>
+    </div>
+    <div class="polly guide"><img data-pose="idle" src="polly/idle.png" alt=""><img data-pose="think" src="polly/think.png" alt=""><img data-pose="point" src="polly/point.png" alt=""></div>
+    <div class="halo" id="screenHalo"></div>
+    <div class="card" id="screen">
+      <img src="../../site/assets/shots/page-en.png" alt="">
+      <img class="block" src="../../site/assets/shots/page-ja.png" alt="" style="clip-path: inset(0 0 46% 0)">
+      <img class="block" src="../../site/assets/shots/page-ja.png" alt="" style="clip-path: inset(54% 65.65% 0 0)">
+      <img class="block" src="../../site/assets/shots/page-ja.png" alt="" style="clip-path: inset(54% 34.35% 0 34.35%)">
+      <img class="block" src="../../site/assets/shots/page-ja.png" alt="" style="clip-path: inset(54% 0 0 65.65%)">
+    </div>
+    <div class="glow" id="screenGlow"></div>
+  </section>
+
+  <section class="scene" id="pdf">
+    <div class="say">
+      <div class="keys"><span class="key wide">PDF を落とす</span></div>
+      <h2>PDF は、<br>レイアウトのまま。</h2>
+      <p>訳は、元の PDF の隣に。</p>
+    </div>
+    <div class="polly guide"><img data-pose="idle" src="polly/idle.png" alt=""><img data-pose="think" src="polly/think.png" alt=""><img data-pose="point" src="polly/point.png" alt=""></div>
+    <div class="page" id="pageEn"><img src="../../site/assets/shots/pdf-before.png" alt=""><span>原文</span></div>
+    <div class="halo" id="pageHalo"></div>
+    <div class="page" id="pageJa"><img src="../../site/assets/shots/pdf-after.png" alt=""><span>訳</span></div>
+    <div class="glow" id="pageGlow"></div>
+  </section>
+
+  <section class="scene" id="end">
+    <div class="line" id="endLine">原文も訳文も、Mac の外に出ません。</div>
+    <div class="center" id="endCard">
+      <img src="../../site/assets/icon.png" width="230" height="230" alt="">
+      <div class="name" style="font-size:104px;margin-top:18px">Perspica</div>
+      <div class="url">github.com/naoya5/perspica</div>
+      <div class="built">macOS 26 以降　Apple シリコン　Built with PLaMo</div>
+    </div>
+  </section>
+
+  <div id="grain"></div>
+</div>
+
+<script>
+'use strict';
+
+// The film runs on a beat of 0.625 s (96 per minute). Scenes start on beats,
+// so the music in score.mjs can change with the picture.
+const BEAT = 0.625;
+const DURATION = 64 * BEAT; // 40 s
+
+const T = {
+  open: 0,
+  title: 10 * BEAT,   // 6.25
+  select: 16 * BEAT,  // 10
+  panel: 26 * BEAT,   // 16.25
+  screen: 36 * BEAT,  // 22.5
+  pdf: 46 * BEAT,     // 28.75
+  end: 56 * BEAT,     // 35
+};
+const SCENES = [
+  ['open', T.open, T.title],
+  ['title', T.title, T.select],
+  ['select', T.select, T.panel],
+  ['panelScene', T.panel, T.screen],
+  ['screenScene', T.screen, T.pdf],
+  ['pdf', T.pdf, T.end],
+  ['end', T.end, DURATION + 0.1],
+];
+const FADE = 0.35;
+
+// Everything that should be heard. `score.mjs` reads this list.
+const CUES = [];
+const cue = (time, kind, extra = {}) => { CUES.push({ time, kind, ...extra }); return time; };
+
+// ---- times inside each scene, each with its sound ----
+const OPEN = {
+  land: cue(0.45, 'land'),
+  sweepFrom: cue(1.25, 'sweep', { length: 3.2 }),
+  sweepTo: 4.45,
+  lift: cue(4.55, 'chime', { note: 86 }),
+};
+cue(T.title + 0.25, 'chime', { note: 81 });
+
+const feature = (start, press) => {
+  [0, 1, 2].forEach((i) => cue(start + 0.3 + i * 0.09, 'tick'));
+  return { start, press: press === null ? null : cue(start + press, 'press') };
+};
+const SELECT = {
+  ...feature(T.select, 2.75),
+  dragFrom: cue(T.select + 1.5, 'drag', { length: 1.0 }),
+  hud: cue(T.select + 3.0, 'pop'),
+  lit: cue(T.select + 3.0, 'shimmer', { length: 1.3 }),
+};
+const PANEL = {
+  ...feature(T.panel, 1.5),
+  open: cue(T.panel + 1.75, 'pop'),
+  lit: cue(T.panel + 2.0, 'shimmer', { length: 1.6 }),
+};
+const SCREEN = {
+  ...feature(T.screen, 1.6),
+  lit: cue(T.screen + 1.8, 'shimmer', { length: 1.8 }),
+  blocks: [0, 1, 2, 3].map((i) => cue(T.screen + 2.2 + i * 0.28, 'block', { index: i })),
+};
+const PDF = {
+  ...feature(T.pdf, null),
+  drop: cue(T.pdf + 0.25, 'slide'),
+  split: cue(T.pdf + 2.0, 'slide'),
+  lit: cue(T.pdf + 2.0, 'shimmer', { length: 1.7 }),
+  done: cue(T.pdf + 3.3, 'chime', { note: 83 }),
+};
+const END = {
+  night: cue(T.end, 'hush'),
+  // The promise comes right after the field settles, so no empty frame is held.
+  line: T.end + 0.45,
+  card: cue(T.end + 3.1, 'chime', { note: 86 }),
+};
+
+const $ = (id) => document.getElementById(id);
+const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
+/** 0 before `a`, 1 after `b`, linear between. */
+const span = (t, a, b) => clamp((t - a) / (b - a));
+const easeOut = (p) => 1 - Math.pow(1 - p, 3);
+const easeInOut = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+/** The app's standard spring (response 0.42, damping 0.80), from rest at 0 to 1. */
+const spring = (s) => {
+  if (s <= 0) return 0;
+  const w = (2 * Math.PI) / 0.42, z = 0.8, wd = w * Math.sqrt(1 - z * z);
+  return 1 - Math.exp(-z * w * s) * (Math.cos(wd * s) + ((z * w) / wd) * Math.sin(wd * s));
+};
+const lerp = (a, b, p) => a + (b - a) * p;
+
+/** Text arriving the way a translation does in the app: fade in, blur away. */
+const arrive = (el, p, rise = 18) => {
+  const e = easeOut(clamp(p));
+  el.style.opacity = e;
+  el.style.filter = e < 1 ? `blur(${(1 - e) * 6}px)` : 'none';
+  el.style.transform = `translateY(${(1 - e) * rise}px)`;
+};
+
+const GLOW = '#4F8CFF, #B36BFF, #FF6FB1, #FFB35C, #4F8CFF';
+/** Lays the rim light and its halo around `target`; `amount` is 0…1. */
+const light = (glow, halo, target, radius, t, amount) => {
+  const paint = `conic-gradient(from ${(t / 2.4) * 360}deg, ${GLOW})`;
+  for (const [el, grow] of [[glow, 4], [halo, 10]]) {
+    el.style.left = `${target.offsetLeft - grow}px`;
+    el.style.top = `${target.offsetTop - grow}px`;
+    el.style.width = `${target.offsetWidth + grow * 2}px`;
+    el.style.height = `${target.offsetHeight + grow * 2}px`;
+    el.style.borderRadius = `${radius + grow}px`;
+    el.style.background = paint;
+    el.style.transform = target.style.transform;
+    el.style.transformOrigin = target.style.transformOrigin;
+  }
+  glow.style.opacity = amount;
+  halo.style.opacity = amount * 0.24;
+};
+/** On for `length` seconds from `from`, with soft ends. */
+const lit = (t, from, length) => Math.min(span(t, from, from + 0.2), 1 - span(t, from + length - 0.4, from + length));
+
+/** Keys rise in one by one, then go down together at `press`. */
+const keys = (scene, t, start, press) => {
+  scene.querySelectorAll('.key').forEach((key, i) => {
+    const up = spring(t - start - 0.3 - i * 0.09);
+    const down = press === null ? 0 : Math.sin(Math.PI * span(t, press, press + 0.32));
+    key.style.opacity = clamp(up * 1.6);
+    key.style.transform = `translateY(${(1 - up) * 26 + down * 7}px) scale(${1 - down * 0.04})`;
+  });
+};
+
+// ---- Polly ----
+/** Shows `pose` in `stage`, cross-fading from the previous pose over 0.18 s
+    with a small squash, and breathing all the while. `since` is when `pose` began. */
+const polly = (stage, pose, previous, since, t, shown) => {
+  const mix = span(t, since, since + 0.18);
+  for (const img of stage.querySelectorAll('img')) {
+    const name = img.dataset.pose;
+    img.style.opacity = name === pose ? mix : name === previous ? 1 - mix : 0;
+  }
+  const squash = 0.06 * (1 - spring(t - since)) * (previous ? 1 : 0);
+  const breathe = 0.012 * Math.sin((t * 2 * Math.PI) / 3.2);
+  const up = spring(shown);
+  stage.style.opacity = clamp(up * 2);
+  stage.style.transform = `translateY(${(1 - up) * 40}px) scale(${(0.7 + 0.3 * up) * (1 + squash * 0.5)}, ${(0.7 + 0.3 * up) * (1 - squash + breathe)})`;
+};
+/** A guide's pose in a feature scene: idle, thinking while the light runs, then pointing at the result. */
+const guide = (scene, t, at, litLength) => {
+  const stage = $(scene).querySelector('.guide');
+  const done = at.lit + litLength;
+  const [pose, previous, since] = t < at.lit ? ['idle', null, 0] : t < done ? ['think', 'idle', at.lit] : ['point', 'think', done];
+  polly(stage, pose, previous, since, t, t - at.start - 1.3);
+};
+
+// ---- the glasses: two round windows onto the translated page ----
+const glassesParts = [...$('glasses').querySelectorAll('[data-part]')];
+const SPREAD = 1.18;
+const drawGlasses = (x, y, angle, r, scale, opacity) => {
+  const sheet = $('sheet');
+  const rad = (angle * Math.PI) / 180;
+  const g = $('glasses');
+  g.style.transform = `translate(${x}px, ${y}px) rotate(${angle}deg) scale(${scale})`;
+  g.style.opacity = opacity;
+  for (const el of glassesParts) {
+    const side = Number(el.dataset.side || 0);
+    const part = el.dataset.part;
+    if (part === 'frame' || part === 'shadow') {
+      const w = r * 5.24, h = r * 2.24, lift = part === 'shadow' ? r * 0.2 : 0;
+      el.style.cssText = `left:${-w / 2 + lift * 0.4}px;top:${-h / 2 + lift}px;width:${w}px;height:${h}px;` + (part === 'shadow' ? `filter:blur(${r * 0.09}px);opacity:.3` : '');
+    } else if (part === 'caustic') {
+      const size = r * 2.3;
+      el.style.cssText = `left:${side * r * SPREAD - size / 2 + r * 0.12}px;top:${-size / 2 + r * 0.3}px;width:${size}px;height:${size}px;filter:blur(${r * 0.2}px)`;
+    } else {
+      el.style.cssText = `left:${side * r * SPREAD - r}px;top:${-r}px;width:${r * 2}px;height:${r * 2}px`;
+      const cx = x + Math.cos(rad) * side * r * SPREAD;
+      const cy = y + Math.sin(rad) * side * r * SPREAD;
+      el.querySelector('.upright').style.transform = `rotate(${-angle}deg)`;
+      el.querySelector('.glaze').style.boxShadow = `inset 0 0 0 1px rgb(255 255 255 / .5), inset 0 ${r * 0.06}px ${r * 0.14}px rgb(255 255 255 / .3), inset 0 ${-r * 0.1}px ${r * 0.26}px rgb(20 22 27 / .12)`;
+      for (const img of el.querySelectorAll('img.view')) {
+        const zoom = img.classList.contains('edge') ? 1.3 : 1.1;
+        img.style.cssText = `left:${r - cx + sheet.offsetLeft}px;top:${r - cy + sheet.offsetTop}px;width:${sheet.offsetWidth}px;height:${sheet.offsetHeight}px;transform-origin:${cx - sheet.offsetLeft}px ${cy - sheet.offsetTop}px;transform:scale(${zoom})`;
+      }
+    }
+  }
+};
+
+// Split the sentence to select into words, so the selection can sweep.
+const sel = $('sel');
+sel.innerHTML = sel.textContent.split(' ').map((w) => `<span class="w">${w}</span>`).join('<span class="w"> </span>');
+const words = [...sel.querySelectorAll('.w')];
+
+function seek(t) {
+  t = clamp(t, 0, DURATION);
+
+  // Backdrop: two soft lights that drift, and the night that closes the film.
+  $('bloomIris').style.transform = `translate(${-420 + 90 * Math.sin(t * 0.21)}px, ${-520 + 60 * Math.cos(t * 0.17)}px)`;
+  $('bloomRose').style.transform = `translate(${1080 + 80 * Math.cos(t * 0.19)}px, ${330 + 70 * Math.sin(t * 0.23)}px)`;
+  $('night').style.opacity = easeInOut(span(t, END.night, END.night + 0.8));
+
+  // One scene is gone before the next one comes, and each drifts closer a little.
+  for (const [id, start, end] of SCENES) {
+    const el = $(id);
+    const fadeIn = start === 0 ? span(t, 0, 0.5) : span(t, start, start + FADE);
+    const fadeOut = end > DURATION ? 1 - span(t, DURATION - 0.9, DURATION) : 1 - span(t, end - FADE, end);
+    const opacity = Math.min(fadeIn, fadeOut);
+    el.style.opacity = opacity;
+    el.style.visibility = opacity > 0 ? 'visible' : 'hidden';
+    el.style.transform = `scale(${1 + 0.028 * span(t, start, end)})`;
+  }
+
+  for (const [scene, at] of [['select', SELECT], ['panelScene', PANEL], ['screenScene', SCREEN], ['pdf', PDF]]) {
+    keys($(scene), t, at.start, at.press);
+    arrive($(scene).querySelector('h2'), span(t, at.start + 0.55, at.start + 1.15));
+    arrive($(scene).querySelector('.say p'), span(t, at.start + 0.85, at.start + 1.45));
+  }
+
+  // --- opening: the glasses land on the page, read across it, and lift ---
+  {
+    const land = spring(t - OPEN.land);
+    const p = easeInOut(span(t, OPEN.sweepFrom, OPEN.sweepTo));
+    const lift = easeInOut(span(t, OPEN.lift, OPEN.lift + 0.7));
+    const x = lerp(560, 1330, p);
+    const y = 470 + 120 * Math.sin(p * Math.PI * 1.5) - lift * 90;
+    const angle = 5 * Math.sin(p * Math.PI * 2) * (1 - lift);
+    drawGlasses(x, y, angle, 150, (1.3 - 0.3 * land) * (1 + 0.5 * lift), clamp(land * 2.4) * (1 - lift));
+    // When the glasses lift, the whole page is left translated.
+    $('sheetJa').style.opacity = easeOut(span(t, OPEN.lift + 0.1, OPEN.lift + 0.8));
+  }
+
+  // --- title ---
+  {
+    // Polly arrives wearing the glasses that just read the page, and waves.
+    const stage = $('titlePolly');
+    polly(stage, 'wave', null, 0, t, t - T.title - 0.2);
+    stage.style.rotate = `${3 * Math.sin((t - T.title) * 2 * Math.PI / 1.25)}deg`;
+    arrive($('titleName'), span(t, T.title + 0.6, T.title + 1.2));
+    arrive($('titleTag'), span(t, T.title + 1.1, T.title + 1.8));
+  }
+
+  // --- select, press, the HUD ---
+  {
+    const s = SELECT.start;
+    const card = spring(t - s - 0.2);
+    $('doc').style.transform = `translateY(${(1 - card) * 40}px)`;
+    const swept = span(t, SELECT.dragFrom, SELECT.dragFrom + 1.0) * words.length;
+    words.forEach((w, i) => { w.style.background = i < swept ? '#ffe14a' : 'transparent'; });
+    // The caret rides the end of the selection, then goes when the key is pressed.
+    const at = words[Math.min(words.length - 1, Math.max(0, Math.ceil(swept) - 1))];
+    const caret = $('caret');
+    caret.style.left = `${at.offsetLeft + (swept > 0 ? at.offsetWidth : 0)}px`;
+    caret.style.top = `${at.offsetTop}px`;
+    caret.style.opacity = Math.min(span(t, s + 1.1, s + 1.3), 1 - span(t, SELECT.press, SELECT.press + 0.2));
+    const open = spring(t - SELECT.hud);
+    const hud = $('hud');
+    hud.style.transformOrigin = '50% 0';
+    hud.style.transform = `translateY(${(1 - open) * -16}px) scale(${0.86 + 0.14 * open})`;
+    hud.style.opacity = clamp(open * 2.2);
+    light($('hudGlow'), $('hudHalo'), hud, 30, t, lit(t, SELECT.lit, 1.3) * clamp(open * 2.2));
+    guide('select', t, SELECT, 1.3);
+  }
+
+  // --- the panel ---
+  {
+    const open = spring(t - PANEL.open);
+    const panel = $('panel');
+    panel.style.transformOrigin = '50% 0';
+    panel.style.transform = `translateY(${(1 - open) * -22}px) scale(${0.9 + 0.1 * open})`;
+    panel.style.opacity = clamp(open * 2.2);
+    light($('panelGlow'), $('panelHalo'), panel, 48, t, lit(t, PANEL.lit, 1.6) * clamp(open * 2.2));
+    guide('panelScene', t, PANEL, 1.6);
+  }
+
+  // --- the screen: the translation is laid over the page, block by block ---
+  {
+    const card = spring(t - SCREEN.start - 0.2);
+    const screen = $('screen');
+    screen.style.transform = `translateY(${(1 - card) * 40}px)`;
+    screen.querySelectorAll('.block').forEach((block, i) => {
+      const p = span(t, SCREEN.blocks[i], SCREEN.blocks[i] + 0.3);
+      block.style.opacity = easeOut(p);
+      block.style.filter = p < 1 ? `blur(${(1 - p) * 4}px)` : 'none';
+    });
+    light($('screenGlow'), $('screenHalo'), screen, 28, t, lit(t, SCREEN.lit, 1.8));
+    guide('screenScene', t, SCREEN, 1.8);
+  }
+
+  // --- the PDF and its translation ---
+  {
+    const drop = spring(t - PDF.drop);
+    const split = spring(t - PDF.split);
+    const en = $('pageEn'), ja = $('pageJa');
+    en.style.transform = `translate(${lerp(1040, 760, split)}px, ${(1 - drop) * -70}px) rotate(${(1 - drop) * -3}deg)`;
+    en.style.opacity = clamp(drop * 2.5);
+    ja.style.transform = `translate(${lerp(1040, 1320, split)}px, 0)`;
+    ja.style.opacity = clamp(split * 2);
+    ja.querySelector('img').style.opacity = easeOut(span(t, PDF.split + 0.9, PDF.split + 1.5));
+    const labels = span(t, PDF.done, PDF.done + 0.4);
+    ja.querySelector('span').style.opacity = labels;
+    en.querySelector('span').style.opacity = labels;
+    light($('pageGlow'), $('pageHalo'), ja, 8, t, lit(t, PDF.lit, 1.7) * clamp(split * 2));
+    guide('pdf', t, PDF, 1.7);
+  }
+
+  // --- the promise, then the name ---
+  {
+    const line = $('endLine');
+    arrive(line, span(t, END.line, END.line + 0.7));
+    line.style.opacity = Math.min(Number(line.style.opacity), 1 - span(t, END.card - 0.4, END.card));
+    arrive($('endCard'), span(t, END.card, END.card + 0.7), 24);
+  }
+}
+
+window.seek = seek;
+window.DURATION = DURATION;
+window.BEAT = BEAT;
+window.CUES = CUES;
+
+// Preview in a browser: fit the stage to the window and play in real time.
+// `render.mjs` adds `?render` and drives `seek` itself.
+if (!new URLSearchParams(location.search).has('render')) {
+  const fit = () => {
+    $('stage').style.transform = `scale(${Math.min(innerWidth / 1920, innerHeight / 1080)})`;
+  };
+  addEventListener('resize', fit);
+  fit();
+  let at = 0, playing = true, last = performance.now();
+  addEventListener('keydown', (event) => {
+    if (event.key === ' ') playing = !playing;
+    if (event.key === 'ArrowRight') { playing = false; at = Math.min(DURATION, at + 0.1); }
+    if (event.key === 'ArrowLeft') { playing = false; at = Math.max(0, at - 0.1); }
+  });
+  const tick = (now) => {
+    if (playing) at = (at + (now - last) / 1000) % DURATION;
+    last = now;
+    seek(at);
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+} else {
+  seek(0);
+}
+</script>
+</body>
+</html>

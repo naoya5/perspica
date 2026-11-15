@@ -29,6 +29,8 @@ the signing identity and the `verify-yaku` skill keep their internal names.
 | `app/Tests/YakuCoreTests` | Swift Testing tests for `YakuCore`. |
 | `app/make-app.sh` | Builds, bundles and signs `Perspica.app`; `install` copies it to `~/Applications`. |
 | `app/tools/` | Signing setup, capture and measurement scripts used during development. |
+| `site/` | The landing page: static files, no build, no requests to other sites. Published to GitHub Pages by `.github/workflows/pages.yml`. |
+| `marketing/` | The source of the marketing movie the landing page embeds, and how its footage was made. |
 | `SPEC.md` | The design specification (Japanese). |
 | `docs/perf-review-2026-11-09.md` | Measured performance, the fixes and the hypotheses that were rejected (Japanese). |
 | `.agents/skills/verify-yaku/` | How to drive the real app to prove a change. `.claude/skills` links here. |

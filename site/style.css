@@ -1,0 +1,789 @@
+/* Perspica landing page, second version: the same page with press feedback,
+   hover limited to devices that can hover, and gentler reduced motion.
+   Nothing is loaded from other sites: the two heading
+   fonts are files in assets/fonts, and the text uses the system's own font. */
+
+/* Shippori Mincho, cut down to the characters this page uses
+   (marketing/fonts/subset.sh). SIL Open Font License: assets/fonts/OFL.txt. */
+@font-face {
+  font-family: "Shippori Mincho";
+  src: url("assets/fonts/ShipporiMincho-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Shippori Mincho";
+  src: url("assets/fonts/ShipporiMincho-ExtraBold.woff2") format("woff2");
+  font-weight: 800;
+  font-display: swap;
+}
+
+:root {
+  /* Paper, ink, and one colour: the yellow of a highlighter, because the app
+     starts from a selection. Flat fills and hairlines only; no gradients. */
+  --paper: #ffffff;
+  --tint: #f5f5f2;
+  --ink: #111111;
+  --ink-2: #555555;
+  --ink-3: #8a8a8a;
+  --line: #e3e3de;
+  --line-strong: #111111;
+  --mark: #ffe14a;
+  --link: #111111;
+
+  /* Headings: a Mincho with a book face, like the letters in the icon.
+     Text: the system gothic, which is what the app itself uses. */
+  --display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --gutter: clamp(16px, 4vw, 40px);
+  --measure: 1200px;
+  --radius: 14px;
+
+  /* One curve for everything that enters or answers a press. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #121212;
+    --tint: #1b1b1b;
+    --ink: #f4f4f1;
+    --ink-2: #b3b3ae;
+    --ink-3: #7d7d78;
+    --line: #2c2c2a;
+    --line-strong: #f4f4f1;
+    --link: #f4f4f1;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16.5px;
+  line-height: 1.85;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+}
+
+img, video { max-width: 100%; height: auto; display: block; }
+
+a { color: var(--link); text-underline-offset: 0.22em; text-decoration-thickness: 1px; }
+@media (hover: hover) and (pointer: fine) { a:hover { text-decoration-thickness: 2px; } }
+a:focus-visible, button:focus-visible, input:focus-visible, video:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+h1, h2, h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+  font-feature-settings: "palt";
+  text-wrap: balance;
+  word-break: auto-phrase;
+}
+h1 { font-size: clamp(2.4rem, 5vw, 4.2rem); font-weight: 800; line-height: 1.16; letter-spacing: 0; }
+h2 { font-size: clamp(1.8rem, 3.6vw, 3rem); }
+h3 { font-size: clamp(1.2rem, 1.7vw, 1.45rem); }
+
+p { margin: 0; }
+
+mark { background: var(--mark); color: #111; padding: 0.1em 0.12em; }
+
+code, pre { font-family: var(--mono); font-size: 0.9em; }
+
+kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.8em;
+  height: 1.8em;
+  padding: 0 0.42em;
+  margin: 0 0.1em;
+  font-family: var(--sans);
+  font-size: 0.8em;
+  line-height: 1;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+}
+
+/* A shortcut inside a sentence stays on one line. */
+.combo { white-space: nowrap; }
+
+.note { color: var(--ink-2); font-size: 0.86rem; line-height: 1.75; }
+
+/* ---------- navigation ---------- */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px var(--gutter);
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  text-decoration: none;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+.nav nav { display: flex; gap: 24px; margin-left: auto; }
+.nav nav a { color: var(--ink-2); text-decoration: none; font-size: 0.88rem; }
+@media (hover: hover) and (pointer: fine) { .nav nav a:hover { color: var(--ink); } }
+.nav-cta {
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  text-decoration: none;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+@media (max-width: 720px) {
+  .nav nav { display: none; }
+  .nav-cta { margin-left: auto; }
+}
+
+/* ---------- sections ---------- */
+
+main > section {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: clamp(72px, 10vw, 140px) var(--gutter) 0;
+}
+.section-head { max-width: 44rem; margin-bottom: clamp(28px, 4vw, 48px); }
+.section-head p { margin-top: 0.9rem; color: var(--ink-2); }
+
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.button {
+  display: inline-block;
+  padding: 0.72em 1.5em;
+  border-radius: 999px;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+@media (hover: hover) and (pointer: fine) { .button:hover { background: var(--mark); color: #111; border-color: #111; } }
+.button.primary { background: var(--ink); color: var(--paper); }
+@media (hover: hover) and (pointer: fine) { .button.primary:hover { background: var(--mark); color: #111; } }
+
+/* ---------- hero ---------- */
+
+main > .hero { padding-top: clamp(32px, 4.6vw, 64px); }
+.hero-copy {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: clamp(24px, 5vw, 88px);
+  align-items: end;
+}
+@media (max-width: 900px) { .hero-copy { grid-template-columns: minmax(0, 1fr); } }
+@media (min-width: 901px) { .hero h1 { white-space: nowrap; } }
+.lede { color: var(--ink-2); font-size: clamp(0.98rem, 1.2vw, 1.08rem); }
+.hero .actions { margin-top: 1.3rem; }
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-3);
+  font-size: 0.8rem;
+}
+
+/* The glasses from the icon, on a page set in English. Through the lenses
+   the visitor sees the translation Perspica laid over that same page. */
+.spectacles { margin: clamp(28px, 3.4vw, 48px) 0 0; }
+.stage {
+  position: relative;
+  aspect-ratio: 2304 / 1090;
+  border-radius: var(--radius);
+  background: #f6f7f9;
+  border: 1px solid var(--line);
+  cursor: none;
+  touch-action: pan-y;
+  isolation: isolate;
+}
+.stage > .clip { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; }
+.stage img { user-select: none; -webkit-user-drag: none; }
+.stage .page { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; }
+
+.glasses { position: absolute; left: 0; top: 0; width: 0; height: 0; will-change: transform; pointer-events: none; }
+.glasses > * { position: absolute; }
+.glasses svg { overflow: visible; }
+.glasses .shadow { filter: blur(calc(var(--r) * 0.09)); opacity: 0.28; }
+
+.lens { border-radius: 50%; overflow: hidden; background: #f6f7f9; }
+.lens .upright { position: absolute; inset: 0; }
+.lens img { position: absolute; max-width: none; }
+/* The thick edge of the glass bends the page more than the middle does. */
+.lens .rim-view {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  -webkit-mask-image: radial-gradient(circle, transparent 79%, #000 90%);
+  mask-image: radial-gradient(circle, transparent 79%, #000 90%);
+  filter: blur(0.6px);
+}
+/* Clear glass: a highlight near the top and a little shade at the bottom. */
+.lens .glaze {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(34% 20% at 28% 15%, rgb(255 255 255 / 0.55), transparent 70%),
+    radial-gradient(50% 26% at 72% 92%, rgb(255 255 255 / 0.18), transparent 70%);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.5),
+    inset 0 calc(var(--r) * 0.06) calc(var(--r) * 0.14) rgb(255 255 255 / 0.3),
+    inset 0 calc(var(--r) * -0.1) calc(var(--r) * 0.26) rgb(17 17 17 / 0.1);
+}
+.spectacles figcaption { margin-top: 12px; color: var(--ink-3); font-size: 0.84rem; }
+@media (max-width: 640px) {
+  /* Show the page larger and let its right side run off, instead of shrinking it. */
+  .stage { aspect-ratio: 2304 / 1472; }
+  .stage .page { inset: 0 auto auto 0; width: 135%; height: auto; }
+}
+/* A short, wide window: bring the sheet up, so the glasses are on the first screen. */
+@media (min-width: 900px) and (max-height: 800px) {
+  h1 { font-size: 3.3rem; }
+  main > .hero { padding-top: 24px; }
+  .facts { display: none; }
+  .spectacles { margin-top: 24px; }
+}
+
+/* ---------- movie ---------- */
+
+.movie video { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); background: #111; }
+
+/* ---------- four ways: one ruled sheet, four cells ---------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.card { display: flex; flex-direction: column; background: var(--paper); }
+.card:nth-child(odd) { border-right: 1px solid var(--line-strong); }
+.card:nth-child(n + 3) { border-top: 1px solid var(--line-strong); }
+@media (max-width: 860px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .card:nth-child(odd) { border-right: 0; }
+  .card + .card { border-top: 1px solid var(--line-strong); }
+}
+.card .visual {
+  position: relative;
+  height: clamp(250px, 27vw, 340px);
+  background: var(--tint);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+}
+.card .text { padding: clamp(20px, 2.6vw, 32px); }
+.card .text h3 { margin: 0.8rem 0 0.5rem; }
+.card .text p { color: var(--ink-2); font-size: 0.95rem; }
+.card .text .keys { color: var(--ink); font-size: 1.1rem; }
+.keys .drop {
+  display: inline-block;
+  padding: 0.2em 0.85em;
+  font-size: 0.8rem;
+  border: 1.5px dashed var(--ink);
+  border-radius: 6px;
+}
+
+/* Selected text with the HUD under it. The page is drawn here; the HUD is a
+   capture of the app's own window. */
+.card .visual.selection-demo {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: clamp(20px, 3vw, 40px);
+  background: #fff;
+  color: #111;
+}
+.selection-demo .doc { font-size: clamp(1rem, 1.5vw, 1.2rem); line-height: 1.65; color: #111; letter-spacing: -0.005em; }
+.selection-demo mark { padding: 0.14em 0; }
+.selection-demo .hud {
+  width: min(417px, 100%);
+  border-radius: 4.08% / 23.6%;
+  box-shadow: 0 0 0 0.5px rgb(17 17 17 / 0.2), 0 16px 32px rgb(17 17 17 / 0.18), 0 3px 8px rgb(17 17 17 / 0.1);
+}
+
+.way-panel .visual img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; transform-origin: 50% 0; }
+
+.card.way-screen .visual { display: flex; flex-direction: column; background: #f6f7f9; }
+.compare { --cut: 46%; position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.compare img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: 0 0; }
+.compare .over { clip-path: inset(0 0 0 var(--cut)); }
+.compare .divider { position: absolute; top: 0; bottom: 0; left: var(--cut); width: 2px; margin-left: -1px; background: #111; }
+.compare-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  color: #555;
+  font-size: 0.8rem;
+  background: #fff;
+  border-top: 1px solid #e3e3de;
+}
+.compare-control input { flex: 1; accent-color: #111; }
+
+.pages { display: flex; justify-content: center; gap: 4%; padding: 7% 10% 0; }
+.pages img {
+  width: 44%;
+  align-self: flex-start;
+  border: 1px solid #d6d6d0;
+  background: #fff;
+  box-shadow: 0 10px 24px -12px rgb(17 17 17 / 0.3);
+}
+.pages img + img { margin-top: 8%; }
+
+/* The cells play a small motion once, the first time they are seen. */
+@media (prefers-reduced-motion: no-preference) {
+  .card .visual .hud, .pages img + img, .way-panel .visual img { transition: transform 0.7s var(--ease-out), opacity 0.5s ease; }
+  .selection-demo .hud { transform-origin: 0 0; }
+  .js .card:not(.seen) .visual .hud { opacity: 0; transform: translateY(-10px) scale(0.96); }
+  .card.seen .visual .hud { transition-delay: 0.75s; }
+  .selection-demo mark { background-image: linear-gradient(var(--mark), var(--mark)); background-repeat: no-repeat; background-size: 100% 100%; background-color: transparent; transition: background-size 0.7s ease 0.1s; }
+  .js .card:not(.seen) .selection-demo mark { background-size: 0% 100%; }
+  .js .card:not(.seen) .pages img + img { opacity: 0; transform: translateX(-18%) rotate(-2deg); }
+  .card.seen .pages img + img { transition-delay: 0.25s; }
+  .js .card:not(.seen).way-panel .visual img { opacity: 0; transform: translateY(-14px) scale(0.97); }
+}
+
+.also { margin-top: clamp(20px, 2.6vw, 32px); color: var(--ink-2); max-width: 46em; font-size: 0.95rem; }
+/* One topic per line while a line fits; below that the text flows as one paragraph. */
+@media (max-width: 560px) { .also br { display: none; } }
+
+/* ---------- tables ---------- */
+
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 0.96rem; border-top: 1px solid var(--line-strong); }
+th, td { text-align: left; vertical-align: top; padding: 16px 20px 16px 0; border-bottom: 1px solid var(--line); font-weight: 400; }
+thead th { color: var(--ink-3); font-size: 0.8rem; padding-top: 12px; padding-bottom: 12px; }
+tbody th { font-weight: 700; white-space: nowrap; }
+td { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+td, thead th { white-space: nowrap; }
+td:last-child { white-space: normal; min-width: 12em; }
+main .note { margin-top: 1rem; max-width: 56em; }
+
+/* ---------- privacy: what crosses the edge of the Mac, as a ledger ---------- */
+
+.ledger tbody th { font-family: var(--display); font-size: 1.15rem; }
+.ledger .never th, .ledger .never td { padding-top: 22px; padding-bottom: 22px; }
+.ledger .never mark { font-weight: 700; font-size: 1.05rem; }
+.promises {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(20px, 3vw, 48px);
+  margin: clamp(36px, 5vw, 64px) 0 0;
+}
+@media (max-width: 860px) { .promises { grid-template-columns: minmax(0, 1fr); } }
+.promises div { padding-top: 16px; border-top: 1px solid var(--line-strong); }
+.promises dt { font-family: var(--display); font-weight: 700; font-size: 1.15rem; }
+.promises dd { margin: 0.5rem 0 0; color: var(--ink-2); font-size: 0.94rem; }
+.promises code { color: var(--ink); }
+
+/* ---------- install ---------- */
+
+.needs { margin: 0; border-top: 1px solid var(--line-strong); }
+.needs div { display: grid; grid-template-columns: 6.5em 1fr; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.needs dt { color: var(--ink-3); font-size: 0.86rem; }
+.needs dd { margin: 0; }
+.terminal { background: #111; color: #f4f4f1; border-radius: var(--radius); overflow: hidden; border: 1px solid #2c2c2a; }
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 8px 18px;
+  color: #8a8a8a;
+  font-size: 0.78rem;
+  border-bottom: 1px solid #2c2c2a;
+}
+.terminal pre { margin: 0; padding: 20px 22px 24px; overflow-x: auto; font-size: 0.85rem; line-height: 1.95; }
+.terminal .copy {
+  padding: 4px 14px;
+  font: inherit;
+  color: #111;
+  background: var(--mark);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+@media (hover: hover) and (pointer: fine) { .terminal .copy:hover { background: #fff; } }
+
+/* ---------- questions ---------- */
+
+.questions { border-top: 1px solid var(--line-strong); max-width: 54rem; }
+.questions details { border-bottom: 1px solid var(--line); }
+.questions summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 2px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1.04rem;
+  list-style: none;
+}
+.questions summary::-webkit-details-marker { display: none; }
+.questions summary::after {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-right: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+  transform: rotate(45deg);
+  transition: transform 200ms var(--ease-out);
+}
+.questions details[open]:not(.closing) summary::after { transform: rotate(-135deg); }
+.questions details p { padding: 0 2px 22px; color: var(--ink-2); max-width: 46em; }
+
+/* ---------- closing: one flat band of the highlighter colour ---------- */
+
+main > .closing { max-width: none; padding-left: 0; padding-right: 0; }
+.closing-inner { background: var(--mark); color: #111; padding: clamp(56px, 9vw, 120px) var(--gutter); }
+.closing-inner > * { max-width: calc(var(--measure) - var(--gutter) * 2); margin-left: auto; margin-right: auto; }
+.closing-inner h2 { font-size: clamp(2.2rem, 6vw, 4.6rem); font-weight: 800; line-height: 1.2; }
+.closing-inner .actions { margin-top: 2rem; }
+.closing-inner .button { border-color: #111; color: #111; }
+@media (hover: hover) and (pointer: fine) { .closing-inner .button:hover { background: #fff; } }
+.closing-inner .button.primary { background: #111; color: #fff; }
+@media (hover: hover) and (pointer: fine) { .closing-inner .button.primary:hover { background: #fff; color: #111; } }
+
+/* ---------- footer ---------- */
+
+.foot {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 40px var(--gutter) 56px;
+  color: var(--ink-3);
+  font-size: 0.84rem;
+}
+.foot p + p { margin-top: 0.5rem; }
+.foot-brand { display: flex; align-items: center; gap: 8px; color: var(--ink); font-family: var(--display); font-weight: 700; font-size: 1.1rem; }
+
+/* Dark, product-led presentation. The original interactive sheet and the
+   four-cell layout remain live rather than being replaced with screenshots. */
+:root {
+  --paper: #090a0c;
+  --tint: #17181b;
+  --ink: #f5f5f2;
+  --ink-2: #b1b2b4;
+  --ink-3: #929396;
+  --line: #303135;
+  --line-strong: #44454a;
+  --mark: #f2e35c;
+  --link: #f5f5f2;
+}
+
+body {
+  background: var(--paper);
+  background-image: radial-gradient(ellipse 70% 850px at 50% 360px, #28251a 0%, #101114 52%, transparent 80%);
+  background-repeat: no-repeat;
+}
+.nav {
+  top: 12px;
+  width: calc(100% - 2 * var(--gutter));
+  max-width: calc(var(--measure) - 2 * var(--gutter));
+  min-height: 60px;
+  margin: 12px auto 0;
+  padding: 10px 16px;
+  background: rgb(17 18 21 / 0.94);
+  border: 1px solid #ffffff20;
+  border-radius: 12px;
+  backdrop-filter: blur(16px);
+}
+.brand { font-family: var(--sans); font-size: 1rem; }
+.nav nav { margin-left: auto; margin-right: auto; }
+.nav-cta { border-radius: 7px; background: #f5f5f2; color: #111; }
+@media (hover: hover) and (pointer: fine) { .nav-cta:hover { background: var(--mark); } }
+
+main > section { padding-top: clamp(88px, 10vw, 140px); }
+.section-head { max-width: 48rem; }
+.section-head p { max-width: 42rem; }
+.button { border-color: #77787b; border-radius: 7px; }
+.button.primary { background: var(--mark); border-color: var(--mark); color: #17170f; }
+@media (hover: hover) and (pointer: fine) { .button.primary:hover { background: #fff29a; border-color: #fff29a; color: #17170f; } }
+@media (hover: hover) and (pointer: fine) { .button:hover { border-color: var(--mark); } }
+
+main > .hero { padding-top: clamp(80px, 9vw, 130px); }
+.hero-copy { display: block; text-align: center; }
+.hero-eyebrow { margin-bottom: 1.4rem; color: var(--mark); font-size: 0.85rem; letter-spacing: 0.08em; }
+.hero h1 {
+  font-family: var(--sans);
+  font-size: clamp(2.65rem, 6.3vw, 5.5rem);
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+}
+.hero-side { max-width: 40rem; margin: 1.6rem auto 0; }
+.lede { font-size: clamp(1rem, 1.35vw, 1.12rem); line-height: 1.9; }
+.hero .actions { justify-content: center; margin-top: 1.8rem; }
+.facts { justify-content: center; margin-top: 1.2rem; }
+.spectacles { max-width: 970px; margin: clamp(48px, 6vw, 80px) auto 0; }
+.stage {
+  border: 9px solid #202124;
+  border-radius: 16px;
+  overflow: clip;
+  box-shadow: 0 0 0 1px #ffffff2c, 0 28px 90px #0009;
+}
+.spectacles figcaption { text-align: center; margin-top: 16px; }
+
+.movie video { border-color: #ffffff24; box-shadow: 0 20px 60px #0005; }
+
+.grid { border-color: #ffffff30; border-radius: 12px; background: #121315; }
+.card { background: #121315; }
+.card:nth-child(odd) { border-right-color: #ffffff30; }
+.card:nth-child(n + 3), .card + .card { border-top-color: #ffffff30; }
+.card .visual { border-bottom-color: #ffffff20; }
+.card .text { padding: clamp(24px, 3vw, 36px); }
+.card .text h3 { margin: 1rem 0 0.65rem; }
+.card .text p { line-height: 1.8; }
+kbd {
+  color: #f5edaf;
+  background: #ffffff08;
+  border: 1px solid #ffffff40;
+  border-bottom-width: 1px;
+}
+.keys .drop { color: #f5edaf; border-color: #ffffff50; }
+.way-panel .visual { background: #1b2d55; }
+.card.way-pdf .visual { background: #eeefed; }
+.pages img { box-shadow: 0 14px 32px #0003; }
+.compare .divider { background: var(--mark); }
+.compare-control input { accent-color: #151515; }
+
+.privacy, .models, .install, .faq { border-top: 1px solid var(--line); margin-top: clamp(88px, 10vw, 140px); }
+.promises { gap: 16px; }
+.promises div { padding: 26px; background: #151618; border: 1px solid #ffffff20; border-radius: 12px; }
+.promises dt { font-family: var(--sans); font-size: 1.05rem; }
+.terminal { background: #17181b; border-color: #ffffff20; }
+.questions { max-width: none; }
+
+main > .closing { margin-top: clamp(80px, 10vw, 140px); padding-top: 0; }
+.closing-inner {
+  border-top: 1px solid var(--line);
+  background: radial-gradient(ellipse at 50% 100%, #38321a, #090a0c 70%);
+  color: var(--ink);
+  text-align: center;
+}
+.closing-inner h2 { font-family: var(--sans); letter-spacing: -0.04em; }
+.closing-inner .actions { justify-content: center; }
+.closing-inner .button { border-color: #77787b; color: var(--ink); }
+.closing-inner .button.primary { background: var(--mark); border-color: var(--mark); color: #17170f; }
+@media (hover: hover) and (pointer: fine) { .closing-inner .button:hover, .closing-inner .button.primary:hover { background: #fff29a; color: #17170f; } }
+.foot { border-top: 1px solid var(--line); }
+.foot-brand { font-family: var(--sans); }
+
+/* Section labels repeat the nav labels, so a visitor who jumped here from
+   the nav can see where they landed. */
+.section-head .eyebrow { margin: 0 0 1rem; color: var(--mark); font-size: 0.82rem; line-height: 1.4; }
+.external::after { content: "\2197" / ""; margin-left: 0.6em; font-weight: 400; }
+
+/* The ways head: heading on the left, its one line of support on the right. */
+.section-head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px 48px; max-width: none; }
+.section-head-row > p { margin-top: 0; text-align: right; }
+@media (max-width: 860px) {
+  .section-head-row { display: block; }
+  .section-head-row > p { margin-top: 0.9rem; text-align: left; }
+}
+
+.privacy .section-head-center { max-width: 46rem; margin-left: auto; margin-right: auto; text-align: center; }
+.privacy .section-head-center p { margin-left: auto; margin-right: auto; text-wrap: balance; }
+.privacy .table-wrap, .privacy .table-wrap + .note { max-width: 980px; margin-left: auto; margin-right: auto; }
+.promise-icon { display: block; width: 22px; height: 22px; margin-bottom: 22px; fill: none; stroke: var(--mark); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Models, install and questions: the heading stays on the left, the content
+   it introduces is on the right. One column below 860px. */
+main > .split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 6vw, 96px); align-items: start; }
+.split .section-head { margin-bottom: 0; }
+.split .split-body { min-width: 0; }
+@media (max-width: 860px) {
+  main > .split { grid-template-columns: minmax(0, 1fr); gap: clamp(28px, 4vw, 48px); }
+}
+
+.model-list { min-width: 0; }
+.model-list tbody th { font-weight: 600; white-space: normal; }
+.model-list td:last-child { white-space: nowrap; min-width: 0; }
+.model-list td, .model-list thead th:not(:first-child) { text-align: right; padding-right: 0; padding-left: 20px; }
+.tag { margin-left: 0.5em; color: var(--mark); font-size: 0.76rem; font-weight: 400; white-space: nowrap; }
+
+.install .needs { margin-top: 1.6rem; font-size: 0.94rem; }
+.install .more { margin-top: 1.4rem; font-size: 0.92rem; }
+.install .more a { color: #eee6a0; text-decoration: none; }
+@media (hover: hover) and (pointer: fine) { .install .more a:hover { text-decoration: underline; } }
+.terminal .copy { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; color: #c9cacc; background: none; border: 1px solid #ffffff26; border-radius: 6px; font-weight: 400; }
+@media (hover: hover) and (pointer: fine) { .terminal .copy:hover { color: #17170f; background: var(--mark); border-color: var(--mark); } }
+.terminal .copy svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (min-width: 901px) and (max-height: 800px) {
+  main > .hero { padding-top: 72px; }
+  .hero h1 { font-size: clamp(3.5rem, 6vw, 5rem); }
+  .hero .facts { display: flex; }
+  .spectacles { margin-top: 48px; }
+}
+@media (max-width: 860px) {
+  .card + .card { border-top: 1px solid #ffffff30; }
+  .promises { gap: 12px; }
+}
+@media (max-width: 720px) {
+  .nav-cta { margin-left: auto; }
+  main > .hero { padding-top: 72px; }
+  .hero h1 { font-size: clamp(2.4rem, 8vw, 3.8rem); }
+  .hero .actions { flex-direction: column; align-items: stretch; }
+  .hero .button { text-align: center; }
+  .stage { border-width: 5px; }
+  .spectacles figcaption { text-align: left; }
+}
+
+/* ---------- copy button: the result is said beside it, so its width never changes ---------- */
+
+.terminal-bar { gap: 12px; }
+.terminal-bar > span:first-child { flex: none; }
+.copy-group { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.copy-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c9cacc; opacity: 0; transition: opacity 150ms ease; }
+.copy-status.shown { opacity: 1; }
+.terminal .copy { flex: none; }
+.copy-icon { position: relative; flex: none; width: 13px; height: 13px; }
+.terminal .copy .copy-icon svg { position: absolute; inset: 0; transition: opacity 150ms ease, transform 150ms var(--ease-out); }
+.terminal .copy .icon-done, .terminal .copy.done .icon-copy { opacity: 0; transform: scale(0.8); }
+.terminal .copy.done .icon-done { opacity: 1; transform: none; }
+
+/* ---------- entrances: the hero on load, each section as it is reached ---------- */
+
+/* Everything rises a little and fades in once, then stays still for reading.
+   The curve is the --ease-out above: most of the move is over in the first
+   third, so a long duration still reads as quick and only the settle is slow.
+   Only opacity, transform and a small blur on headings move. */
+:root {
+  --rise: 14px;          /* text and blocks */
+  --rise-heading: 0.32em; /* headings, relative to their own size */
+  --enter: 800ms;
+  --step: 70ms;          /* between items that enter together */
+}
+
+/* Headings split at their line breaks, one line after the other. */
+h1 .line, h2 .line { display: block; }
+
+/* Hero: CSS only, so it plays from the first paint without waiting for the
+   script. `backwards` holds the start state during the delay and nothing
+   stays on the element afterwards. */
+.hero-eyebrow, .hero h1 .line, .lede, .hero .actions, .facts, .spectacles {
+  animation: enter-rise var(--enter) var(--ease-out) backwards;
+  animation-delay: calc(80ms + var(--order) * var(--step));
+}
+.hero-eyebrow { --order: 0; }
+.hero h1 .line { animation-name: enter-heading; }
+.hero h1 .line:first-child { --order: 1; }
+.hero h1 .line:last-child { --order: 2; }
+.lede { --order: 3; }
+.hero .actions { --order: 4; }
+.facts { --order: 5; }
+/* The sheet comes up from a little further, so it reads as the floor the
+   glasses land on. Translate only: the glasses measure the stage. */
+.spectacles { --order: 4; --rise: 32px; animation-duration: 1100ms; }
+@keyframes enter-rise {
+  from { opacity: 0; transform: translateY(var(--rise)); }
+}
+@keyframes enter-heading {
+  from { opacity: 0; transform: translateY(var(--rise-heading)); filter: blur(6px); }
+}
+
+/* Sections: site.js marks the items with data-reveal and adds .reveal-ready
+   only once it can show them again, so without the script nothing is hidden.
+   Items that come into view together get --i = 0, 1, 2… for a short cascade. */
+.reveal-ready [data-reveal] { opacity: 0; transform: translateY(var(--rise)); }
+.reveal-ready [data-reveal="heading"] { transform: translateY(var(--rise-heading)); filter: blur(6px); }
+.reveal-ready [data-reveal].in {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  transition:
+    opacity calc(var(--enter) * 0.75) var(--ease-out),
+    transform var(--enter) var(--ease-out),
+    filter calc(var(--enter) * 0.75) var(--ease-out);
+  transition-delay: calc(var(--i, 0) * var(--step));
+}
+
+@media print {
+  .reveal-ready [data-reveal] { opacity: 1; transform: none; filter: none; }
+}
+
+/* ---------- press and reduced motion ---------- */
+
+/* Every pressable control answers the press at once. */
+.button, .nav-cta, .terminal .copy {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 160ms var(--ease-out), background-color 150ms ease, color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+.button:active, .nav-cta:active, .terminal .copy:active { transform: scale(0.97); }
+
+/* Reduced motion: colour and opacity still change, nothing moves. */
+@media (prefers-reduced-motion: reduce) {
+  .button:active, .nav-cta:active, .terminal .copy:active { transform: none; opacity: 0.8; }
+  .terminal .copy .icon-done, .terminal .copy.done .icon-copy { transform: none; }
+  .card .visual .hud, .pages img + img, .way-panel .visual img { transition: opacity 200ms ease; }
+  .js .card:not(.seen) .visual .hud, .js .card:not(.seen) .pages img + img, .js .card:not(.seen).way-panel .visual img { opacity: 0; }
+  .questions summary::after { transition: none; }
+  /* Entrances keep only the fade, shorter and without the blur. */
+  .hero-eyebrow, .hero h1 .line, .lede, .hero .actions, .facts, .spectacles {
+    animation-name: enter-fade;
+    animation-duration: 400ms;
+    animation-timing-function: ease;
+  }
+  .reveal-ready [data-reveal], .reveal-ready [data-reveal="heading"] { transform: none; filter: none; }
+  .reveal-ready [data-reveal].in { transition: opacity 300ms ease; transition-delay: calc(var(--i, 0) * 40ms); }
+}
+@keyframes enter-fade { from { opacity: 0; } }
+
+/* ---------- Polly, the mascot ----------
+   Plain pictures and CSS, so the page still works from file:// and loads
+   nothing from other sites. The outer box takes the scroll reveal and the
+   inner .polly-body the motion, so the two transforms do not fight. The
+   blink shares the idle crop, so it lands exactly on the idle pose. */
+.polly { display: block; width: max-content; margin: 0 auto 0.5rem; }
+.polly-body { position: relative; display: block; transform-origin: 50% 94%; }
+.polly img { display: block; }
+.polly-privacy img { width: 132px; height: 132px; }
+.polly-closing img { width: 180px; height: 180px; }
+.polly-blink { position: absolute; inset: 0; opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .polly-privacy .polly-body { animation: polly-breathe 3.2s ease-in-out infinite; }
+  .polly-blink { animation: polly-blink 4.6s steps(1) infinite; }
+  .polly-closing .polly-body { animation: polly-bob 2.5s ease-in-out infinite; }
+}
+@keyframes polly-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.015, 0.985); } }
+@keyframes polly-blink { 0%, 95% { opacity: 0; } 96%, 98% { opacity: 1; } }
+@keyframes polly-bob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-6px) rotate(-1.5deg); } }

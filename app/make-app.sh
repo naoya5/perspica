@@ -51,7 +51,9 @@ cp "$BIN_DIR/$EXECUTABLE" "$CONTENTS/MacOS/$EXECUTABLE"
 if [ -d Resources/$APP_NAME.icon ]; then
     # actool resolves relative paths against its own working directory, not
     # this script's, so both paths are made absolute first.
-    xcrun actool "$(pwd)/Resources/$APP_NAME.icon" \
+    # Polly's poses (Resources/Polly.xcassets) go into the same Assets.car: a
+    # second actool run would overwrite it.
+    xcrun actool "$(pwd)/Resources/$APP_NAME.icon" "$(pwd)/Resources/Polly.xcassets" \
         --compile "$(pwd)/$CONTENTS/Resources" \
         --platform macosx \
         --minimum-deployment-target 26.0 \
