@@ -58,7 +58,7 @@ The app downloads only the model, from Hugging Face.
 | PLaMo 3 Translate 2B Q4_K_M | SHA-256 `f36d0813dd95573a852ab5d76e374c543632d9e292929e922bcdbf7e53b494e0` | Same |
 | PLaMo 3 Translate 8B Q4_K_M | SHA-256 `47a04e86a67bcc352fa186f01159060aae594b73993e1d49dbfc0ef0081d01ad` | Same |
 | llama.cpp | Local Homebrew 0.7.0, commit `620d2225cc436ab0b001e3200e590e3b286ef9ab` | Actual bundled/external version, executable hash, build recipe and dependency closure |
-| Hiragino fonts | Shipped with macOS; subsets are embedded in translated PDFs | Checked 2026-11-14: OS/2 `fsType` 0x0008 (editable embedding, subsetting allowed) for HiraMinProN-W3/W6 and HiraginoSans-W3/W6 |
+| Hiragino fonts | Shipped with macOS; subsets are embedded in translated PDFs | Checked 2026-11-14: OS/2 `fsType` 0x0008 (editable embedding, subsetting allowed) for HiraMinProN-W3/W6 and HiraginoSans-W3/W6. Checked 2026-11-15: the macOS Tahoe 26 license, section 2E, defers to these restrictions |
 
 The PLaMo hashes above are the catalog's artifact identifiers, not a new download
 verification performed by this audit. `resolve/main` is mutable: retain the actual
@@ -133,14 +133,28 @@ copyright and permission notice when distributing substantial copies.
 2. Pin and record the actual engine and model revisions; if llama-server is
    bundled, extract all license/copyright/NOTICE files from the exact binary and
    its libraries.
-3. Recheck the font embedding clause in the macOS 26 license text before sharing
-   output PDFs. The macOS 10.12 license, section 2E, says: "you may only embed fonts in
-   content if that is permitted by the embedding restrictions accompanying the font
-   in question". The requested Hiragino fonts declare editable embedding (see the
-   table). Check the fonts actually embedded in output as well; Core Text can
-   select fallback fonts, and original document fonts can remain in the output.
-4. Complete a signed-bundle notice/link check after all packaging changes. Never
+3. Complete a signed-bundle notice/link check after all packaging changes. Never
    describe documentation alone as legal clearance.
+
+## Font embedding (checked 2026-11-15)
+
+The software license agreement for macOS Tahoe 26 on the build Mac (26.5.2,
+`/Library/Documentation/License.lpdf`), section 2E, says: "you may only embed fonts
+in content if that is permitted by the embedding restrictions accompanying the
+font in question". The wording is the same as in the macOS 10.12 license. The
+Hiragino fonts the typesetter requests declare editable embedding with
+subsetting allowed (see the table).
+
+Translated outputs of the Attention paper (all 15 pages) and the ResNet paper
+(pages 2, 4 and 5) were compared with their sources. The fonts the app added were
+only subsets of HiraMinProN-W3/W6 and HiraginoSans-W3/W6; Core Text chose no
+fallback font on these pages. This is a sample: Core Text can still substitute another
+font for a character the Hiragino fonts lack (a formula that the fallback path
+writes as plain text makes that more likely), so check the fonts of an output
+before relying on this for it. All other fonts in the output are the source document's own embedded fonts,
+which stay because untranslated parts of each page are kept. Whoever shares a
+translated PDF is responsible for those fonts, as for the source. This is a
+record of the check, not legal clearance.
 
 ## Evidence
 

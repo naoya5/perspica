@@ -23,7 +23,7 @@ public enum PDFLayoutAnalyzer {
         let tables = PDFLayoutTables.regions(lines: lines, graphics: graphics, pageBox: box)
         let gutter = PDFLayoutColumns.gutter(lines: lines, tables: tables, figures: figures)
         var runs = PDFLayoutColumns.readingOrder(lines: lines, gutter: gutter)
-        let bodySize = PDFLayoutGlyphs.dominantFontSize(lines)
+        let bodySize = PDFLayoutGlyphs.bodyFontSize(lines, outside: figures + tables)
         PDFLayoutRoles.classify(&lines, runs: runs, pageBox: box, figures: figures, tables: tables,
                                 hints: hints, bodySize: bodySize)
 
@@ -123,11 +123,18 @@ public enum PDFLayoutAnalyzer {
         if gap > 1.45 * metrics.leading { return true }
         let size = max(previous.fontSize, current.fontSize)
         if abs(previous.fontSize - current.fontSize) > 0.12 * size { return true }
-        if previous.style != current.style { return true }
+        if !PDFLayoutRoles.continuesStyle(previous, into: current) { return true }
         // Two pieces on one baseline with a wide gap are side by side, not one
         // paragraph: figure labels, table cells and separate formula chunks.
         if gap <= 0.5 * size, current.bounds.minX - previous.bounds.maxX > 2 * size,
            previous.lineClass != .formula || current.lineClass != .formula {
+            return true
+        }
+        // Lines of one paragraph share part of their width; two labels side by side
+        // in a figure do not. A formula chunk that ends the line above is narrow,
+        // so the next line is compared with the text, not with the chunk.
+        if !previous.continues, current.lineClass != .formula,
+           current.bounds.minX > previous.bounds.maxX || current.bounds.maxX < previous.bounds.minX {
             return true
         }
         // A first-line indent starts a paragraph, but only in running text: a
@@ -164,7 +171,7 @@ public enum PDFLayoutAnalyzer {
         guard gap > 0, abs(gap - metrics.leading) <= 0.15 * metrics.leading else { return false }
         let size = max(above.fontSize, below.fontSize)
         guard abs(above.fontSize - below.fontSize) <= 0.12 * size,
-              above.style == below.style else { return false }
+              PDFLayoutRoles.continuesStyle(above, into: below) else { return false }
         // A caption or a heading that wraps keeps its last line in the same block.
         switch (above.lineClass, below.lineClass) {
         case (.text, .text), (.caption, .text), (.heading, .text): break

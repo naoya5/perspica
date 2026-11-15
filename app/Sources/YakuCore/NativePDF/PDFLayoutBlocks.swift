@@ -216,16 +216,22 @@ enum PDFLayoutColumns {
         let left = PDFLayoutGlyphs.median(run.map { lines[$0].bounds.minX })
         let right = run.map { lines[$0].bounds.maxX }.max() ?? 0
         let textRight = PDFLayoutGlyphs.median(run.map { lines[$0].bounds.maxX })
+        // The size of the running text in this run. Every character counts, so a
+        // run that holds a diagram's many small labels still measures its prose.
+        let size = PDFLayoutGlyphs.bodyFontSize(run.map { lines[$0] }, outside: [])
+        func inTextSize(_ line: LayoutLine) -> Bool { abs(line.fontSize - size) <= 0.15 * size }
         var gaps: [CGFloat] = []
+        var textGaps: [CGFloat] = []
         for (above, below) in zip(run, run.dropFirst()) {
             let gap = lines[above].baseline - lines[below].baseline
-            if gap > 0 { gaps.append(gap) }
+            guard gap > 0 else { continue }
+            gaps.append(gap)
+            if inTextSize(lines[above]), inTextSize(lines[below]) { textGaps.append(gap) }
         }
-        let size = PDFLayoutGlyphs.median(run.map { lines[$0].fontSize })
         // Paragraph breaks are the large gaps, so the regular leading is near the
         // bottom of the distribution, not its middle. Gaps tighter than a line are
         // stacked formula lines, not leading, and must not pull the estimate down.
-        let regular = gaps.filter { $0 >= 0.85 * size }
+        let regular = (textGaps.isEmpty ? gaps : textGaps).filter { $0 >= 0.85 * size }
         let leading = regular.isEmpty ? 1.2 * size : PDFLayoutGlyphs.percentile(regular, 0.25)
         return Metrics(left: left, right: right, textRight: textRight, leading: leading)
     }
@@ -291,10 +297,12 @@ enum PDFLayoutRoles {
                                                       figures: figures, tables: tables,
                                                       pageBox: pageBox)
             }
+            keepCaptionsAtBlockStart(run: run, lines: &lines, metrics: metrics)
             continueCaptions(run: run, lines: &lines, metrics: metrics, bodySize: bodySize)
             for (position, index) in run.enumerated() where lines[index].lineClass == .text {
                 let next = position + 1 < run.count ? lines[run[position + 1]] : nil
-                if isHeading(lines[index], bodySize: bodySize, nextIsBody: next?.lineClass == .text) {
+                if isHeading(lines[index], bodySize: bodySize, nextIsBody: next?.lineClass == .text,
+                             metrics: metrics) {
                     lines[index].lineClass = .heading
                 }
             }
@@ -368,6 +376,24 @@ enum PDFLayoutRoles {
             }
             lines[index].lineClass = .heading
             heading = line
+        }
+    }
+
+    /// "Figure 3." starts a caption only at the start of a block. In running text a
+    /// line can begin with "Fig. 3)" or "Fig. 4. First, ..." when the sentence above
+    /// wraps there: the line above is a full line of text at the normal spacing.
+    private static func keepCaptionsAtBlockStart(run: [Int], lines: inout [LayoutLine],
+                                                 metrics: PDFLayoutColumns.Metrics) {
+        for position in run.indices.dropFirst() {
+            let index = run[position]
+            let previous = lines[run[position - 1]]
+            guard lines[index].lineClass == .caption, previous.lineClass == .text else { continue }
+            let line = lines[index]
+            let gap = previous.baseline - line.baseline
+            guard gap > 0, gap <= 1.2 * metrics.leading,
+                  abs(previous.fontSize - line.fontSize) <= 0.12 * line.fontSize,
+                  !isShort(previous, metrics: metrics) else { continue }
+            lines[index].lineClass = .text
         }
     }
 
@@ -475,6 +501,7 @@ enum PDFLayoutRoles {
     }
 
     private static func isCaption(_ text: String) -> Bool {
+        guard text.first?.isUppercase == true else { return false }
         let lower = text.lowercased()
         for prefix in ["figure ", "fig. ", "fig ", "table ", "tab. "] where lower.hasPrefix(prefix) {
             let rest = lower.dropFirst(prefix.count)
@@ -491,14 +518,52 @@ enum PDFLayoutRoles {
         return tail.contains(".") && !tail.contains(" ")
     }
 
-    private static func isHeading(_ line: LayoutLine, bodySize: CGFloat, nextIsBody: Bool) -> Bool {
+    private static func isHeading(_ line: LayoutLine, bodySize: CGFloat, nextIsBody: Bool,
+                                  metrics: PDFLayoutColumns.Metrics) -> Bool {
         guard line.letters > 0, line.text.count <= 90 else { return false }
         // A heading is never set smaller than the body text and never ends a
         // sentence, which keeps a footnote marker like "1 A note." out.
         guard line.fontSize >= 0.95 * bodySize, !line.text.hasSuffix(".") else { return false }
-        if hasSectionNumber(line.text) { return true }
         let bigger = line.fontSize >= 1.15 * bodySize
-        return (bigger || line.style.isBold) && nextIsBody
+        // A run-in heading ("Residual Representations. In image ...") is bold only
+        // at its start; the line is running text.
+        let bold = isWhollyBold(line)
+        // A full line of running text can start with a number ("2015 classification
+        // competition. The ..."); a numbered heading is short or set apart.
+        if hasSectionNumber(line.text) {
+            return bigger || bold || isShort(line, metrics: metrics)
+        }
+        return (bigger || bold) && nextIsBody
+    }
+
+    private static func isWhollyBold(_ line: LayoutLine) -> Bool {
+        let styled = proseGlyphs(line)
+        return !styled.isEmpty && styled.allSatisfy(\.style.isBold)
+    }
+
+    /// The glyphs that show the style of the prose: no spaces and no mathematics,
+    /// whose fonts say nothing about bold or serif text.
+    private static func proseGlyphs(_ line: LayoutLine) -> [LayoutGlyph] {
+        line.glyphs.filter { !$0.isSpace && $0.math != .strong && !$0.style.isMath }
+    }
+
+    /// Whether `next` carries on the paragraph of `previous` as far as bold and
+    /// monospaced type tell. A bold heading line followed by a plain line starts a
+    /// paragraph, and so does a line set wholly in bold after plain text. A bold
+    /// run-in label at the start of a line ("Right: a residual network ...") or an
+    /// italic phrase does not split a paragraph.
+    static func continuesStyle(_ previous: LayoutLine, into next: LayoutLine) -> Bool {
+        guard let end = proseGlyphs(previous).last, let start = proseGlyphs(next).first else {
+            return previous.style.isBold == next.style.isBold
+                && previous.style.isMonospace == next.style.isMonospace
+        }
+        // Code set in a monospaced font is never part of a prose paragraph.
+        if previous.style.isMonospace != next.style.isMonospace { return false }
+        switch (end.style.isBold, start.style.isBold) {
+        case (true, false): return false
+        case (false, true): return !isWhollyBold(next)
+        default: return true
+        }
     }
 
     private static func hasSectionNumber(_ text: String) -> Bool {
@@ -564,9 +629,20 @@ enum PDFLayoutRoles {
         let text = lines.map(\.text).joined(separator: " ")
         guard text.contains(where: \.isLetter) else { return .other }
         if isTable(lines) { return .other }
+        if isLabel(lines, text: text, bodySize: bodySize) { return .other }
         if startsWithListMarker(text) { return .listItem }
         if isFootnote(lines, bodySize: bodySize, pageBox: pageBox, rules: rules) { return .footnote }
         return .body
+    }
+
+    /// A figure label ("identity", "34-layer plain"): one short line set smaller
+    /// than the body text that does not end a sentence. Translated, it would wrap
+    /// into a column of a few characters inside the drawing.
+    private static func isLabel(_ lines: [LayoutLine], text: String, bodySize: CGFloat) -> Bool {
+        guard lines.count == 1, let line = lines.first, line.fontSize < 0.9 * bodySize else { return false }
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard let last = trimmed.last, !".!?:;".contains(last) else { return false }
+        return trimmed.split(separator: " ").count <= 3
     }
 
     private static func isTable(_ lines: [LayoutLine]) -> Bool {
@@ -581,9 +657,13 @@ enum PDFLayoutRoles {
         guard inBottom else { return false }
         let size = PDFLayoutGlyphs.median(lines.map(\.fontSize))
         if size < 0.92 * bodySize { return true }
-        // A short rule drawn directly above the block is the classic footnote separator.
+        // A short rule drawn directly above the block, starting at its left edge,
+        // is the classic footnote separator. A short line in a figure elsewhere on
+        // the page is not.
+        let left = lines.map(\.bounds.minX).min() ?? 0
         return rules.contains { rule in
             rule.maxY >= top && rule.maxY <= top + 3 * bodySize && rule.width < 0.5 * pageBox.width
+                && abs(rule.minX - left) <= 2 * bodySize
         }
     }
 }

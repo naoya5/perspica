@@ -80,10 +80,10 @@ also applies to coding agents.
 The typesetter requests the Hiragino fonts that ship with macOS
 (HiraMinProN-W3/W6, HiraginoSans-W3/W6). These four fonts declare editable
 embedding with subsetting allowed (OS/2 `fsType` 0x0008, read on macOS 26 on
-2026-11-14). This metadata is not, by itself, a complete license review.
-The macOS 26 font license clause and the fonts actually embedded in output
-remain checks before sharing translated PDFs. Core Text can select fallback
-fonts, and fonts from the original document can also remain in the output.
+2026-11-14). The macOS Tahoe 26 license, section 2E, allows embedding where the
+font's own restrictions permit it (checked 2026-11-15). Core Text can still
+substitute another macOS font for a character the Hiragino fonts lack, and fonts
+from the original document remain in the output. See `docs/release-licenses.md`.
 
 Versions up to 2026-11-13 used a Python worker (pdf2zh-next, BabelDOC, PyMuPDF
 and their dependencies, under AGPL-3.0 and other licenses) that the app installed

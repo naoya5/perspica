@@ -34,6 +34,9 @@ public struct PDFFontDescription: Sendable, Equatable {
     public var cidWidths: [Int: CGFloat]
     /// FontDescriptor /Flags.
     public var descriptorFlags: Int
+    /// The built-in encoding of an embedded Type 1 program (code to glyph name),
+    /// which applies when the font dictionary names no base encoding.
+    public var builtinEncoding: [Int: String] = [:]
     /// Symbol or ZapfDingbats without a font program: its built-in encoding is
     /// not one of the three predefined encodings, so codes stay unmapped.
     public var isSymbolicStandard14: Bool
@@ -155,6 +158,15 @@ public struct PDFFontDecoder: PDFCharDecoding {
         // A Symbol or ZapfDingbats font without a program uses its own built-in
         // encoding, which is not one of the three predefined tables.
         if description.isSymbolicStandard14 { return [String](repeating: "", count: 256) }
+        // An embedded Type 1 program carries its own encoding. TeX math fonts rely
+        // on it: code 0x50 of cmex is the summation sign, not "P".
+        if !description.builtinEncoding.isEmpty {
+            var names = [String](repeating: "", count: 256)
+            for (code, name) in description.builtinEncoding where code >= 0 && code < 256 {
+                names[code] = name
+            }
+            return names
+        }
         // Adobe's Type 1 fonts without /Encoding use StandardEncoding. Quartz and
         // most Windows producers write TrueType fonts in the WinAnsi code page.
         let fallback = description.kind == .trueType ? "WinAnsiEncoding" : "StandardEncoding"

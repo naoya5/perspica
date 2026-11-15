@@ -341,6 +341,31 @@ public enum PDFGlyphNames {
         for (offset, name) in digits.enumerated() {
             table[name] = String(offset)
         }
+        // TeX's math extension fonts (cmex) name each size of a big operator or a
+        // delimiter after the character: `summationtext`, `parenleftBig`.
+        let operators: [(String, UInt32)] = [
+            ("summation", 0x2211), ("product", 0x220F), ("coproduct", 0x2210),
+            ("integral", 0x222B), ("contintegral", 0x222E), ("union", 0x22C3),
+            ("intersection", 0x22C2), ("logicaland", 0x22C0), ("logicalor", 0x22C1),
+            ("circledot", 0x2A00), ("circleplus", 0x2A01), ("circlemultiply", 0x2A02),
+            ("unionmulti", 0x2A04), ("unionsq", 0x2A06),
+        ]
+        for (name, value) in operators {
+            guard let scalar = Unicode.Scalar(value) else { continue }
+            table[name + "text"] = String(scalar)
+            table[name + "display"] = String(scalar)
+        }
+        let delimiters: [(String, UInt32)] = [
+            ("parenleft", 0x28), ("parenright", 0x29), ("bracketleft", 0x5B), ("bracketright", 0x5D),
+            ("braceleft", 0x7B), ("braceright", 0x7D), ("angbracketleft", 0x27E8),
+            ("angbracketright", 0x27E9), ("slash", 0x2F), ("backslash", 0x5C),
+            ("floorleft", 0x230A), ("floorright", 0x230B), ("ceilingleft", 0x2308),
+            ("ceilingright", 0x2309), ("radical", 0x221A),
+        ]
+        for (name, value) in delimiters {
+            guard let scalar = Unicode.Scalar(value) else { continue }
+            for size in ["big", "Big", "bigg", "Bigg"] { table[name + size] = String(scalar) }
+        }
         return table
     }()
 
