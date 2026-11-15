@@ -426,6 +426,99 @@ struct PDFLayoutAnalyzerTests {
         #expect(paragraphs[2].translate)
     }
 
+    @Test("many small figure labels do not change the body size")
+    func smallLabelsKeepBodySize() {
+        var page = Page()
+        // Twenty-four short labels in 5 pt (two per row, as in a network diagram)
+        // outnumber the five lines of 10 pt prose.
+        for row in 0..<12 {
+            for column in 0..<2 {
+                page.run("conv 64", x: 72 + CGFloat(column) * 120, y: 728 - CGFloat(row) * 8, size: 5)
+            }
+        }
+        page.run("Our plain baselines are mainly inspired by the philosophy of the", x: 72, y: 600)
+        page.run("VGG nets in which the convolutional layers mostly have small filters", x: 72, y: 588)
+        page.run("and follow two simple design rules for the same output feature map", x: 72, y: 576)
+        page.run("size where the layers have the same number of filters and the map", x: 72, y: 564)
+        page.run("size is halved to keep the time complexity per layer.", x: 72, y: 552)
+        let prose = page.paragraphs().filter { text($0).contains("plain baselines") }
+        #expect(prose.count == 1)
+        #expect(prose.first?.role == .body)
+        #expect(prose.first?.lineBounds.count == 5)
+    }
+
+    @Test("a full line that starts with a number continues its paragraph")
+    func lineStartingWithNumber() {
+        var page = Page()
+        page.run("ImageNet test set and won the first place in the ILSVRC contest", x: 72, y: 700)
+        page.run("2015 classification competition and the extremely deep models", x: 72, y: 688)
+        page.run("also have excellent generalization performance on other tasks", x: 72, y: 676)
+        page.run("such as detection and segmentation.", x: 72, y: 664)
+        let paragraphs = page.paragraphs()
+        #expect(paragraphs.count == 1)
+        #expect(paragraphs.first?.role == .body)
+    }
+
+    @Test("a bold run-in heading stays in its paragraph")
+    func runInHeading() {
+        var page = Page()
+        // Most of the first line is bold, but only its start is the heading.
+        let end = page.run("Residual Representations and Encodings.", x: 72, y: 700, style: Self.bold)
+        page.run(" In image recognition VLAD", x: end, y: 700)
+        page.run("that encodes by the residual vectors with respect to a dictionary", x: 72, y: 688)
+        page.run("and the Fisher Vector can be formulated as a probabilistic version", x: 72, y: 676)
+        page.run("of the same representation.", x: 72, y: 664)
+        let paragraphs = page.paragraphs()
+        #expect(paragraphs.count == 1)
+        #expect(paragraphs.first?.role == .body)
+    }
+
+    @Test("a line that starts with Fig. inside a paragraph is not a caption")
+    func figureReferenceAtLineStart() {
+        var page = Page()
+        page.run("Based on the above plain network we insert shortcut connections (see", x: 72, y: 700)
+        page.run("Fig. 3) which turn the network into its counterpart residual version", x: 72, y: 688)
+        page.run("and the identity shortcuts can be directly used when the input and", x: 72, y: 676)
+        page.run("output are of the same dimensions.", x: 72, y: 664)
+        let paragraphs = page.paragraphs()
+        #expect(paragraphs.count == 1)
+        #expect(paragraphs.first?.role == .body)
+    }
+
+    @Test("two labels side by side at nearby baselines stay apart")
+    func labelsSideBySide() {
+        var page = Page()
+        page.run("weight layer", x: 98, y: 680, size: 9)
+        page.run("identity", x: 215, y: 675, size: 9)
+        #expect(page.paragraphs().count == 2)
+    }
+
+    @Test("a short label set smaller than the body is not translated")
+    func smallLabel() {
+        var page = Page()
+        page.run("34-layer plain", x: 150, y: 720, size: 8)
+        page.run("The plain baselines are mainly inspired by the philosophy of", x: 72, y: 680)
+        page.run("the VGG nets and the convolutional layers mostly have small filters", x: 72, y: 668)
+        let paragraphs = page.paragraphs()
+        let label = paragraphs.first { text($0) == "34-layer plain" }
+        #expect(label?.role == .other)
+        #expect(label?.translate == false)
+        #expect(paragraphs.contains { text($0).hasPrefix("The plain baselines") && $0.translate })
+    }
+
+    @Test("a big operator hanging near the line above joins its operand's line")
+    func hangingSummation() {
+        var page = Page()
+        page.run("assume the components of q and k are independent random vars", x: 72, y: 700)
+        page.run("Then q·k = ", x: 72, y: 688)
+        // TeX hangs the sign from a point nearer the line above than its own line.
+        page.run("∑", x: 128.5, y: 697, style: Self.math, advance: 6)
+        page.run("qk, has mean zero and variance as large as the dimension", x: 135, y: 688)
+        let all = page.paragraphs().map(text).joined(separator: " | ")
+        #expect(all.contains("components of"))
+        #expect(all.contains("∑"))
+    }
+
     @Test("a grid of short cells is a table and is not translated")
     func table() {
         var page = Page()

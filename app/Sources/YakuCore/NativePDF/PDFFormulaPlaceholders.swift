@@ -10,6 +10,11 @@ public enum PDFFormulaPlaceholders {
         case formula(Int)
     }
 
+    /// Operators that read the same as text. Alone, such a "formula" goes to the
+    /// model as the character itself: a token between two numbers ("3{v0} 3")
+    /// made the model drop one of them.
+    static let textSymbols: Set<String> = ["×", "±", "∓", "÷", "·", "−"]
+
     /// The text sent to the model, and the formula segments in token order.
     public static func source(for segments: [PDFTextSegment]) -> (text: String, formulas: [PDFTextSegment]) {
         var text = ""
@@ -18,7 +23,12 @@ public enum PDFFormulaPlaceholders {
             switch segment {
             case .text(let value):
                 text += value
-            case .formula:
+            case .formula(let value, _, _):
+                let symbol = value.trimmingCharacters(in: .whitespaces)
+                if textSymbols.contains(symbol) {
+                    text += symbol
+                    continue
+                }
                 text += "{v\(formulas.count)}"
                 formulas.append(segment)
             }

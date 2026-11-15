@@ -32,6 +32,15 @@ import Testing
         #expect(PDFFormulaPlaceholders.pieces(from: "訳文", formulaCount: 0) == [.text("訳文")])
     }
 
+    @Test func aLoneTimesSignTravelsAsText() {
+        let box = CGRect(x: 0, y: 0, width: 5, height: 6)
+        let segments: [PDFTextSegment] = [.text("pairs of 3"), .formula(text: "×", bounds: box, baseline: 0),
+                                          .text(" 3 filters and "), .formula(text: "dk", bounds: box, baseline: 0)]
+        let (text, formulas) = PDFFormulaPlaceholders.source(for: segments)
+        #expect(text == "pairs of 3× 3 filters and {v0}")
+        #expect(formulas.count == 1)
+    }
+
     @Test func plainSourceSpellsFormulasOut() {
         #expect(PDFFormulaPlaceholders.plainSource(for: segments) == "keys of dimension dk, values of dimension dv.")
     }

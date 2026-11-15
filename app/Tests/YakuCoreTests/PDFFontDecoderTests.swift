@@ -321,6 +321,42 @@ struct PDFFontDecoderTests {
         #expect(PDFGlyphNames.unicode(for: "") == nil)
     }
 
+    @Test("TeX big operator and delimiter names map to their characters")
+    func texExtensionNames() {
+        #expect(PDFGlyphNames.unicode(for: "summationtext") == "∑")
+        #expect(PDFGlyphNames.unicode(for: "summationdisplay") == "∑")
+        #expect(PDFGlyphNames.unicode(for: "integraltext") == "∫")
+        #expect(PDFGlyphNames.unicode(for: "parenleftBig") == "(")
+        #expect(PDFGlyphNames.unicode(for: "radicalbigg") == "√")
+    }
+
+    @Test("a Type 1 program's built-in encoding is read from its clear text")
+    func type1BuiltinEncoding() {
+        let program = Array("""
+            %!PS-AdobeFont-1.0: CMEX10 003.002
+            /Encoding 256 array
+            0 1 255 {1 index exch /.notdef put} for
+            dup 80 /summationtext put
+            dup 88 /summationdisplay put
+            readonly def
+            currentfile eexec
+            dup 81 /notread put
+            """.utf8)
+        #expect(PDFFontReader.type1Encoding(program) == [80: "summationtext", 88: "summationdisplay"])
+        let standard = Array("/Encoding StandardEncoding def\ncurrentfile eexec".utf8)
+        #expect(PDFFontReader.type1Encoding(standard) == nil)
+    }
+
+    @Test("a built-in encoding decides codes the font dictionary leaves open")
+    func builtinEncodingDecodes() {
+        var description = PDFFontDescription(kind: .type1, baseFont: "ABCDEF+CMEX10")
+        description.builtinEncoding = [80: "summationtext"]
+        #expect(PDFFontDecoder(description).decode([80]).map(\.unicode) == ["∑"])
+        // A named base encoding still wins over the program's own.
+        description.baseEncoding = "WinAnsiEncoding"
+        #expect(PDFFontDecoder(description).decode([80]).map(\.unicode) == ["P"])
+    }
+
     @Test("the predefined encodings hold the expected glyph names")
     func encodings() throws {
         let winAnsi = try #require(PDFGlyphNames.encoding(named: "WinAnsiEncoding"))

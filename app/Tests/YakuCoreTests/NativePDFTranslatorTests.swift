@@ -85,6 +85,36 @@ import Testing
         #expect(output == original)
     }
 
+    /// "VGG-19" and "34-layer plain" drawn by one operator: translating the second
+    /// removes the operator, so the first is set again in its own words.
+    @Test func textSharingARemovedOperatorIsSetAgain() {
+        let style = PDFFontStyle(isSerif: true, isBold: false, isItalic: false, isMath: false, isMonospace: false)
+        let labels = "VGG-19" + "34-layer plain"
+        let glyphs = labels.enumerated().map { offset, character in
+            PDFGlyph(unicode: String(character), origin: CGPoint(x: 80 + CGFloat(offset) * 5, y: 700),
+                     advance: 5, fontSize: 8, fontName: "F1", style: style, opIndex: 0, renderMode: 0)
+        }
+        let content = PDFPageContent(glyphs: glyphs,
+                                     showOps: [PDFShowOp(byteRange: 0..<10, op: "TJ", glyphRange: 0..<glyphs.count)],
+                                     graphics: [])
+        func paragraph(_ text: String, _ range: Range<Int>, translate: Bool) -> PDFParagraph {
+            PDFParagraph(role: translate ? .body : .other, bounds: CGRect(x: 80, y: 700, width: 100, height: 8),
+                         lineBounds: [], segments: [.text(text)], glyphIndices: Array(range),
+                         fontSize: 8, style: style, translate: translate)
+        }
+        var work = NativePDFTranslator.PageWork(
+            index: 0, mediaBox: CGRect(x: 0, y: 0, width: 612, height: 792), page: content,
+            paragraphs: [paragraph("VGG-19", 0..<6, translate: false),
+                         paragraph("34-layer plain", 6..<glyphs.count, translate: true)])
+        work.pieces[1] = .init(pieces: [.text("34層プレーン")], formulas: [], isFallback: false)
+        work.restoreDroppedText()
+        guard case .text(let restored)? = work.pieces[0]?.pieces.first else {
+            Issue.record("VGG-19 was not set again")
+            return
+        }
+        #expect(restored == "VGG-19")
+    }
+
     @Test func aPDFWithoutTextFailsInsteadOfFinishingEmpty() async throws {
         let directory = try Self.outputDirectory()
         let scan = directory.appendingPathComponent("scan.pdf")

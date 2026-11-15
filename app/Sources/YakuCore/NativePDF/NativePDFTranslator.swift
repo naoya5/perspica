@@ -76,6 +76,7 @@ public enum NativePDFTranslator {
         for ((pageOffset, paragraphIndex), pieces) in zip(jobs, translations) {
             if let pieces { pages[pageOffset].pieces[paragraphIndex] = pieces }
         }
+        for offset in pages.indices { pages[offset].restoreDroppedText() }
 
         // 3. Strip the text and compose the output.
         progress(0.9, PDFStage.writing)
@@ -133,6 +134,36 @@ public enum NativePDFTranslator {
             var formulas: [UInt8]
             var backgroundStreams: [UnsafeRawPointer: [UInt8]]
             var formulaStreams: [UnsafeRawPointer: [UInt8]]
+        }
+
+        /// Text operators go as a whole: one that draws mostly translated text is
+        /// removed. When it also draws a paragraph that stays as it was (two figure
+        /// labels in one operator, one translated), that paragraph is set again in
+        /// its own words at its place, or it would vanish.
+        mutating func restoreDroppedText() {
+            var changed = true
+            while changed {
+                changed = false
+                var translated = Set<Int>()
+                for index in pieces.keys { translated.formUnion(paragraphs[index].glyphIndices) }
+                var dropped = Set<Int>()
+                for op in page.showOps where !op.glyphRange.isEmpty {
+                    let count = op.glyphRange.filter { translated.contains($0) }.count
+                    if count * 2 > op.glyphRange.count { dropped.formUnion(op.glyphRange) }
+                }
+                func visible(_ glyph: Int) -> Bool {
+                    !page.glyphs[glyph].unicode.trimmingCharacters(in: .whitespaces).isEmpty
+                }
+                for (index, paragraph) in paragraphs.enumerated() where pieces[index] == nil {
+                    guard paragraph.role != .formula,
+                          paragraph.glyphIndices.contains(where: { dropped.contains($0) && visible($0) })
+                    else { continue }
+                    let text = PDFFormulaPlaceholders.plainSource(for: paragraph.segments)
+                    guard text.contains(where: \.isLetter) || text.contains(where: \.isNumber) else { continue }
+                    pieces[index] = Translated(pieces: [.text(text)], formulas: [], isFallback: true)
+                    changed = true
+                }
+            }
         }
 
         /// Content without the translated paragraphs' glyphs, and content
@@ -395,6 +426,12 @@ public enum NativePDFTranslator {
     }
 
     static func drawTranslations(_ work: PageWork, formulaPage: CGPDFPage, in context: CGContext) {
+        // Every inline formula on the page, at its place in the source.
+        let formulaBoxes: [(bounds: CGRect, baseline: CGFloat)] = work.pieces.values.flatMap(\.formulas)
+            .compactMap { segment in
+                guard case .formula(_, let bounds, let baseline) = segment else { return nil }
+                return (bounds, baseline)
+            }
         for (index, paragraph) in work.paragraphs.enumerated() {
             guard let translated = work.pieces[index] else { continue }
             var inputPieces: [PDFTypesetInput.Piece] = []
@@ -422,14 +459,49 @@ public enum NativePDFTranslator {
             let result = PDFTypesetter.draw(input, in: context)
             for (number, placement) in result.inlinePlacements {
                 guard number < translated.formulas.count,
-                      case .formula(_, let bounds, _) = translated.formulas[number] else { continue }
+                      case .formula(_, let bounds, let baseline) = translated.formulas[number] else { continue }
                 context.saveGState()
-                context.clip(to: placement)
-                context.translateBy(x: placement.minX - bounds.minX, y: placement.minY - bounds.minY)
+                // A tall formula's box (a ∑ with its limits) can reach over an inline
+                // formula on the line above, which the formula copy still draws. That
+                // part of the box is left out, or the neighbour would be drawn twice.
+                // The overlap belongs to the formula whose baseline is nearer to it.
+                let offset = CGPoint(x: placement.minX - bounds.minX, y: placement.minY - bounds.minY)
+                let overlaps: [CGRect] = formulaBoxes.compactMap { other in
+                    guard other.bounds != bounds else { return nil }
+                    let overlap = other.bounds.insetBy(dx: -1, dy: -1).intersection(bounds)
+                    guard !overlap.isNull, overlap.width > 0, overlap.height > 0,
+                          abs(overlap.midY - other.baseline) < abs(overlap.midY - baseline) else { return nil }
+                    return overlap
+                }
+                let neighbours = mergedRects(overlaps)
+                context.addRect(placement)
+                for neighbour in neighbours {
+                    context.addRect(neighbour.offsetBy(dx: offset.x, dy: offset.y))
+                }
+                context.clip(using: .evenOdd)
+                context.translateBy(x: offset.x, y: offset.y)
                 context.drawPDFPage(formulaPage)
                 context.restoreGState()
             }
         }
+    }
+
+    /// Joins rectangles that overlap, so that an even-odd clip cuts each area out once.
+    static func mergedRects(_ rects: [CGRect]) -> [CGRect] {
+        var merged: [CGRect] = []
+        for rect in rects {
+            var current = rect
+            var changed = true
+            while changed {
+                changed = false
+                if let index = merged.firstIndex(where: { $0.intersects(current) }) {
+                    current = current.union(merged.remove(at: index))
+                    changed = true
+                }
+            }
+            merged.append(current)
+        }
+        return merged
     }
 
     /// Title, author, subject and keywords of the source, for the output's document info.

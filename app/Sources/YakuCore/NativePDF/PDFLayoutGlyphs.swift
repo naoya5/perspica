@@ -121,7 +121,7 @@ enum PDFLayoutGlyphs {
                 references.append((glyph.origin.y, glyph.fontSize))
             }
         }
-        moveRadicals(&clusters)
+        moveHangingSigns(&clusters)
         var out: [LayoutLine] = []
         for cluster in clusters where !cluster.isEmpty {
             out.append(contentsOf: split(cluster))
@@ -133,12 +133,20 @@ enum PDFLayoutGlyphs {
         return out
     }
 
-    /// A radical sign hangs from above its radicand, so its origin can sit nearer the
-    /// line above than its own line. It belongs with the glyph that starts right after
-    /// it: that glyph's line is where the radicand is.
-    private static func moveRadicals(_ clusters: inout [[LayoutGlyph]]) {
+    /// Signs that TeX hangs from a point above the line they belong to.
+    private static let hangingSigns: Set<String> = [
+        "√", "∑", "∏", "∐", "∫", "∮", "⋃", "⋂", "⋀", "⋁", "⨀", "⨁", "⨂", "⨄", "⨆",
+    ]
+
+    /// A radical sign hangs from above its radicand, and a big operator such as ∑
+    /// hangs from above its operand, so the origin can sit nearer the line above
+    /// than its own line. The sign belongs with the glyph that starts right after
+    /// it: that glyph's line is where the radicand or the operand is.
+    private static func moveHangingSigns(_ clusters: inout [[LayoutGlyph]]) {
         for source in clusters.indices {
-            for radical in clusters[source] where radical.unicode == "√" {
+            for radical in clusters[source] where hangingSigns.contains(radical.unicode) {
+                // A big operator reaches further down than a radical sign.
+                let depth: CGFloat = radical.unicode == "√" ? 1.2 : 1.5
                 let reach = max(radical.fontSize * 0.3, 1)
                 // In a display formula the sign bridges its own line (the fraction bar's
                 // line); taking it away would open a gap that splits that line.
@@ -146,8 +154,8 @@ enum PDFLayoutGlyphs {
                 let left = others.filter { $0.box.midX <= radical.box.midX }.map(\.box.maxX).max()
                 let right = others.filter { $0.box.midX > radical.box.midX }.map(\.box.minX).min()
                 if let left, let right, right - left > radical.fontSize * 1.5 { continue }
-                var target: Int?
-                var nearest = CGFloat.infinity
+                // Followers on other lines: (cluster, horizontal gap).
+                var followers: [(cluster: Int, gap: CGFloat)] = []
                 for candidate in clusters.indices where candidate != source {
                     for glyph in clusters[candidate] where !glyph.isSpace {
                         let gap = glyph.box.minX - radical.box.maxX
@@ -155,18 +163,23 @@ enum PDFLayoutGlyphs {
                               // The radicand's baseline is at or below the sign's origin,
                               // within about one size: the sign reaches down to it.
                               glyph.origin.y <= radical.origin.y + reach,
-                              glyph.origin.y >= radical.origin.y - radical.fontSize * 1.2,
-                              abs(gap) < nearest else { continue }
+                              glyph.origin.y >= radical.origin.y - radical.fontSize * depth else { continue }
                         // Only move when the follower is not already on the radical's own line.
                         let ownFollower = clusters[source].contains { other in
                             !other.isSpace && other.index != radical.index
                                 && abs(other.box.minX - radical.box.maxX) <= abs(gap)
                         }
                         if ownFollower { continue }
-                        nearest = abs(gap)
-                        target = candidate
+                        followers.append((candidate, abs(gap)))
                     }
                 }
+                // The operand's line is a full cluster; a limit such as the d_k above
+                // a ∑ is a small cluster of its own that joins that line later.
+                func size(_ cluster: Int) -> Int { clusters[cluster].filter { !$0.isSpace }.count }
+                let target = followers.min { lhs, rhs in
+                    let (left, right) = (size(lhs.cluster), size(rhs.cluster))
+                    return left != right ? left > right : lhs.gap < rhs.gap
+                }?.cluster
                 if let target {
                     clusters[source].removeAll { $0.index == radical.index }
                     clusters[target].append(radical)
@@ -322,6 +335,23 @@ enum PDFLayoutGlyphs {
         var counts: [CGFloat: Int] = [:]
         for line in lines where line.nonSpace > 0 {
             counts[(line.fontSize * 2).rounded() / 2, default: 0] += 1
+        }
+        guard !counts.isEmpty else { return lines[0].fontSize }
+        return counts.max { lhs, rhs in
+            lhs.value != rhs.value ? lhs.value < rhs.value : lhs.key < rhs.key
+        }!.key
+    }
+
+    /// The size the running text is set in. Every character counts, so a page
+    /// with a dense figure (many short labels in a small size) or a big table
+    /// still reports the size of its prose. Lines inside figures and tables are
+    /// left out when any line remains.
+    static func bodyFontSize(_ lines: [LayoutLine], outside regions: [CGRect]) -> CGFloat {
+        guard !lines.isEmpty else { return 0 }
+        let prose = lines.filter { !PDFLayoutTables.contains(regions, line: $0) }
+        var counts: [CGFloat: Int] = [:]
+        for line in prose.isEmpty ? lines : prose where line.nonSpace > 0 {
+            counts[(line.fontSize * 2).rounded() / 2, default: 0] += line.nonSpace
         }
         guard !counts.isEmpty else { return lines[0].fontSize }
         return counts.max { lhs, rhs in

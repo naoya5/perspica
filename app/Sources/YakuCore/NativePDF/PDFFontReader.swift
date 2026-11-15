@@ -46,6 +46,12 @@ public enum PDFFontReader {
                 || stream(descriptor, "FontFile2") != nil
                 || stream(descriptor, "FontFile3") != nil
             result.isSymbolicStandard14 = !hasProgram && isSymbolicStandard14(result.baseFont)
+            if result.kind == .type1, let program = stream(descriptor, "FontFile") {
+                var format = CGPDFDataFormat.raw
+                if let data = CGPDFStreamCopyData(program, &format) {
+                    result.builtinEncoding = type1Encoding([UInt8](data as Data)) ?? [:]
+                }
+            }
         }
         if let toUnicode = stream(font, "ToUnicode") {
             var format = CGPDFDataFormat.raw
@@ -54,6 +60,33 @@ public enum PDFFontReader {
             }
         }
         return result
+    }
+
+    /// The /Encoding of a Type 1 font program, read from its clear-text part
+    /// (Adobe Type 1 Font Format, section 2): `dup <code> /<name> put` entries.
+    /// Nil when the program uses StandardEncoding or has no readable encoding.
+    static func type1Encoding(_ program: [UInt8]) -> [Int: String]? {
+        // Only the part before `eexec` is clear text.
+        let limit = min(program.count, 64 * 1024)
+        guard let text = String(bytes: program[0..<limit], encoding: .isoLatin1) else { return nil }
+        let clear = text.range(of: "eexec").map { text[..<$0.lowerBound] } ?? text[...]
+        guard let start = clear.range(of: "/Encoding") else { return nil }
+        let tokens = clear[start.upperBound...].split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\r" || $0 == "\t" })
+        guard let first = tokens.first, first != "StandardEncoding" else { return nil }
+        var encoding: [Int: String] = [:]
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            if token == "def" || token == "readonly" { break }
+            if token == "dup", index + 3 < tokens.count, let code = Int(tokens[index + 1]),
+               tokens[index + 2].hasPrefix("/"), tokens[index + 3] == "put" {
+                encoding[code] = String(tokens[index + 2].dropFirst())
+                index += 4
+                continue
+            }
+            index += 1
+        }
+        return encoding.isEmpty ? nil : encoding
     }
 
     // MARK: - Pieces
