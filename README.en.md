@@ -221,7 +221,8 @@ problems privately as described in [SECURITY.md](SECURITY.md).
 
 ## License and credits
 
-Perspica's code is under the [MIT license](LICENSE). PDF translation is implemented in Swift on
+Perspica's code is under the [MIT license](LICENSE). Polly the mascot, the app icon and the
+movie are not; see [ARTWORK.md](ARTWORK.md). PDF translation is implemented in Swift on
 Apple's system frameworks, with no AGPL or other third-party PDF library. The model and the engine
 keep their own licenses.
 

@@ -48,7 +48,8 @@ contractual use category remain unconfirmed; the
 ## What is actually shipped or downloaded
 
 The source tree has no third-party Swift packages and no third-party PDF code.
-The packaging script ships the Swift executable and license resources. It
+The packaging script ships the Swift executable, Polly and the app icon (the
+author's artwork, see `ARTWORK.md`) and license resources. It
 optionally copies a Homebrew `llama-server`. It does not ship PLaMo weights.
 The app downloads only the model, from Hugging Face.
 
@@ -112,6 +113,7 @@ Before signing, include at least:
 
 - The root MIT `LICENSE`.
 - `THIRD_PARTY_NOTICES.md`.
+- `ARTWORK.md` (Polly, the app icon and the movie are the author's artwork, not MIT).
 - `PLAMO-COMMUNITY-LICENSE-en.txt`.
 - The entire `app/Resources/Licenses` directory under `Contents/Resources/Licenses`.
 - Artifact-specific license/NOTICE files not yet captured by those resources.
