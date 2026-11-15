@@ -125,7 +125,7 @@ struct ManagerPDFView: View {
                     Text(job.jobState.japaneseName)
                         .foregroundStyle(stateColor(job))
                     if job.jobState == .running || job.jobState == .queued {
-                        Text(PDFStage.japaneseName(for: job.stage))
+                        Text(PDFStage.displayName(for: job.stage))
                     }
                     if job.seconds > 0 {
                         Text(String(format: "%.1f 秒", job.seconds))

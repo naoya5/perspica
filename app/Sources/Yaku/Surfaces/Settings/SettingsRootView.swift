@@ -270,40 +270,8 @@ private struct PDFSettingsTab: View {
     @Bindable var pdf: PDFQueue
     @Bindable var state: SettingsState
 
-    @State private var sizeText = ""
-
     var body: some View {
         Form {
-            Section {
-                LabeledContent("状態", value: workerStateText)
-                if pdf.installer.phase == .running {
-                    VStack(alignment: .leading, spacing: Design.Space.xs) {
-                        ProgressView(value: pdf.installer.progress)
-                        Text(pdf.installer.message)
-                            .font(.system(size: Design.Font.caption))
-                            .foregroundStyle(.secondary)
-                        Button("取り消す") { pdf.installer.cancel() }
-                            .controlSize(.small)
-                    }
-                } else {
-                    HStack(spacing: Design.Space.s) {
-                        Button("導入する") { Task { await pdf.installer.install() } }
-                            .disabled(PDFWorkerPaths.isInstalled || pdf.installer.phase == .running)
-                        Button("削除", role: .destructive) { PDFWorkerPaths.removeInstallation() }
-                            .disabled(!PDFWorkerPaths.isInstalled)
-                    }
-                    if case .failed(let message) = pdf.installer.phase {
-                        Text(message)
-                            .font(.system(size: Design.Font.caption))
-                            .foregroundStyle(.red)
-                    }
-                }
-            } header: {
-                Text("PDF ワーカー")
-            } footer: {
-                Text("PDF の翻訳には追加の部品（約 \(PDFWorkerInstaller.estimatedSizeText)、取得に数分）が必要です。")
-            }
-
             Section {
                 Picker("出力先", selection: $settings.pdfOutputSameFolder) {
                     Text("元のファイルと同じ場所").tag(true)
@@ -327,58 +295,13 @@ private struct PDFSettingsTab: View {
                 Text("出力")
             }
 
-            Section {
-                HStack(spacing: Design.Space.s) {
-                    Text(pythonPathText)
-                        .font(.system(size: Design.Font.label))
-                        .foregroundStyle(settings.pdfPythonPath.isEmpty ? .secondary : .primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: Design.Space.s)
-                    Button("選ぶ…") { choosePython() }
-                        .controlSize(.small)
-                    if !settings.pdfPythonPath.isEmpty {
-                        Button("既定に戻す") { settings.pdfPythonPath = "" }
-                            .controlSize(.small)
-                    }
-                }
-            } header: {
-                Text("開発用")
-            } footer: {
-                Text("lab の .venv/bin/python を選ぶと、そちらで PDF を訳します。")
-            }
         }
         .formStyle(.grouped)
         .padding(.vertical, 4)
-        .onAppear { refreshSize() }
-    }
-
-    private var workerStateText: String {
-        if PDFWorkerPaths.demoInstalled {
-            return sizeText.isEmpty ? "導入済み" : "導入済み（\(sizeText)）"
-        }
-        if !settings.pdfPythonPath.isEmpty { return "開発用の Python を使います" }
-        guard PDFWorkerPaths.isInstalled else { return "未導入" }
-        return sizeText.isEmpty ? "導入済み" : "導入済み（\(sizeText)）"
-    }
-
-    private var pythonPathText: String {
-        if !settings.pdfPythonPath.isEmpty { return settings.pdfPythonPath }
-        return PDFWorkerPaths.isInstalled
-            ? PDFWorkerPaths.installedPython.path
-            : "未導入（自動で入れる場所: \(PDFWorkerPaths.installedPython.path)）"
     }
 
     private var outputFolderText: String {
         settings.pdfOutputFolder.isEmpty ? "まだ選んでいません" : settings.pdfOutputFolder
-    }
-
-    private func refreshSize() {
-        guard PDFWorkerPaths.isInstalled else {
-            sizeText = ""
-            return
-        }
-        sizeText = ByteCount.format(PDFWorkerPaths.installedBytes)
     }
 
     private func chooseOutputFolder() {
@@ -389,18 +312,6 @@ private struct PDFSettingsTab: View {
         panel.prompt = "選ぶ"
         if panel.runModal() == .OK, let url = panel.url {
             settings.pdfOutputFolder = url.path
-        }
-    }
-
-    private func choosePython() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.showsHiddenFiles = true
-        panel.prompt = "選ぶ"
-        if panel.runModal() == .OK, let url = panel.url {
-            settings.pdfPythonPath = url.path
         }
     }
 }
@@ -494,7 +405,7 @@ private struct PrivacySettingsTab: View {
                         let historyOK = model.store.deleteAllHistory()
                         let cacheOK = model.store.deleteAllCache()
                         let urlCacheOK = URLCacheLeftovers.remove()
-                        let pdfCacheOK = PDFWorkerPaths.clearTranslationCache()
+                        let pdfCacheOK = LegacyPDFWorker.remove()
                         let logsOK = AppLog.clearAll()
                         model.reloadHistory()
                         model.selectedHistory = nil

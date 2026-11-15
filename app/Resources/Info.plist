@@ -7,7 +7,7 @@
     <key>CFBundleExecutable</key>
     <string>Yaku</string>
     <key>CFBundleIdentifier</key>
-    <string>dev.naoya.yaku</string>
+    <string>app.perspica</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

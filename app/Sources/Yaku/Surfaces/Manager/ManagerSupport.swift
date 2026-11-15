@@ -35,7 +35,15 @@ struct WindowProbe: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if let window { onWindow?(window) }
+            if let window {
+                // SwiftUI normally saves frames to the app's real defaults,
+                // even when our own settings use a demo JSON file.
+                if AppPaths.isUsingDataDirectory {
+                    window.setFrameAutosaveName("")
+                    window.isRestorable = false
+                }
+                onWindow?(window)
+            }
         }
     }
 

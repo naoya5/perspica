@@ -19,6 +19,7 @@ let height: CGFloat = 900
 let outputDirectory = CommandLine.arguments.count > 1
     ? URL(fileURLWithPath: CommandLine.arguments[1])
     : URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("yaku-m4")
+try! FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
 /// Pixels per point in the written pictures.
 let scale: CGFloat = CommandLine.arguments.count > 2

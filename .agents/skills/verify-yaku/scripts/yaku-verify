@@ -19,18 +19,25 @@ set -eu
 
 REPO=$(cd "$(dirname "$0")/../../../.." && pwd)
 APP_DIR="$REPO/app"
-BIN="$APP_DIR/.build/arm64-apple-macosx/release/Yaku"
+BIN="${YAKU_VERIFY_BINARY:-$APP_DIR/.build/arm64-apple-macosx/release/Yaku}"
+case "$BIN" in
+    *.app/Contents/MacOS/*)
+        YAKU_WINDOW_OWNER=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "${BIN%/MacOS/*}/Info.plist") ;;
+    *) YAKU_WINDOW_OWNER=Yaku ;;
+esac
+export YAKU_WINDOW_OWNER
 INSTALLED="$HOME/Applications/Perspica.app"
 # Before 2026-11-09 the app was installed as Yaku.app; `make-app.sh install`
 # removes that copy, but until then it is still the user's app, not a stray run.
 LEGACY_INSTALLED="$HOME/Applications/Yaku.app"
-LOCK="$HOME/Library/Application Support/Yaku/Yaku.lock"
-APP_LOG="$HOME/Library/Logs/Yaku/app.log"
+LOCK="$HOME/Library/Application Support/Perspica/Perspica.lock"
+LEGACY_LOCK="$HOME/Library/Application Support/Yaku/Yaku.lock"
 # Per-user and private: $TMPDIR is the user's own 0700 folder on macOS. A fixed
 # name in the shared /tmp would let another account plant files the app or
 # this script then runs.
 WORK_ROOT="${TMPDIR:-/tmp}"
 STATE_DIR="${YAKU_VERIFY_STATE:-$WORK_ROOT/yaku-verify-state-$(id -u)}"
+APP_LOG="$STATE_DIR/data/logs/app.log"
 TOOLS_DIR="$WORK_ROOT/yaku-verify-tools-$(id -u)"
 EVIDENCE_ROOT="$REPO/docs/checks/shots/verify"
 WINID=${WINID:-$TOOLS_DIR/winid}
@@ -52,15 +59,22 @@ private_dir() {
 # app's settings, else the first downloaded model.
 model_path() {
     if [ -n "${YAKU_DEV_MODEL:-}" ] && [ -f "$YAKU_DEV_MODEL" ]; then echo "$YAKU_DEV_MODEL"; return; fi
-    picked=$(defaults read dev.naoya.yaku modelPath 2>/dev/null || true)
-    if [ -n "$picked" ] && [ -f "$picked" ]; then echo "$picked"; return; fi
-    find "$HOME/Library/Application Support/Yaku/models" -name '*.gguf' -type f 2>/dev/null | head -1
+    for domain in app.perspica dev.naoya.yaku; do
+        picked=$(defaults read "$domain" modelPath 2>/dev/null || true)
+        if [ -n "$picked" ] && [ -f "$picked" ]; then echo "$picked"; return; fi
+    done
+    for owner in Perspica Yaku; do
+        picked=$(find "$HOME/Library/Application Support/$owner/models" -name '*.gguf' -type f 2>/dev/null | head -1)
+        if [ -n "$picked" ]; then echo "$picked"; return; fi
+    done
 }
 
 lock_holder() {
-    [ -f "$LOCK" ] || return 0
-    pid=$(head -1 "$LOCK" 2>/dev/null | tr -dc 0-9)
-    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo "$pid"
+    for file in "$LOCK" "$LEGACY_LOCK"; do
+        [ -f "$file" ] || continue
+        pid=$(head -1 "$file" 2>/dev/null | tr -dc 0-9)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then echo "$pid"; return; fi
+    done
     return 0
 }
 
@@ -84,7 +98,9 @@ run_dir() {
     cat "$STATE_DIR/run_dir"
 }
 
-log_mark() { wc -l < "$APP_LOG" 2>/dev/null | tr -d ' ' || echo 0; }
+log_mark() {
+    if [ -f "$APP_LOG" ]; then wc -l < "$APP_LOG" | tr -d ' '; else echo 0; fi
+}
 
 cmd_doctor() {
     ok=1

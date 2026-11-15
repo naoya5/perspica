@@ -91,7 +91,7 @@ final class NotchModel {
 
     // MARK: text
 
-    var stageJapanese: String { PDFStage.japaneseName(for: stage) }
+    var stageJapanese: String { PDFStage.displayName(for: stage) }
 
     /// What VoiceOver calls the island. The compact island is only an icon and
     /// a percentage, so without this it reads as nothing at all (SPEC 18).

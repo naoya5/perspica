@@ -20,6 +20,7 @@ struct ManagerModelsView: View {
 
                 existingFileCard
                 engineCard
+                licensesCard
             }
             .padding(Design.pagePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -222,6 +223,33 @@ struct ManagerModelsView: View {
         return minutes <= 0 ? "止めない" : "\(minutes) 分"
     }
 
+    private var licensesCard: some View {
+        VStack(alignment: .leading, spacing: Design.Space.s) {
+            Text("ライセンス")
+                .font(.system(size: Design.Font.body, weight: .semibold))
+            Text("Built with PLaMo")
+                .font(.system(size: Design.Font.caption))
+            Text("翻訳モデルにはPLaMo Community Licenseが適用されます。翻訳エンジンの llama.cpp には MIT ライセンスが適用されます。")
+                .font(.system(size: Design.Font.caption))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Design.Space.s) {
+                Link("モデルの利用条件", destination: ModelCatalog.licenseURL)
+                Button("第三者の著作権・ライセンス") {
+                    openLicenseDocument("THIRD_PARTY_NOTICES")
+                }
+                .disabled(Bundle.main.url(forResource: "THIRD_PARTY_NOTICES", withExtension: "md") == nil)
+            }
+            .controlSize(.small)
+        }
+        .designCard()
+    }
+
+    private func openLicenseDocument(_ name: String) {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "md") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     private func chooseFile() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.data]
@@ -235,7 +263,7 @@ struct ManagerModelsView: View {
 }
 
 /// The PLaMo Community License gate shown before a download (SPEC 4.4).
-private struct LicenseSheet: View {
+struct LicenseSheet: View {
     @Bindable var model: ManagerModel
     let entry: TranslationModel
 
@@ -245,12 +273,15 @@ private struct LicenseSheet: View {
         VStack(alignment: .leading, spacing: Design.Space.m) {
             Text("PLaMo Community License")
                 .font(.system(size: Design.Font.sectionTitle, weight: .semibold))
+            Text("2026年11月9日改訂 · Built with PLaMo")
+                .font(.system(size: Design.Font.caption))
+                .foregroundStyle(.secondary)
             Text("\(entry.displayName) を取得する前に、ライセンスを確認してください。")
                 .font(.system(size: Design.Font.label))
                 .foregroundStyle(.secondary)
 
             ScrollView {
-                Text(licenseText)
+                Text(licenseText ?? "ライセンスの全文を読み込めません。アプリを入れ直してください。公式ページでも全文を確認できます。")
                     .font(.system(size: Design.Font.caption))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -261,7 +292,7 @@ private struct LicenseSheet: View {
 
             HStack {
                 Link("ライセンスの全文を開く",
-                     destination: URL(string: "https://plamo.preferredai.jp/info/plamo-community-license-en")!)
+                     destination: ModelCatalog.licenseURL)
                     .font(.system(size: Design.Font.caption))
                 Spacer()
                 Button("やめる") {
@@ -273,6 +304,7 @@ private struct LicenseSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.glassProminent)
+                .disabled(licenseText == nil)
                 .keyboardShortcut(.defaultAction)
             }
         }
@@ -280,25 +312,12 @@ private struct LicenseSheet: View {
         .frame(width: 560)
     }
 
-    /// The bundled copy of the licence, or the key points when the app is run
-    /// straight out of the build directory (where there is no bundle).
-    private var licenseText: String {
+    /// Do not accept an abbreviated or missing copy of the publisher's terms.
+    private var licenseText: String? {
         if let url = Bundle.main.url(forResource: "PLAMO-COMMUNITY-LICENSE-en", withExtension: "txt"),
            let text = try? String(contentsOf: url, encoding: .utf8) {
             return text
         }
-        return """
-        PLaMo Community License Agreement（要点）
-
-        ・個人利用（学習・趣味）と学術利用は、事前の登録なしで無償です。
-        ・商用利用は、PFN の登録ページでの事前登録と、年間売上 10 億円以下という条件を満たす
-          場合だけ許可されます。
-        ・MODEL MATERIALS を第三者に渡すときは、本契約の写しを渡し、「Built with PLaMo」を
-          表示し、AI モデル名に「PLaMo」を含める必要があります。
-        ・出力は、モデルの出力であることを明示すれば公開できます。
-        ・モデルと出力は現状のまま提供され、PFN は保証しません。
-
-        全文: https://plamo.preferredai.jp/info/plamo-community-license-en
-        """
+        return nil
     }
 }
