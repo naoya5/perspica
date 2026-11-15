@@ -64,7 +64,8 @@ struct ManagerHistoryView: View {
                     title: "まだ翻訳した文はありません",
                     message: model.historySearch.isEmpty
                         ? "パネルや HUD で訳した文がここにたまります。"
-                        : "「\(model.historySearch)」に合う履歴はありません。"
+                        : "「\(model.historySearch)」に合う履歴はありません。",
+                    mascot: model.historySearch.isEmpty ? .sleep : nil
                 )
             } else {
                 List(model.history, selection: Binding(

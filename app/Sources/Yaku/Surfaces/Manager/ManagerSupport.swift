@@ -106,12 +106,19 @@ struct ManagerPlaceholder: View {
     var systemImage: String
     var title: String
     var message: String
+    /// Polly in place of the symbol, for the empty states it belongs to (SPEC 6.6).
+    var mascot: PollyPose? = nil
 
     var body: some View {
         VStack(spacing: Design.Space.m) {
-            Image(systemName: systemImage)
-                .font(.system(size: 34, weight: .light))
-                .foregroundStyle(.tertiary)
+            if let mascot {
+                PollyImage(pose: mascot)
+                    .frame(width: 120, height: 120)
+            } else {
+                Image(systemName: systemImage)
+                    .font(.system(size: 34, weight: .light))
+                    .foregroundStyle(.tertiary)
+            }
             Text(title)
                 .font(.system(size: Design.Font.sectionTitle, weight: .semibold))
             Text(message)
