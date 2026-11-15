@@ -27,6 +27,8 @@ the Swift modules (`Yaku`, `YakuCore`), the executable, the signing identity and
 | `app/make-app.sh` | Builds, bundles and signs `Perspica.app`; `install` copies it to `~/Applications`. |
 | `app/tools/` | Signing setup, capture and measurement scripts used during development. |
 | `pdf-worker/` | The Python worker and its tests. |
+| `site/` | The landing page: static files, no build, no requests to other sites. |
+| `marketing/` | The source of the marketing movie the landing page embeds, and how its footage was made. |
 | `SPEC.md` | The design specification (Japanese). |
 | `docs/perf-review-2026-11-09.md` | Measured performance, the fixes and the hypotheses that were rejected (Japanese). |
 | `.agents/skills/verify-yaku/` | How to drive the real app to prove a change. `.claude/skills` links here. |

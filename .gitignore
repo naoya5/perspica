@@ -11,3 +11,6 @@ __pycache__/
 .briefs/
 docs/checks/
 context.md
+# The marketing movie's renderer: its dependency and the still frames it writes.
+marketing/movie/node_modules/
+marketing/movie/frames/

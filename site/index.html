@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perspica - 原文も訳文も外に送らない Mac の翻訳アプリ</title>
+<meta name="description" content="Perspica は、メニューバーに常駐する macOS の翻訳アプリです。選んだ文も、PDF も、画面の文字も、Mac の中だけで訳します。原文も訳文も、外には送りません。">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#090a0c">
+<meta property="og:title" content="Perspica - 原文も訳文も外に送らない Mac の翻訳アプリ">
+<meta property="og:description" content="選んだ文も、PDF も、画面の文字も、Mac の中だけで訳します。原文も訳文も、外には送りません。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://naoya5.github.io/perspica/assets/poster.jpg">
+<meta property="og:url" content="https://naoya5.github.io/perspica/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://naoya5.github.io/perspica/">
+<link rel="icon" href="assets/favicon.png">
+<link rel="stylesheet" href="style.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<header class="nav">
+  <a class="brand" href="#top" aria-label="Perspica">
+    <img src="assets/icon.png" alt="" width="28" height="28">
+    <span>Perspica</span>
+  </a>
+  <nav aria-label="ページ内">
+    <a href="#ways">使い方</a>
+    <a href="#privacy">プライバシー</a>
+    <a href="#models">モデル</a>
+    <a href="#install">インストール</a>
+    <a href="#faq">FAQ</a>
+  </nav>
+  <a class="nav-cta external" href="https://github.com/naoya5/perspica">GitHub</a>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="hero-copy">
+    <p class="hero-eyebrow">メニューバーに常駐する Mac の翻訳アプリ</p>
+    <h1><span class="line">訳すのは、</span><span class="line">この Mac の中だけ。</span></h1>
+    <div class="hero-side">
+      <p class="lede">選んだ文も、PDF も、画面の文字も訳します。<br>原文も訳文も、Mac の外には送りません。</p>
+      <p class="actions">
+        <a class="button primary" href="#install">インストール方法を見る</a>
+        <a class="button external" href="https://github.com/naoya5/perspica">GitHub でソースを見る</a>
+      </p>
+      <ul class="facts">
+        <li>macOS 26 以降</li>
+        <li>Apple シリコン</li>
+        <li>MIT License</li>
+        <li>Built with PLaMo</li>
+      </ul>
+    </div>
+  </div>
+
+  <figure class="spectacles">
+    <div class="stage" id="stage">
+      <div class="clip">
+        <img class="page" src="assets/shots/page-en.png" alt="英語で組まれた誌面" width="2304" height="1090">
+      </div>
+      <div class="glasses" id="glasses" aria-hidden="true">
+        <svg class="shadow" data-part="shadow" viewBox="-262 -112 524 224">
+          <g fill="none" stroke="#111" stroke-linecap="round">
+            <circle cx="-118" cy="0" r="100" stroke-width="9"/>
+            <circle cx="118" cy="0" r="100" stroke-width="9"/>
+            <path d="M-22 -34 Q0 -60 22 -34" stroke-width="8"/>
+            <path d="M-214 -30 L-256 -66" stroke-width="8"/>
+            <path d="M214 -30 L256 -66" stroke-width="8"/>
+          </g>
+        </svg>
+        <div class="lens" data-part="lens" data-side="-1">
+          <div class="upright">
+            <img class="view" src="assets/shots/page-ja.png" alt="">
+            <div class="rim-view"><img class="view edge" src="assets/shots/page-ja.png" alt=""></div>
+          </div>
+          <div class="glaze"></div>
+        </div>
+        <div class="lens" data-part="lens" data-side="1">
+          <div class="upright">
+            <img class="view" src="assets/shots/page-ja.png" alt="">
+            <div class="rim-view"><img class="view edge" src="assets/shots/page-ja.png" alt=""></div>
+          </div>
+          <div class="glaze"></div>
+        </div>
+        <svg class="frame" data-part="frame" viewBox="-262 -112 524 224">
+          <defs>
+            <linearGradient id="metal" x1="0" y1="0" x2="0.35" y2="1">
+              <stop offset="0" stop-color="#6f6f6f"/>
+              <stop offset="0.28" stop-color="#1e1e1e"/>
+              <stop offset="0.7" stop-color="#0c0c0c"/>
+              <stop offset="1" stop-color="#474747"/>
+            </linearGradient>
+            <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#fff" stop-opacity="0.9"/>
+              <stop offset="0.5" stop-color="#fff" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <g fill="none" stroke="url(#metal)" stroke-linecap="round">
+            <circle cx="-118" cy="0" r="100" stroke-width="8"/>
+            <circle cx="118" cy="0" r="100" stroke-width="8"/>
+            <path d="M-22 -34 Q0 -60 22 -34" stroke-width="7"/>
+            <path d="M-214 -30 L-256 -66" stroke-width="7"/>
+            <path d="M214 -30 L256 -66" stroke-width="7"/>
+          </g>
+          <g fill="none" stroke="url(#shine)" stroke-width="1.6" stroke-linecap="round">
+            <path d="M-205 -42 A 97 97 0 0 1 -40 -58"/>
+            <path d="M31 -42 A 97 97 0 0 1 196 -58"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+    <figcaption>めがねを動かしてみてください。レンズの中に見えるのは、Perspica がこの英語の誌面に重ねた訳です。</figcaption>
+  </figure>
+</section>
+
+<section class="ways" id="ways">
+  <div class="section-head section-head-row">
+    <div>
+      <p class="eyebrow">使い方</p>
+      <h2>訳し方は 4 つ</h2>
+    </div>
+    <p>どの方法でも、Mac の中の同じエンジンが訳します。</p>
+  </div>
+
+  <div class="grid">
+    <article class="card way-select">
+      <div class="visual selection-demo" role="img" aria-label="選んだ英文のすぐ下に、訳の小さな窓が出ている">
+        <p class="doc">When the model is this close, privacy stops being a promise in a policy document. <mark>Privacy becomes a property of the design.</mark></p>
+        <img class="hud" src="assets/shots/hud-glass.png" alt="" width="834" height="144" loading="lazy">
+      </div>
+      <div class="text">
+        <p class="keys"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>J</kbd></p>
+        <h3>選んだ文をその場で訳す</h3>
+        <p>どのアプリでも、文を選んでキーを押すだけです。訳は選択範囲のすぐ下に出ます。</p>
+      </div>
+    </article>
+
+    <article class="card way-panel">
+      <div class="visual">
+        <img src="assets/shots/panel-dark.png" alt="メニューバーの下に開いた Perspica のパネル。上に英語の原文、下に日本語の訳文" width="1040" height="610" loading="lazy">
+      </div>
+      <div class="text">
+        <p class="keys"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>K</kbd></p>
+        <h3>パネルに打ち込んで訳す</h3>
+        <p>メニューバーのパネルを開き、文を打ち込むか貼り付けて <span class="combo"><kbd>⌘</kbd><kbd>↩</kbd></span> を押します。文体は「である」と「です・ます」から選べます。訳文は <span class="combo"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>C</kbd></span> でコピーできます。</p>
+      </div>
+    </article>
+
+    <article class="card way-screen">
+      <div class="visual">
+        <div class="compare" id="compare">
+          <img src="assets/shots/page-en.png" alt="訳す前の英語の誌面" width="2304" height="1090" loading="lazy">
+          <img class="over" src="assets/shots/page-ja.png" alt="訳を重ねたあとの誌面" width="2304" height="1090" loading="lazy">
+          <span class="divider" aria-hidden="true"></span>
+        </div>
+        <label class="compare-control">
+          <span>原文</span>
+          <input type="range" min="0" max="100" value="46" aria-label="原文と訳の境目">
+          <span>訳</span>
+        </label>
+      </div>
+      <div class="text">
+        <p class="keys"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>O</kbd></p>
+        <h3>画面の文字に訳を重ねる</h3>
+        <p>画面の文字を読み取り、訳を元の位置に重ねます。読み取る範囲は、ウィンドウ、選んだ範囲、画面全体から選べます。</p>
+      </div>
+    </article>
+
+    <article class="card way-pdf">
+      <div class="visual pages">
+        <img src="assets/shots/pdf-before.png" alt="英語の論文の 1 ページ" width="989" height="1400" loading="lazy">
+        <img src="assets/shots/pdf-after.png" alt="同じレイアウトのまま日本語に訳された 1 ページ" width="989" height="1400" loading="lazy">
+      </div>
+      <div class="text">
+        <p class="keys"><span class="drop">PDF をドロップ</span></p>
+        <h3>PDF をレイアウトごと訳す</h3>
+        <p>メニューバーのアイコン、パネル、管理画面、ノッチのどこにドロップしても、翻訳が始まります。訳した PDF は、レイアウトを保ったまま、元の PDF の隣に保存されます。</p>
+      </div>
+    </article>
+  </div>
+
+  <p class="also">同じ文の訳は、2 回目からキャッシュですぐに出ます。<br>用語集に登録した語は、指定した訳語で訳します。<br>53 言語に対応しています。主な組み合わせは日本語と英語です。</p>
+</section>
+
+<section class="movie" id="movie">
+  <div class="section-head">
+    <h2>40 秒で見る</h2>
+    <p>音が出ます。</p>
+  </div>
+  <video controls playsinline preload="metadata" poster="assets/poster.jpg" width="1920" height="1080">
+    <source src="assets/perspica.mp4" type="video/mp4">
+  </video>
+</section>
+
+<section class="privacy" id="privacy">
+  <div class="section-head section-head-center">
+    <div class="polly polly-privacy" aria-hidden="true"><span class="polly-body"><img src="assets/polly/idle.webp" alt="" width="132" height="132"><img class="polly-blink" src="assets/polly/blink.webp" alt="" width="132" height="132"></span></div>
+    <p class="eyebrow">プライバシー</p>
+    <h2>文は Mac から出ません。</h2>
+    <p>翻訳は Mac の中で完結します。<br>ネットワークを使うのは、Hugging Face からモデルを取得するときだけです。</p>
+  </div>
+
+  <div class="table-wrap">
+    <table class="ledger">
+      <thead>
+        <tr><th scope="col">対象</th><th scope="col">通信</th><th scope="col">通信先</th><th scope="col">タイミング</th></tr>
+      </thead>
+      <tbody>
+        <tr class="never"><th scope="row">原文と訳文</th><td><mark>送りません</mark></td><td>なし</td><td>なし</td></tr>
+        <tr><th scope="row">翻訳モデル</th><td>取得のみ</td><td>Hugging Face</td><td>モデルを取得するとき</td></tr>
+        <tr><th scope="row">PDF の翻訳</th><td>通信しません</td><td>なし</td><td>なし</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">PDF もアプリの中で訳します。追加の部品は取得しません。</p>
+
+  <dl class="promises">
+    <div><svg class="promise-icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><dt>エンジンは外部に公開しません</dt><dd>エンジンは <code>127.0.0.1</code> でだけ待ち受けます。起動のたびに変わるランダムな鍵がなければ、応答しません。</dd></div>
+    <div><svg class="promise-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg><dt>履歴を残すかは自分で決められます</dt><dd>履歴とキャッシュは Mac の中に残ります。設定で、履歴を残さないことも、まとめて消すこともできます。</dd></div>
+    <div><svg class="promise-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg><dt>ログに文は残しません</dt><dd>ログに書くのは、操作の種類と、かかった時間だけです。原文も訳文も書きません。</dd></div>
+  </dl>
+</section>
+
+<section class="models split" id="models">
+  <div class="section-head">
+    <p class="eyebrow">モデル</p>
+    <h2><span class="line">Mac に合わせて、</span><span class="line">モデルを選べます。</span></h2>
+    <p>翻訳には、Preferred Networks の PLaMo 3 Translate を使います。速さと品質の違う 3 種類があります。</p>
+  </div>
+  <div class="split-body">
+    <div class="table-wrap">
+      <table class="model-list">
+        <thead>
+          <tr><th scope="col">モデル</th><th scope="col">取得サイズ</th><th scope="col">メモリ</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">PLaMo 3 Translate 0.8B <span class="tag">既定・速い</span></th><td>0.57 GB</td><td>約 1.1 GB</td></tr>
+          <tr><th scope="row">PLaMo 3 Translate 2B</th><td>1.81 GB</td><td>約 2.3 GB</td></tr>
+          <tr><th scope="row">PLaMo 3 Translate 8B <span class="tag">最も高品質</span></th><td>5.28 GB</td><td>約 5.8 GB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">モデルは管理画面から取得できます。取得したファイルは、SHA-256 で検証してから使います。</p>
+    <p class="note">8B は、メモリ 16 GB の Mac ではほかのアプリを閉じてから使います。</p>
+    <p class="note">エンジンは最初の翻訳で起動し、10 分使わないと止まります。止まっている間、モデルはメモリに残りません。</p>
+    <p class="note">モデルのライセンスは PLaMo Community License です。最初にモデルを取得する前に、アプリが要点を表示して同意を確認します。</p>
+  </div>
+</section>
+
+<section class="install split" id="install">
+  <div class="section-head">
+    <p class="eyebrow">インストール</p>
+    <h2><span class="line">ソースから</span><span class="line">ビルドします。</span></h2>
+    <p>ビルド済みのアプリは、まだ配布していません。ビルドには数分かかります。</p>
+    <dl class="needs">
+      <div><dt>macOS</dt><dd>26 以降</dd></div>
+      <div><dt>Mac</dt><dd>Apple シリコン</dd></div>
+      <div><dt>Xcode</dt><dd>26 以降</dd></div>
+      <div><dt>Homebrew</dt><dd><code>llama.cpp</code></dd></div>
+    </dl>
+    <p class="more"><a class="external" href="https://github.com/naoya5/perspica/blob/main/README.md">README で詳しい手順を見る</a></p>
+  </div>
+  <div class="split-body">
+    <div class="terminal">
+      <div class="terminal-bar">
+        <span>Terminal</span>
+        <span class="copy-group">
+          <span class="copy-status" role="status"></span>
+          <button type="button" class="copy" data-copy-target="install-commands"><span class="copy-icon"><svg class="icon-copy" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="icon-done" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span><span>コピー</span></button>
+        </span>
+      </div>
+<pre id="install-commands"><code>brew install llama.cpp
+git clone https://github.com/naoya5/perspica.git
+cd perspica/app
+tools/make-signing-identity.sh
+./make-app.sh install
+open ~/Applications/Perspica.app</code></pre>
+    </div>
+    <p class="note">初回の起動時に、短い案内に沿ってモデルを取得します。うまくいかないときの対処も README にあります。</p>
+  </div>
+</section>
+
+<section class="faq split" id="faq">
+  <div class="section-head">
+    <h2>よくある質問</h2>
+  </div>
+  <div class="split-body questions">
+    <details>
+      <summary>オフラインでも使えますか</summary>
+      <p>使えます。翻訳は Mac の中で行うため、モデルを取得したあとは、訳すのにネットワークを使いません。PDF の翻訳も同じです。</p>
+    </details>
+    <details>
+      <summary>どの権限が必要ですか</summary>
+      <p>選んだ文を訳す <span class="combo"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>J</kbd></span> にはアクセシビリティ、画面の文字を訳す <span class="combo"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>O</kbd></span> には画面収録の権限を使います。PDF の翻訳が終わったことを知らせるときは、通知の権限を使います。どの権限も、使う直前に確認します。許可しなかった場合は、その機能の場所に理由と「システム設定を開く」が表示されます。</p>
+    </details>
+    <details>
+      <summary>ショートカットは変えられますか</summary>
+      <p>変えられます。<span class="combo"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>J</kbd></span>、<span class="combo"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>K</kbd></span>、<span class="combo"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>O</kbd></span> のどれも、設定の「ショートカット」で変更できます。</p>
+    </details>
+    <details>
+      <summary>どの言語に対応していますか</summary>
+      <p>53 言語に対応しています。主な組み合わせは日本語と英語です。アプリの画面は日本語です。</p>
+    </details>
+    <details>
+      <summary>訳した文はどこに残りますか</summary>
+      <p>履歴と訳のキャッシュとして、Mac の中に残ります。設定の「プライバシー」で、履歴を残さないようにできます。履歴、キャッシュ、ログをまとめて消すこともできます。訳した PDF は、元の PDF の隣に保存されます。</p>
+    </details>
+    <details>
+      <summary>アンインストールするには、どうしますか</summary>
+      <p>メニューバーのメニューから終了して、アプリを削除します。モデル、履歴、ログ、設定の消し方は <a href="https://github.com/naoya5/perspica/blob/main/README.md">README</a> にあります。</p>
+    </details>
+  </div>
+</section>
+
+<section class="closing">
+  <div class="closing-inner">
+    <div class="polly polly-closing" aria-hidden="true"><span class="polly-body"><img src="assets/polly/wave.webp" alt="" width="180" height="180"></span></div>
+    <h2><span class="line">大事な文ほど、</span><span class="line">手元で訳す。</span></h2>
+    <p class="actions">
+      <a class="button primary" href="#install">インストール方法を見る</a>
+      <a class="button external" href="https://github.com/naoya5/perspica">GitHub でソースを見る</a>
+    </p>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <p class="foot-brand"><img src="assets/icon.png" alt="" width="28" height="28"> Perspica</p>
+  <p>Perspica は MIT License で公開しています。</p>
+  <p>Built with PLaMo. 翻訳モデルには Preferred Networks の PLaMo 3 Translate、エンジンには llama.cpp を使っています。PDF の翻訳は、Perspica 自身の Swift のコードで行います。</p>
+  <p>このページは、外部のサイトから何も読み込みません。</p>
+  <p><a href="https://github.com/naoya5/perspica">github.com/naoya5/perspica</a></p>
+</footer>
+
+<script src="site.js" defer></script>
+</body>
+</html>
