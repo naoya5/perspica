@@ -2,7 +2,7 @@
 
 Perspicaは、Macの中だけで翻訳するメニューバー常駐アプリです。選択したテキスト、パネルに入力した文章、PDF、画面上の文字を翻訳できます。[PLaMo 3 Translate](https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF)をローカルで動かし、原文も訳文もMacの外には送りません。
 
-[English](README.en.md) · Built with PLaMo
+[English](README.en.md) · [Webサイト](https://naoya5.github.io/perspica/) · Built with PLaMo
 
 アプリの表示は日本語です。53言語に対応し、主な翻訳の組み合わせは日本語と英語です。
 
