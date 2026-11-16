@@ -1,13 +1,18 @@
 # Marketing
 
-The landing page lives in `site/`. This folder holds the source of the movie the page embeds.
+The landing page lives in `site/`. This folder holds the source of the first movie the page embedded.
+
+Since 2026-11-16 the page embeds a newer film (25.5 s). Its source is not in this repository yet, so
+`marketing/movie/` does not rebuild the movie on the page. Do not run `node render.mjs` without
+`--frames` or `--score` unless you want the first movie back: it overwrites `site/assets/perspica.mp4`
+and `poster.jpg`.
 
 | Path | What |
 |---|---|
 | `site/index.html`, `style.css`, `site.js` | The landing page. Static files, system fonts, no requests to other sites. |
-| `site/assets/shots/` | The footage both the page and the movie use (see below). |
-| `site/assets/perspica.mp4`, `poster.jpg` | The rendered movie and its poster. Written by `render.mjs`. |
-| `marketing/movie/movie.html` | The movie. Every frame is a pure function of `seek(t)`. |
+| `site/assets/shots/` | The footage the page and the first movie use (see below). The film on the page uses the same captures, except the two PDF pages: it has newer ones, taken from the app at `37e85df`. |
+| `site/assets/perspica.mp4`, `poster.jpg` | The film on the page (1920x1080, 60 fps, H.264 + AAC, 25.5 s, -15 LUFS) and its poster, the frame at 24.6 s. The poster is also the page's `og:image`. Copied in by hand; `render.mjs` would replace them with the first movie. |
+| `marketing/movie/movie.html` | The first movie (40 s). Every frame is a pure function of `seek(t)`. |
 | `marketing/movie/polly/` | Polly, the mascot, in the five poses the movie uses, cut to one shared square so a pose change does not move it. |
 | `site/assets/polly/` | Polly on the page: the idle pose and its blink (one crop), and the wave. |
 | `marketing/movie/render.mjs` | Steps through `movie.html` in headless Chrome and encodes the frames and the sound with ffmpeg. |
@@ -19,14 +24,14 @@ The landing page lives in `site/`. This folder holds the source of the movie the
 
 Open `site/index.html` in a browser. It needs no server and no build.
 
-## Render the movie
+## Render the first movie
 
-Needs Node, Google Chrome and `ffmpeg`.
+This renders the first movie (40 s), not the film now on the page. Needs Node, Google Chrome and `ffmpeg`.
 
 ```sh
 cd marketing/movie
 npm install
-node render.mjs                    # site/assets/perspica.mp4 (1920x1080, 60 fps, H.264 + AAC) and poster.jpg
+node render.mjs                    # OVERWRITES site/assets/perspica.mp4 and poster.jpg with the first movie
 node render.mjs --fps 12           # a quick draft
 node render.mjs --frames 6.3,20.5  # only these moments, as PNGs in ./frames/
 node render.mjs --score            # only the sound, as ./frames/score.wav
@@ -41,7 +46,7 @@ sampled or downloaded, so the sound is the same on every run and carries no one 
 
 The picture and the sound read one timeline. In `movie.html`, each motion that should be heard calls
 `cue(time, kind)` where its time is defined, and `render.mjs` hands that list to `score.mjs`. To move
-a sound, move the motion. The film runs on a beat of 0.625 s, and scenes start on beats, so the
+a sound, move the motion. The first movie runs on a beat of 0.625 s, and scenes start on beats, so the
 chords change with the scenes.
 
 `render.mjs` brings the mix to -16 LUFS with a true peak under -1.5 dB. After a change to the score,
