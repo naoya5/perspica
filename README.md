@@ -186,7 +186,7 @@ YAKU_DEV_MODEL=/path/to/model.gguf \
 
 ## ライセンスと謝辞
 
-Perspicaのコードは[MITライセンス](LICENSE)です。PDF翻訳もSwiftとAppleの標準フレームワークだけで実装しており、AGPLなどのPDFライブラリは使っていません。翻訳モデルとエンジンには、それぞれ元のライセンスが適用されます。
+Perspicaのコードは[MITライセンス](LICENSE)です。マスコットのPolly、アプリアイコン、紹介動画はMITの対象外で、扱いは[ARTWORK.md](ARTWORK.md)に書いています。PDF翻訳もSwiftとAppleの標準フレームワークだけで実装しており、AGPLなどのPDFライブラリは使っていません。翻訳モデルとエンジンには、それぞれ元のライセンスが適用されます。
 
 公開前の確認は未完了です。[公開までのタスク](docs/release-tasks.md)、[配布物とソースの対応](docs/source-distribution-scope.md)、[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[配布時のライセンス確認事項](docs/release-licenses.md)を参照してください。
 

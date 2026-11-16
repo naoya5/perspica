@@ -40,6 +40,7 @@ cp Resources/Info.plist "$CONTENTS/Info.plist"
 cp Resources/PLAMO-COMMUNITY-LICENSE-en.txt "$CONTENTS/Resources/PLAMO-COMMUNITY-LICENSE-en.txt"
 cp ../LICENSE "$CONTENTS/Resources/LICENSE"
 cp ../THIRD_PARTY_NOTICES.md "$CONTENTS/Resources/THIRD_PARTY_NOTICES.md"
+cp ../ARTWORK.md "$CONTENTS/Resources/ARTWORK.md"
 cp -R Resources/Licenses "$CONTENTS/Resources/Licenses"
 cp "$BIN_DIR/$EXECUTABLE" "$CONTENTS/MacOS/$EXECUTABLE"
 

@@ -1,10 +1,12 @@
 # Third-party notices
 
 Reviewed against the sources below on **2026-11-13**; the PDF section was
-updated on **2026-11-14**. Icon font licensing sources were checked on
-**2026-11-15**.
+updated on **2026-11-14**. Icon font licensing sources, the artwork and the
+website fonts were checked on **2026-11-15**.
 
 Perspica's original source is offered under the MIT license in `LICENSE`.
+Polly the mascot, the app icon and the movie are not under that license; see
+`ARTWORK.md`.
 That license does not replace the licenses for model weights or native
 libraries. This notice does not approve a binary release. Release conditions
 are recorded in `docs/release-licenses.md` and tracked in `docs/release-tasks.md`.
@@ -90,10 +92,16 @@ and their dependencies, under AGPL-3.0 and other licenses) that the app installe
 on first use. The app now deletes that worker's leftover files
 (`Application Support/Perspica/pdf-worker` and `pdf-worker-home`) at launch.
 
+## Polly and the app icon
+
+Polly, the mascot, was drawn for Perspica on 2026-11-13 with OpenAI image
+generation through the author's own account. It contains no third-party artwork.
+The app icon is Polly's bust. Both are the author's artwork (`ARTWORK.md`).
+
 ## Icon artwork
 
 `design/app-icon/make-candidates.swift` records six font inputs used to make
-the icon candidates and the app icon. Their upstream projects declare
+the earlier icon candidates. Their upstream projects declare
 SIL Open Font License 1.1:
 
 | Font family | Upstream license |
@@ -112,3 +120,10 @@ artwork to adopt the OFL or carry a font attribution. These links record the
 input families and current upstream licensing, not the exact versions or
 hashes of the font files originally used. If font binaries are added later,
 preserve their own notices and meet the conditions for those actual files.
+
+## Website fonts
+
+The website in `site/` sets its headings in subsets of Shippori Mincho
+(Copyright 2021 The Shippori Mincho Project Authors), under the SIL Open Font
+License 1.1. The license text ships next to the font files in
+`site/assets/fonts/OFL.txt`. The app does not use these fonts.

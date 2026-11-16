@@ -467,6 +467,7 @@ perspica/
 ├── README.en.md           英語の利用案内
 ├── README.ja.md           日本語READMEの互換用案内
 ├── AGENTS.md               エージェントと開発者のための作業ガイド
+├── ARTWORK.md              MIT の対象外の作品（Polly・アプリアイコン・紹介動画）の扱い
 ├── app/
 │   ├── Package.swift
 │   ├── Sources/
