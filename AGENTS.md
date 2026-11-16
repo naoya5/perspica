@@ -27,7 +27,7 @@ the signing identity and the `verify-yaku` skill keep their internal names.
 | `app/Sources/YakuCore` | Logic with no UI: the PFML3 prompt, the engine client and SSE parsing, chunking, glossary, language detection, OCR grouping, and the native PDF translator (`NativePDF/`). Unit-tested. |
 | `app/Sources/Yaku` | The app: engine lifecycle and watchdog, selection capture, screen OCR overlay, model downloads, PDF queue, every window and surface. |
 | `app/Tests/YakuCoreTests` | Swift Testing tests for `YakuCore`. |
-| `app/make-app.sh` | Builds, bundles and signs `Perspica.app`; `install` copies it to `~/Applications`. |
+| `app/make-app.sh` | Builds, bundles and signs `Perspica.app`; `install` copies it to `~/Applications`, `dmg` writes the release dmg. |
 | `app/tools/` | Signing setup, capture and measurement scripts used during development. |
 | `site/` | The landing page: static files, no build, no requests to other sites. Published to GitHub Pages by `.github/workflows/pages.yml`. |
 | `marketing/` | The source of the marketing movie the landing page embeds, and how its footage was made. |
@@ -42,6 +42,7 @@ cd app
 swift build                       # keep it at 0 warnings
 swift test                        # Swift Testing
 ./make-app.sh install             # build, sign and replace ~/Applications/Perspica.app
+./make-app.sh dmg                 # also write the release dmg and its SHA-256 to build/
 tools/make-signing-identity.sh    # once per machine, so permissions survive rebuilds
 ```
 
