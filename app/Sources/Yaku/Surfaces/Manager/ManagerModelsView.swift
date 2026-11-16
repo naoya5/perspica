@@ -233,8 +233,17 @@ struct ManagerModelsView: View {
                 .font(.system(size: Design.Font.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Text("訳文の大部分をそのまま本や論文として公開するときは、PLaMoで翻訳したことを書いてください。訳文を人に渡すときは、それを使って学習したモデルにもPLaMo Community Licenseが適用されることを伝えてください。")
+                .font(.system(size: Design.Font.caption))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Perspica \(AppLinks.version)。コードはMITライセンス、PollyとアイコンはMITの対象外です。")
+                .font(.system(size: Design.Font.caption))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: Design.Space.s) {
                 Link("モデルの利用条件", destination: ModelCatalog.licenseURL)
+                Link("ソースコード", destination: AppLinks.repository)
                 Button("第三者の著作権・ライセンス") {
                     openLicenseDocument("THIRD_PARTY_NOTICES")
                 }

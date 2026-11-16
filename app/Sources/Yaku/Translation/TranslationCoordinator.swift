@@ -27,6 +27,10 @@ final class TranslationCoordinator {
 
     enum TranslationFailure: Error, Equatable {
         case modelMissing
+        /// llama-server is not installed: Perspica uses Homebrew's llama.cpp.
+        case engineMissing
+        /// The installed llama.cpp is older than the oldest supported one.
+        case engineTooOld
         case engineStartFailed
         case engineStopped
         case requestFailed
@@ -35,6 +39,8 @@ final class TranslationCoordinator {
         var message: String {
             switch self {
             case .modelMissing: "翻訳モデルがまだありません"
+            case .engineMissing: "翻訳エンジンの llama.cpp が見つかりません。\nターミナルで brew install llama.cpp を実行してください"
+            case .engineTooOld: "llama.cpp が古いため使えません。\nターミナルで brew upgrade llama.cpp を実行してください"
             case .engineStartFailed: "翻訳エンジンを起動できませんでした"
             case .engineStopped: "翻訳エンジンが止まりました。もう一度お試しください"
             case .requestFailed: "翻訳できませんでした"
@@ -43,6 +49,16 @@ final class TranslationCoordinator {
 
         var showsLogButton: Bool {
             self == .engineStartFailed || self == .requestFailed
+        }
+
+        /// The failure to show when the engine could not start.
+        init(startFailure: EngineManager.StartFailure?) {
+            switch startFailure {
+            case .modelMissing: self = .modelMissing
+            case .executableMissing: self = .engineMissing
+            case .executableTooOld: self = .engineTooOld
+            default: self = .engineStartFailed
+            }
         }
     }
 
@@ -614,8 +630,7 @@ final class TranslationCoordinator {
             }
             guard await engine.ensureRunning() else {
                 guard currentID == id else { return }
-                let failure: TranslationFailure = engine.lastStartFailure == .modelMissing
-                    ? .modelMissing : .engineStartFailed
+                let failure: TranslationFailure = TranslationFailure(startFailure: engine.lastStartFailure)
                 mutate(surface) { $0.phase = .failed(failure) }
                 AppLog.write("translate failed id=\(shortID(id)) engine start (\(String(describing: engine.lastStartFailure)))")
                 return
@@ -673,7 +688,7 @@ final class TranslationCoordinator {
                 if let streamError = error as? EngineStreamError {
                     switch streamError {
                     case .startFailed:
-                        failure = engine.lastStartFailure == .modelMissing ? .modelMissing : .engineStartFailed
+                        failure = TranslationFailure(startFailure: engine.lastStartFailure)
                     case .engineStopped:
                         failure = .engineStopped
                     case .requestTooLarge:

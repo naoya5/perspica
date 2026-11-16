@@ -164,7 +164,8 @@ final class PDFQueue {
             return
         }
         guard running else {
-            finish(job, state: .failed, message: "翻訳エンジンを起動できませんでした")
+            let failure = TranslationCoordinator.TranslationFailure(startFailure: engine.lastStartFailure)
+            finish(job, state: .failed, message: failure.message)
             return
         }
 

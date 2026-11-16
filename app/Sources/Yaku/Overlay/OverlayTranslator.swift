@@ -230,7 +230,7 @@ final class OverlayTranslator {
         // but the first block can arrive before /health is 200.
         guard await engine.ensureRunning(), engine.client != nil else {
             if !Task.isCancelled {
-                failure = engine.lastStartFailure == .modelMissing ? .modelMissing : .engineStartFailed
+                failure = TranslationCoordinator.TranslationFailure(startFailure: engine.lastStartFailure)
             }
             AppLog.write("overlay: engine unavailable for block \(index)")
             return nil
@@ -270,7 +270,7 @@ final class OverlayTranslator {
                 if let streamError = error as? EngineStreamError {
                     switch streamError {
                     case .startFailed:
-                        failure = engine.lastStartFailure == .modelMissing ? .modelMissing : .engineStartFailed
+                        failure = TranslationCoordinator.TranslationFailure(startFailure: engine.lastStartFailure)
                     case .engineStopped:
                         failure = .engineStopped
                     case .requestTooLarge:

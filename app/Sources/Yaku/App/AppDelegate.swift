@@ -1151,8 +1151,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.openPanel(reason: "demo-surface")
                     self.coordinator.translatePanel()
                 }
-            case "error":
-                coordinator.applyDemoFailure(.engineStartFailed)
+            case "error", "no-engine", "old-engine":
+                let failure: TranslationCoordinator.TranslationFailure = switch demo.state {
+                case "no-engine": .engineMissing
+                case "old-engine": .engineTooOld
+                default: .engineStartFailed
+                }
+                coordinator.applyDemoFailure(failure)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                     self?.openPanel(reason: "demo-surface")
                 }
