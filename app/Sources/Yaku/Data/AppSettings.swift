@@ -120,9 +120,13 @@ final class AppSettings {
         defaultsForApp.set(true, forKey: marker)
     }
 
-    private var defaultsForApp: UserDefaults {
-        UserDefaults(suiteName: "app.perspica")!
-    }
+    /// The `app.perspica` preferences. Inside Perspica.app they are the standard
+    /// defaults: `UserDefaults(suiteName:)` returns nil for the app's own bundle
+    /// identifier, which crashed every launch of the app. A bare SwiftPM binary
+    /// has no bundle identifier and reaches the same domain through the suite.
+    private let defaultsForApp: UserDefaults = Bundle.main.bundleIdentifier == "app.perspica"
+        ? .standard
+        : UserDefaults(suiteName: "app.perspica") ?? .standard
 
     private func store(_ key: String, _ value: Any) {
         values[key] = value
