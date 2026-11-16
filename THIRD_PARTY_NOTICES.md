@@ -60,7 +60,8 @@ Homebrew installation is **0.7.0**, source revision
 `620d2225cc436ab0b001e3200e590e3b286ef9ab`.
 The app does not bundle it. Users install llama.cpp with Homebrew
 (`brew install llama.cpp`), and the app refuses a `llama-server` older than
-0.7.0, the oldest version it was tested with.
+0.7.0, the oldest version it was tested with. Version 1.0.0 (revision
+`b1b770d90d94cad9e9ea5b993bdbc383a522fb28`) was also tested on 2026-11-16.
 
 The full upstream MIT notice is at
 `app/Resources/Licenses/llama.cpp-0.7.0-LICENSE.txt` in the source tree and

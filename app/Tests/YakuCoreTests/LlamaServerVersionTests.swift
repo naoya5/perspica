@@ -14,6 +14,13 @@ import Testing
         #expect(LlamaServerVersion.parse("version: 6123 (abc1234)\n") == LlamaServerVersion(release: nil, build: 6123))
     }
 
+    @Test func aSourceBuildKeepsItsReleaseNumber() {
+        // A shallow checkout of the v1.0.0 tag, built with CMake.
+        let version = LlamaServerVersion.parse("version: 1.0.0-dev (build 1, commit b1b770d)")
+        #expect(version == LlamaServerVersion(release: [1, 0, 0], build: 1))
+        #expect(version?.isSupported() == true)
+    }
+
     @Test func noVersionLineIsNil() {
         #expect(LlamaServerVersion.parse("error: unknown argument: --version") == nil)
         #expect(LlamaServerVersion.parse("") == nil)

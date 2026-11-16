@@ -29,7 +29,9 @@ public struct LlamaServerVersion: Equatable, Sendable, CustomStringConvertible {
             let rest = trimmed.dropFirst("version:".count).trimmingCharacters(in: .whitespaces)
             let token = rest.prefix { !$0.isWhitespace }
             var version = LlamaServerVersion(release: nil, build: nil)
-            let parts = token.split(separator: ".", omittingEmptySubsequences: false).map { Int($0) }
+            // A build from a source checkout says `1.0.0-dev`: the suffix is dropped.
+            let numbers = token.prefix { $0.isNumber || $0 == "." }
+            let parts = numbers.split(separator: ".", omittingEmptySubsequences: false).map { Int($0) }
             if parts.count >= 2, parts.allSatisfy({ $0 != nil }) {
                 version.release = parts.compactMap { $0 }
             } else if let number = Int(token) {
@@ -45,7 +47,8 @@ public struct LlamaServerVersion: Equatable, Sendable, CustomStringConvertible {
 
     /// Whether this build is at least `minimum`. Release numbers are compared
     /// when both have one; a build from before numbered releases is compared by
-    /// its build number.
+    /// its build number. The build number of a numbered release is not used: a
+    /// shallow checkout counts only one commit.
     public func isSupported(minimum: LlamaServerVersion = .minimum) -> Bool {
         if let release, let floor = minimum.release {
             return Self.compare(release, floor) >= 0
