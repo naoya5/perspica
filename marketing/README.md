@@ -96,6 +96,7 @@ turns Liquid Glass into flat grey, so the panel and the HUD are captured as a re
 ## Rules the page and the movie keep
 
 - Every claim comes from `README.md`, `SPEC.md` or a measurement named next to it.
-- There is no prebuilt download, so the call to action is "build from source".
+- The download is the latest dmg on GitHub Releases. The page says it is a personal preview, that
+  llama.cpp comes from Homebrew, and that the first launch needs **Open Anyway** (it is not notarized).
 - "Built with PLaMo" stays on the page and in the movie (PLaMo Community License, article 4).
 - The page loads nothing from other sites: no web fonts, no analytics, no embeds.

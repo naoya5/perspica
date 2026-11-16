@@ -10,8 +10,9 @@ the text never leaves the Mac.
 > The app's interface is in Japanese. It translates between 53 languages, with Japanese and English
 > as the main pair.
 
-The first publication will contain source code on GitHub only. Prebuilt app distribution is
-planned for later. See the [task list](docs/release-tasks.md) for the remaining work.
+Perspica is a personal project. A prebuilt preview is on
+[Releases](https://github.com/naoya5/perspica/releases); anyone who wants it is welcome to use it.
+It is not notarized by Apple, so you allow it once in System Settings (see [Install](#install)).
 
 ## Contents
 
@@ -34,27 +35,26 @@ planned for later. See the [task list](docs/release-tasks.md) for the remaining 
 |---|---|
 | macOS | 26 or later |
 | Mac | Apple silicon. The engine runs on Metal. |
-| Xcode | 26 or later (Swift 6), to build the app |
-| [Homebrew](https://brew.sh) `llama.cpp` | Provides `llama-server`, the translation engine |
-
-There are no prebuilt downloads. You build the app from this repository, which takes a few minutes.
+| [Homebrew](https://brew.sh) `llama.cpp` | 0.7.0 or later. Provides `llama-server`, the translation engine; the app does not include it |
+| Xcode | 26 or later (Swift 6), only to [build from source](#build-from-source) |
 
 ## Install
 
-```sh
-brew install llama.cpp
-git clone https://github.com/naoya5/perspica.git
-cd perspica/app
-tools/make-signing-identity.sh   # once; keeps permissions across rebuilds
-./make-app.sh install            # builds, signs and copies ~/Applications/Perspica.app
-open ~/Applications/Perspica.app
-```
+1. Install the translation engine in Terminal:
 
-`make-signing-identity.sh` creates a self-signed code-signing identity in a keychain of its own.
-You can skip it; the app is then signed ad hoc, and you must grant macOS permissions again after every
-rebuild. These instructions build the app for your own Mac. The app is not notarized.
-Before distributing a built copy, separately check signing/notarization and the
-[applicable licensing conditions](docs/release-licenses.md).
+   ```sh
+   brew install llama.cpp
+   ```
+
+2. Download `Perspica-<version>.dmg` from [Releases](https://github.com/naoya5/perspica/releases/latest),
+   open it and drag `Perspica` to `Applications`.
+3. Open Perspica. The first time, macOS says it cannot be opened: go to **System Settings > Privacy &
+   Security**, click **Open Anyway** and enter your password. The button stays for about an hour after
+   you tried to open the app.
+
+The `.sha256` file next to the dmg checks the download (`shasum -a 256 -c Perspica-<version>.dmg.sha256`).
+To look for a newer version, right-click the menu bar icon and choose 「新しい版を確認…」. The app does
+not check for updates itself.
 
 On first launch a short onboarding walks you through downloading a model (see [Models](#models)).
 
@@ -167,6 +167,8 @@ keep their old names.
 | Problem | Try |
 |---|---|
 | The engine cannot be found | `brew install llama.cpp`. The app looks for `llama-server` in `/opt/homebrew/bin`, `/usr/local/bin` and `~/.local/bin`. |
+| The app says llama.cpp is too old | `brew upgrade llama.cpp`. Version 0.7.0 or later is needed. |
+| macOS says the app cannot be opened | It is not notarized. Click **Open Anyway** in **System Settings > Privacy & Security**. |
 | ⌃⌥J does nothing | Check **System Settings > Privacy & Security > Accessibility**. After updating from Yaku or rebuilding with ad hoc signing, remove Perspica there and add it again. |
 | A global key clashes with another app | Change it in **設定 > ショートカット**. |
 | Anything else | Read `~/Library/Logs/Perspica/app.log`, then open an issue. |
@@ -194,7 +196,23 @@ Remove old settings with `defaults delete dev.naoya.yaku`.
 
 ## Build from source
 
-Run from the repository root.
+To build and use the app on your own Mac (a few minutes):
+
+```sh
+brew install llama.cpp
+git clone https://github.com/naoya5/perspica.git
+cd perspica/app
+tools/make-signing-identity.sh   # once; keeps permissions across rebuilds
+./make-app.sh install            # builds, signs and copies ~/Applications/Perspica.app
+open ~/Applications/Perspica.app
+```
+
+`make-signing-identity.sh` creates a self-signed code-signing identity in a keychain of its own.
+You can skip it; the app is then signed ad hoc, and you must grant macOS permissions again after every
+rebuild. `./make-app.sh dmg` also writes the release dmg and its SHA-256. Before distributing a built
+copy, check the [applicable licensing conditions](docs/release-licenses.md).
+
+For development, run these from the repository root:
 
 ```sh
 cd app
