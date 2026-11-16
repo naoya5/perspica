@@ -10,7 +10,7 @@ and `poster.jpg`.
 | Path | What |
 |---|---|
 | `site/index.html`, `style.css`, `site.js` | The landing page. Static files, system fonts, no requests to other sites. |
-| `site/assets/shots/` | The footage the page and the first movie use (see below). The film on the page uses the same captures, except the two PDF pages: it has newer ones, taken from the app at `37e85df`. |
+| `site/assets/shots/` | The footage the page and the first movie use (see below). The film on the page uses the same captures. |
 | `site/assets/perspica.mp4`, `poster.jpg` | The film on the page (1920x1080, 60 fps, H.264 + AAC, 25.5 s, -15 LUFS) and its poster, the frame at 24.6 s. The poster is also the page's `og:image`. Copied in by hand; `render.mjs` would replace them with the first movie. |
 | `marketing/movie/movie.html` | The first movie (40 s). Every frame is a pure function of `seek(t)`. |
 | `marketing/movie/polly/` | Polly, the mascot, in the five poses the movie uses, cut to one shared square so a pose change does not move it. |
@@ -71,7 +71,7 @@ included), not a cache hit.
 |---|---|
 | `page-en.png` | A page set in English, written and drawn for the demo: `marketing/sources/page.html`, rendered at 1.6 pixels per point. |
 | `page-ja.png` | `--demo-image <that page> --demo-scale 1`, captured with `yaku-verify shot`: the app read the page and laid its translation over it. |
-| `pdf-before.png`, `pdf-after.png` | Page 1 of a paper written for the demo (`marketing/sources/paper.html`, printed to PDF), and page 1 of the PDF the app wrote for it (`--demo-pdf`), both rendered with `pdftoppm -r 200`. |
+| `pdf-before.png`, `pdf-after.png` | Page 1 of a paper written for the demo (`marketing/sources/paper.html`, printed to PDF), and page 1 of the PDF the app wrote for it (`--demo-pdf`), both rendered with `pdftoppm -r 200`. Taken again on 2026-11-16 from the app at `37e85df`: it translates the headings and the paragraphs and leaves the cells of the table in English. The first movie marks the table on these pages, so a new render of it would mark a table that is not translated. |
 | `panel-light.png`, `panel-dark.png` | `--demo-surface panel --demo-state done --demo-pin --demo-backdrop light|dark`, captured as a screen region so the backdrop is behind the glass. |
 | `panel-glass.png`, `hud-glass.png` | The same kind of capture (`--demo-surface panel` / `hud`), cut at the edge of the glass. The page and the movie draw only the shadow under them. |
 
