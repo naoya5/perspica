@@ -9,6 +9,11 @@
 #
 #   ./make-app.sh            build and sign build/Perspica.app
 #   ./make-app.sh install    also replace ~/Applications/Perspica.app
+#   ./make-app.sh dmg        also write build/Perspica-<version>.dmg and its SHA-256
+#                            for a GitHub release (needs the signing identity)
+#
+# llama-server is not bundled: the app uses the one Homebrew installs
+# (`brew install llama.cpp`) and checks its version when the engine starts.
 set -eu
 cd "$(dirname "$0")"
 
@@ -34,7 +39,7 @@ BIN_DIR=$(swift build -c release --show-bin-path)
 
 # Rebuild the bundle from scratch, one concrete path at a time.
 rm -rf "$CONTENTS"
-mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$CONTENTS/Helpers"
+mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 
 cp Resources/Info.plist "$CONTENTS/Info.plist"
 cp Resources/PLAMO-COMMUNITY-LICENSE-en.txt "$CONTENTS/Resources/PLAMO-COMMUNITY-LICENSE-en.txt"
@@ -66,14 +71,9 @@ if [ -d Resources/$APP_NAME.icon ]; then
     echo "icon: $(ls "$CONTENTS/Resources" | tr '\n' ' ')"
 fi
 
-# llama-server is bundled only when explicitly asked for; during development
-# the app falls back to /opt/homebrew/bin/llama-server.
-if [ "${YAKU_BUNDLE_LLAMA:-0}" = "1" ] && [ -x /opt/homebrew/bin/llama-server ]; then
-    cp /opt/homebrew/bin/llama-server "$CONTENTS/Helpers/llama-server"
-    echo "bundled llama-server"
-fi
-
+SIGNED_WITH_IDENTITY=0
 if [ -f "$KEYCHAIN" ] && [ -f "$KEYCHAIN_PASSWORD_FILE" ]; then
+    SIGNED_WITH_IDENTITY=1
     security unlock-keychain -p "$(cat "$KEYCHAIN_PASSWORD_FILE")" "$KEYCHAIN"
     # A hang here means the key is waiting on an authorization prompt; fail
     # instead of blocking the build forever.
@@ -113,4 +113,29 @@ if [ "${1:-}" = "install" ]; then
         rm -rf "$HOME/Applications/$LEGACY_APP_NAME.app"
         echo "removed the old bundle: $HOME/Applications/$LEGACY_APP_NAME.app"
     fi
+fi
+
+if [ "${1:-}" = "dmg" ]; then
+    # A release must be signed with the same identity every time: macOS ties the
+    # Accessibility and Screen Recording grants to it, so an ad hoc build would
+    # make every user grant them again after the update.
+    if [ "$SIGNED_WITH_IDENTITY" != "1" ]; then
+        echo "error: a release dmg needs the \"$IDENTITY\" identity; run tools/make-signing-identity.sh" >&2
+        exit 1
+    fi
+    VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$CONTENTS/Info.plist")
+    STAGE="$BUILD_DIR/dmg-stage"
+    DMG="$BUILD_DIR/$APP_NAME-$VERSION.dmg"
+    rm -rf "$STAGE"
+    mkdir -p "$STAGE"
+    cp -R "$APP" "$STAGE/$APP_NAME.app"
+    ln -s /Applications "$STAGE/Applications"
+    rm -f "$DMG"
+    hdiutil create -quiet -volname "$APP_NAME $VERSION" -srcfolder "$STAGE" -format UDZO "$DMG"
+    rm -rf "$STAGE"
+    $guard codesign --force --timestamp=none --identifier app.perspica.dmg \
+        --sign "$IDENTITY" --keychain "$KEYCHAIN" "$DMG"
+    (cd "$BUILD_DIR" && shasum -a 256 "$APP_NAME-$VERSION.dmg" > "$APP_NAME-$VERSION.dmg.sha256")
+    echo "dmg: $(pwd)/$DMG"
+    sed 's/^/  sha256 /' "$DMG.sha256"
 fi

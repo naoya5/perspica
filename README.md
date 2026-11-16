@@ -6,8 +6,8 @@ Perspicaは、Macの中だけで翻訳するメニューバー常駐アプリで
 
 アプリの表示は日本語です。53言語に対応し、主な翻訳の組み合わせは日本語と英語です。
 
-初回はGitHubでソースコードだけを公開し、ビルド済みアプリの配布は後日に分けます。
-公開前の残りの作業は[タスク表](docs/release-tasks.md)にまとめています。
+個人開発のアプリです。ビルド済みのプレビュー版を[Releases](https://github.com/naoya5/perspica/releases)に置いているので、使いたい方は自由に使ってください。
+Appleの公証は受けていないため、初回だけシステム設定で開くことを許可します（[インストール](#インストール)）。
 
 ## 目次
 
@@ -30,25 +30,22 @@ Perspicaは、Macの中だけで翻訳するメニューバー常駐アプリで
 |---|---|
 | macOS | 26以降 |
 | Mac | Appleシリコン。翻訳エンジンはMetalで動きます |
-| Xcode | 26以降（Swift 6）。アプリのビルドに使います |
-| [Homebrew](https://brew.sh)の`llama.cpp` | 翻訳エンジンの`llama-server`を提供します |
-
-ビルド済みの配布物はありません。このリポジトリからビルドします。数分かかります。
+| [Homebrew](https://brew.sh)の`llama.cpp` | 0.7.0以降。翻訳エンジンの`llama-server`を提供します。アプリには含まれません |
+| Xcode | 26以降（Swift 6）。[ソースからビルドする](#ソースからビルドする)場合だけ必要です |
 
 ## インストール
 
-```sh
-brew install llama.cpp
-git clone https://github.com/naoya5/perspica.git
-cd perspica/app
-tools/make-signing-identity.sh   # 初回のみ。再ビルド時も同じ署名を使う
-./make-app.sh install            # ビルド・署名し、~/Applications/Perspica.app にコピー
-open ~/Applications/Perspica.app
-```
+1. ターミナルで翻訳エンジンを入れます。
 
-`make-signing-identity.sh`は、専用のキーチェーンに自己署名のコード署名用証明書を作ります。省略するとアドホック署名になり、ビルドし直すたびにmacOSの権限を設定し直す必要があります。
+   ```sh
+   brew install llama.cpp
+   ```
 
-この手順は自分のMac向けのビルドです。アプリは公証していません。作成したアプリをほかの人へ配布する場合は、署名・公証の扱いと[配布時のライセンス条件](docs/release-licenses.md)を別途確認してください。
+2. [Releases](https://github.com/naoya5/perspica/releases/latest)から`Perspica-<版>.dmg`をダウンロードし、開いて`Perspica`を`Applications`へドラッグします。
+3. Perspicaを開きます。初回は「開けません」と表示されるので、システム設定の「プライバシーとセキュリティ」で「このまま開く」を押し、パスワードを入力します。このボタンは、開こうとしてから約1時間表示されます。
+
+dmgと同じ場所の`.sha256`ファイルで、ダウンロードしたファイルを確かめられます（`shasum -a 256 -c Perspica-<版>.dmg.sha256`）。
+新しい版は、メニューバーのアイコンを右クリックして「新しい版を確認…」から確かめられます。アプリ自体は更新を確認しません。
 
 初回起動時の案内に沿って、翻訳モデルをダウンロードします。詳しくは[モデル](#モデル)を参照してください。旧Yakuから更新する場合は、[データの移行と権限の再設定](#データの保存先と旧版からの移行)も確認してください。
 
@@ -141,6 +138,8 @@ Swiftのモジュール名と実行ファイル名（`Yaku`・`YakuCore`）、�
 | 症状 | 確認すること |
 |---|---|
 | エンジンが見つからない | `brew install llama.cpp`を実行してください。アプリは`/opt/homebrew/bin`、`/usr/local/bin`、`~/.local/bin`から`llama-server`を探します |
+| llama.cppが古いと表示される | `brew upgrade llama.cpp`を実行してください。0.7.0以降が必要です |
+| 「開けません」と表示される | Appleの公証を受けていないためです。システム設定の「プライバシーとセキュリティ」で「このまま開く」を押してください |
 | ⌃⌥Jで何も起きない | 「システム設定 > プライバシーとセキュリティ > アクセシビリティ」を確認してください。旧Yakuからの更新やアドホック署名での再ビルド後は、一度登録を外して追加し直してください |
 | ほかのアプリとショートカットが重なる | 「設定 > ショートカット」で変更してください |
 | そのほかの問題 | `~/Library/Logs/Perspica/app.log`を確認し、[不具合を報告](https://github.com/naoya5/perspica/issues/new/choose)してください。添付するログから私的な情報を除いてください |
@@ -163,7 +162,20 @@ Swiftのモジュール名と実行ファイル名（`Yaku`・`YakuCore`）、�
 
 ## ソースからビルドする
 
-リポジトリのルートから実行します。
+自分のMacでビルドして使う場合は、次のとおりです。数分かかります。
+
+```sh
+brew install llama.cpp
+git clone https://github.com/naoya5/perspica.git
+cd perspica/app
+tools/make-signing-identity.sh   # 初回のみ。再ビルド時も同じ署名を使う
+./make-app.sh install            # ビルド・署名し、~/Applications/Perspica.app にコピー
+open ~/Applications/Perspica.app
+```
+
+`make-signing-identity.sh`は、専用のキーチェーンに自己署名のコード署名用証明書を作ります。省略するとアドホック署名になり、ビルドし直すたびにmacOSの権限を設定し直す必要があります。`./make-app.sh dmg`は、配布用のdmgとSHA-256も作ります。作成したアプリをほかの人へ配布する場合は、[配布時のライセンス条件](docs/release-licenses.md)も確認してください。
+
+開発用のコマンドは、リポジトリのルートから実行します。
 
 ```sh
 cd app

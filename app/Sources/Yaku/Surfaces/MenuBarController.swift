@@ -118,6 +118,11 @@ final class MenuBarController: NSObject {
         let settingsItem = NSMenuItem(title: "設定…", action: #selector(openSettings), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
+
+        let updateItem = NSMenuItem(title: "新しい版を確認…", action: #selector(openReleases), keyEquivalent: "")
+        updateItem.target = self
+        updateItem.toolTip = "Perspica \(AppLinks.version) を使っています。公開ページをブラウザで開きます"
+        menu.addItem(updateItem)
         menu.addItem(.separator())
 
         let pauseItem = NSMenuItem(title: "一時停止", action: #selector(pause), keyEquivalent: "")
@@ -142,6 +147,12 @@ final class MenuBarController: NSObject {
 
     @objc private func openSettings() {
         onOpenSettings?()
+    }
+
+    /// Opens the releases page in the browser. The app does not check for
+    /// updates itself, so it stays off the network.
+    @objc private func openReleases() {
+        NSWorkspace.shared.open(AppLinks.releases)
     }
 
     @objc private func pause() {

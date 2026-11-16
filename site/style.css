@@ -642,6 +642,7 @@ main > .split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7
 
 .install .needs { margin-top: 1.6rem; font-size: 0.94rem; }
 .install .more { margin-top: 1.4rem; font-size: 0.92rem; }
+.install .split-body .actions { margin-top: 1.2rem; }
 .install .more a { color: #eee6a0; text-decoration: none; }
 @media (hover: hover) and (pointer: fine) { .install .more a:hover { text-decoration: underline; } }
 .terminal .copy { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; color: #c9cacc; background: none; border: 1px solid #ffffff26; border-radius: 6px; font-weight: 400; }

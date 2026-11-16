@@ -19,6 +19,7 @@ V=.agents/skills/verify-yaku/scripts/yaku-verify   # from the repo root
 - **Never touch real data.** The helper always passes `--data-dir <state>/data`, where `<state>` is a private per-user folder under `$TMPDIR` (`begin` prints it). History, cache, settings and PDF jobs land there.
 - **Logs are isolated.** Every demo log lives in `<state>/data/logs/`. The helper slices `app.log` from the line count at launch, so each evidence log holds only that instance's run. Real logs under `~/Library/Logs/Perspica/` are never touched.
 - **The screen must be unlocked.** While it is locked nothing is drawn, `screencapture -l` fails, and CPU reads 0.00%. `doctor` checks this.
+- **Demo runs skip the app's own preferences.** `--data-dir` keeps settings in a JSON file, and the bare release binary has no bundle identifier, so neither touches the `app.perspica` defaults the way Perspica.app does. A launch crash there went unseen until 2026-11-16. Before a release, build with `app/make-app.sh` and open that bundle once.
 - **A failed build leaves the old binary.** `shot`, `cpu` and `translate` refuse a release binary older than any source file. Always rebuild with `$V build`, which exits non-zero on a compile error.
 
 ## Launch

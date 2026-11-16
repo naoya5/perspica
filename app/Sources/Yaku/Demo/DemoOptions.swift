@@ -5,7 +5,7 @@ import Foundation
 struct DemoOptions {
     /// `--demo-surface panel|hud|manager|settings|onboarding|notch|overlay`
     var surface: String?
-    /// `--demo-state empty|translating|done|error|no-permission`
+    /// `--demo-state empty|translating|done|error|no-engine|old-engine|no-permission`
     var state: String?
     /// `--demo-text "<文>"`
     var text: String?

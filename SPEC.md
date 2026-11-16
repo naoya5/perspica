@@ -252,7 +252,8 @@ PFNのPLaMo 3 TranslateをMacの中だけで動かし、文・PDF・画面を日
 ## 7. エンジン
 
 ### 7.1起動と停止
-- 実行ファイルの探し方: `Perspica.app/Contents/Helpers/llama-server`（llama.cppの配布版を版を決めて同梱）→ なければ`/opt/homebrew/bin/llama-server`（開発中はこちら）
+- 実行ファイルの探し方: Homebrewで入れたllama.cpp（`brew install llama.cpp`）の`llama-server`を、`/opt/homebrew/bin`、`/usr/local/bin`、`~/.local/bin`の順に探す。アプリには同梱しない
+- 版の確認: 起動の前に`llama-server --version`を読み、動作を確かめた0.7.0より古ければ起動せず、「llama.cpp が古いため使えません。ターミナルで brew upgrade llama.cpp を実行してください」と出す。版を読めないときは起動を試す
 - 起動の引数: `-m <gguf> -c 16384 --parallel 4 --host 127.0.0.1 --port <空き番号> --api-key <起動ごとの乱数> --alias plamo-3-translate --no-webui --log-disable`
   - 空き番号は、0番で一度ソケットを開いてOSに選ばせる
 - `-c 16384 --parallel 4`なので、1件の依頼（原文・文脈・用語集・訳文の合計）は4,096トークン以内。これを超える原文は7.4で分けてから送る
@@ -408,6 +409,8 @@ PFNのPLaMo 3 TranslateをMacの中だけで動かし、文・PDF・画面を日
 | 場面 | 文言 |
 |---|---|
 | モデルがない | 「翻訳モデルがまだありません」＋「モデルを取得」 |
+| llama.cppがない | 「翻訳エンジンの llama.cpp が見つかりません。ターミナルで brew install llama.cpp を実行してください」 |
+| llama.cppが古い | 「llama.cpp が古いため使えません。ターミナルで brew upgrade llama.cpp を実行してください」 |
 | エンジンの起動に失敗 | 「翻訳エンジンを起動できませんでした」＋「もう一度」「ログを見る」 |
 | エンジンが途中で終了 | 「翻訳エンジンが止まりました。もう一度お試しください」 |
 | 選んだ文がない | 「文を選んでから ⌃⌥J」 |
@@ -448,7 +451,7 @@ PFNのPLaMo 3 TranslateをMacの中だけで動かし、文・PDF・画面を日
 ## 16. ビルド・署名・配布
 
 - Xcodeのプロジェクトファイルは使わない。SwiftPM + `make-app.sh`（試作と同じ）
-  - `swift build -c release` → `Perspica.app`に包む（`Info.plist`、`Resources/`、`Helpers/llama-server`）→ 署名
+  - `swift build -c release` → `Perspica.app`に包む（`Info.plist`、`Resources/`）→ 署名。`./make-app.sh dmg`は配布用のdmgとSHA-256も作る
   - `Info.plist`: `LSUIElement = YES`、`LSMinimumSystemVersion = 26.0`、`CFBundleDocumentTypes`（PDF）、権限の説明文
 - 署名: `app/tools/make-signing-identity.sh`が、専用のキーチェーン`~/Library/Keychains/yaku-dev.keychain-db`に自己署名の「Yaku Signing」証明書を作る。`make-app.sh`はそれがあれば毎回それで署名し、なければアドホック署名に切り替えて警告を出す。アドホック署名だと、作り直すたびにアクセシビリティと画面収録の許可が外れる。ログインキーチェーンに置くと、codesignが鍵の承認待ちで止まるため分けた
 - 入れる場所: `make-app.sh install`で`~/Applications/Perspica.app`に置く（ログイン時の起動と権限の登録はこの場所のアプリに対して行う）

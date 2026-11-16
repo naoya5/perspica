@@ -30,6 +30,17 @@ So the AGPL analysis, the Corresponding Source plan and the Python, font and ass
 inventories of the earlier audit no longer apply. What remains is PLaMo, llama.cpp
 and the fonts embedded in output PDFs.
 
+## First app release (decided 2026-11-16)
+
+The maintainer decided to publish the app as a personal project: a dmg on GitHub
+Releases, free, for anyone who wants to use it. It is signed with the
+maintainer's own certificate, not a Developer ID, and is not notarized, so each
+user allows it once in System Settings. llama.cpp is not bundled; users install
+it with Homebrew. The app ships `LICENSE`, `THIRD_PARTY_NOTICES.md`,
+`ARTWORK.md`, the PLaMo Community License and the llama.cpp MIT notice, and its
+licensing card links to the source. The decisions and their reasons are in the
+[task list](release-tasks.md#アプリ配布の決定2026-11-16).
+
 ## Source-only first publication
 
 The current plan is a personal project published as source on GitHub first,
@@ -49,8 +60,8 @@ contractual use category remain unconfirmed; the
 
 The source tree has no third-party Swift packages and no third-party PDF code.
 The packaging script ships the Swift executable, Polly and the app icon (the
-author's artwork, see `ARTWORK.md`) and license resources. It
-optionally copies a Homebrew `llama-server`. It does not ship PLaMo weights.
+author's artwork, see `ARTWORK.md`) and license resources. It does not ship
+`llama-server` (users install llama.cpp with Homebrew) or PLaMo weights.
 The app downloads only the model, from Hugging Face.
 
 | Artifact | Identified version | Release evidence needed |

@@ -24,6 +24,8 @@ final class EngineManager {
     /// message (SPEC 13: a missing model is not the same as a broken engine).
     enum StartFailure: Equatable {
         case executableMissing
+        /// The llama-server found is older than the oldest one Perspica supports.
+        case executableTooOld(found: String)
         case modelMissing
         case portUnavailable
         case launchFailed
@@ -323,6 +325,12 @@ final class EngineManager {
             lastStartFailure = .executableMissing
             setState(.failed("llama-server が見つかりません"))
             AppLog.write("engine start failed: llama-server not found")
+            return false
+        }
+        if let version = Self.version(of: executable), !version.isSupported() {
+            lastStartFailure = .executableTooOld(found: version.description)
+            setState(.failed("llama.cpp が古すぎます"))
+            AppLog.write("engine start failed: llama-server \(version) is older than \(LlamaServerVersion.minimum)")
             return false
         }
         guard let resolution = ModelStore.resolve() else {
@@ -656,14 +664,41 @@ final class EngineManager {
 
     // MARK: environment
 
+    /// The llama-server Homebrew installed (`brew install llama.cpp`). The app
+    /// does not bundle one.
     static func locateExecutable() -> String? {
-        let bundled = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/Helpers/llama-server")
-        if FileManager.default.isExecutableFile(atPath: bundled.path) {
-            return bundled.path
-        }
-        return ExecutableLocator.find("llama-server")
+        ExecutableLocator.find("llama-server")
     }
+
+    /// The version `executable --version` reports, read once per file: users
+    /// upgrade Homebrew's llama.cpp while the app runs, so a changed file is read
+    /// again. Nil when it cannot be read; such a build is tried rather than refused.
+    static func version(of executable: String) -> LlamaServerVersion? {
+        let modified = (try? FileManager.default.attributesOfItem(atPath: executable)[.modificationDate]) as? Date
+        let resolved = (executable as NSString).resolvingSymlinksInPath
+        let key = "\(resolved)|\(modified?.timeIntervalSince1970 ?? 0)"
+        if let cached = versionCache[key] { return cached }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = ["--version"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        do {
+            try process.run()
+        } catch {
+            AppLog.write("engine version unreadable: \(error)")
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        let version = LlamaServerVersion.parse(String(decoding: data, as: UTF8.self))
+        AppLog.write("engine llama-server version \(version?.description ?? "unknown")")
+        versionCache[key] = version
+        return version
+    }
+
+    private static var versionCache: [String: LlamaServerVersion?] = [:]
 
     /// Opens a socket on port 0 and lets the OS pick a free port for us.
     static func freePort() -> UInt16? {
