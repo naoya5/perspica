@@ -35,7 +35,8 @@ included this artwork without this notice. This file applies from then on.
 Polly was drawn for Perspica on 2026-11-13 with OpenAI image generation, through
 the author's own account. It is a one-of-a-kind character, not a shared library
 mascot. The icon candidates are SVG artwork made with the fonts listed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#icon-artwork).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#icon-artwork). The author made the
+movie, picture and sound, without third-party music or footage.
 
 ## 日本語
 
@@ -67,3 +68,4 @@ Pollyを描画・アニメーションさせるコード（`app/Sources/Yaku/Des
 Pollyは2026-11-13に、作者自身のアカウントでOpenAIの画像生成を使い、Perspicaのために描いたものです。
 他の人と共有するライブラリのマスコットではなく、一点ものです。アイコン案は、
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#icon-artwork)に記載したフォントで作ったSVGの作品です。
+紹介動画は、映像も音も作者が作ったもので、第三者の音楽や映像は使っていません。

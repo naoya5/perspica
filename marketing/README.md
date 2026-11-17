@@ -2,7 +2,9 @@
 
 The landing page lives in `site/`. This folder holds the source of the first movie the page embedded.
 
-Since 2026-11-16 the page embeds a newer film (25.5 s). Its source is not in this repository yet, so
+Since 2026-11-16 the page embeds a newer film (25.5 s). The author made it, picture and sound, with
+no third-party music or footage (confirmed by the author on 2026-11-17). Its source is not in this
+repository yet, so
 `marketing/movie/` does not rebuild the movie on the page. Do not run `node render.mjs` without
 `--frames` or `--score` unless you want the first movie back: it overwrites `site/assets/perspica.mp4`
 and `poster.jpg`.
